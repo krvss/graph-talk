@@ -1,5 +1,7 @@
-__author__ = 'skravets'
+# Universal Translator base classes
+# (c) krvss 2011-2012
 
+# Base class for all communicable objects
 class Abstract(object):
     def __init__(self):
         self.callbacks = []
@@ -19,166 +21,119 @@ class Abstract(object):
             callee(message)
 
 
-class Literal(Abstract):
-    special_characters = "[]\\^$.|?*+()}" # Not like in Java: { is not a special character
+# Class for simple replies
+class Reply(object):
+    def __init__(self, result = False, length = 0, context = None):
+        self.result = result
+        self.length = length
+        self.context = context
 
-    def __init__(self, value):
-        super(Literal, self).__init__()
-        self.value = value
-
-    def parse_literal(self, message):
-        return None, 0
-
-    def parse(self, message):
-        reply = {"result": False}
-
-        c, l = self.parse_literal(message)
-        if c:
-            reply["result"] = True
-            reply["length"] = l # TODO: return number of parsed even in fail case?
-            reply["entity"] = c
-
-        return reply
-
-    def __str__(self):
-        return self.value
+    def is_error(self):
+        return self.result == False
 
 
-class SimpleLiteral(Literal):
-
-    def parse_literal(self, message):
-        if message:
-            c = str(message) [0]
-
-            if not c in Literal.special_characters:
-                return SimpleLiteral(c), 1
-
-
-class OctalLiteral(Literal):
-    max_value = 255
-
-    def parse_literal(self, message):
-        n = None
-        l = 0
-
-        try:
-            s = ""
-            if message[0] == "\\":
-
-                for i in range(1, min(4, len(message))):
-                    if message[i].isdigit():
-                        s += message[i]
-
-                n = int(s, 8)
-                l = len(s) + 1
-
-        except (TypeError, ValueError):
-            pass
-
-        if n != None and n <= OctalLiteral.max_value:
-            return OctalLiteral(chr(n)), l
-
-        return None, 0
-
-
-class HexLiteral(Literal):
-
-    def parse_literal(self, message):
-        n = None
-        l = 0
-
-        try:
-            if message[0] == "\\" and message[1] == "x":
-                s = message[2:4]
-
-                n = int(s, 16)
-                l = len(s) + 2
-
-        except (TypeError, ValueError):
-            pass
-
-        if n != None:
-            return HexLiteral(chr(n)), l
-
-        return None, 0
-
-
-class UnicodeLiteral(Literal):
-
-    def parse_literal(self, message):
-        n = None
-        l = 0
-
-        try:
-            if message[0] == "\\" and message[1] == "u":
-                s = message[2:6]
-
-                n = int(s, 16)
-                l = len(s) + 2
-
-        except (TypeError, ValueError):
-            pass
-
-        if n != None:
-            return UnicodeLiteral(unichr(n)), l
-
-        return None, 0
-
-
-class NonPrintableLiteral(Literal):
-    np_characters = {"t": 9, "v": 11, "r": 13, "n": 10, "f": 14, "a": 7, "e": 27, "b": 8} # TODO: check /b in []
-
-    def parse_literal(self, message):
-        try:
-            if message[0] == "\\":
-                if message[1] in NonPrintableLiteral.np_characters:
-                    return NonPrintableLiteral(chr(NonPrintableLiteral.np_characters[message[1]])), 2
-
-                elif message[1] == "c":
-                    n = ord(message[2]) - 64
-                    if n in range(1, 27):
-                        return NonPrintableLiteral(chr(n)), 3
-
-
-        except (ValueError, TypeError, IndexError):
-            pass
-
-        return None, 0
-
-
-class Metacharacter(Abstract):
-
-    def __init__(self, value):
-        super(Metacharacter, self).__init__()
-        self.value = value
-
-
-class Dot(Metacharacter):
+# Notion is an abstract with name
+class Notion(Abstract):
+    def __init__(self, name):
+        super(Abstract, self).__init__()
+        self.name = unicode(name)
 
     def parse(self, message):
-        try:
-            if message[0] == ".":
-                return {"result": True, "length": 1, "entity": Dot()}
-        finally:
-            return {"result": False}
+        if message.startswith("name"):
+            return Reply(self.name, len("name"))
+
+        return Reply()
 
 
-class Digit(Metacharacter):
+# Relation is a connection between 1 or more abstracts
+class Relation(Abstract):
+    def __init__(self, subject, object):
+        super(Relation, self).__init__()
+        self.subject = subject
+        self.object = object
+
+    def get_type(self):
+        raise NotImplementedError()
+
+
+# Complex notion is a notion that relates to other notions
+class ComplexNotion(Notion):
+    def __init__(self, name, relation = None):
+        super(ComplexNotion, self).__init__(name)
+        self.relation = relation
+
+    @property
+    def relation(self):
+        return self._relation
+
+    @relation.setter
+    def relation(self, value):
+        self._relation = value
+
+        if value:
+            value.subject = self
 
     def parse(self, message):
-        try:
-            if message[0:1] == "\\d":
-                return {"result": True, "length": 2, "entity": Digit()}
-        finally:
-            return {"result": False}
+        reply = self.parse(message)
 
-s = "\\c"
+        if reply.is_error():
+            return self.relation.parse(message)
 
-o = NonPrintableLiteral(None)
 
-p = o.parse(s)
+# Complex relation is a relation that consists of many other relations and selects best when parsing
+COMPLEX_RELATION = 0
 
-print p
-if "entity" in p:
-    print p["entity"].value
-    print ord(p["entity"].value)
+class ComplexRelation(Relation):
+    def __init__(self, subject):
+        super(ComplexRelation, self).__init__(subject, [])
+        self._relations = []
+
+    def get_type(self):
+        return COMPLEX_RELATION
+
+    def addRelation(self, relation):
+        if not relation in self._relations:
+            self._relations.append(relation)
+            relation.subject = self.subject
+            self.object.append(relation.object)
+
+    def removeRelation(self, relation):
+        if relation in self._relations:
+            self._relations.remove(relation)
+            self.object.remove(relation.object)
+
+    def parse(self, message):
+        length = 0
+        bestReply = None
+
+        for relation in self._relations:
+            reply = relation.parse(message)
+
+            if reply.length > length:
+                bestReply = reply
+
+        return bestReply if length > 0 else Reply()
+
+
+# Conditional relation is a condition to go further if message starts with sequence
+CONDITIONAL_RELATION = 1
+
+class ConditionalRelation(Relation):
+    def __init__(self, subject, object, sequence):
+        super(ConditionalRelation, self).__init__(subject, object)
+        self.sequence = sequence
+
+    def get_type(self):
+        return CONDITIONAL_RELATION
+
+    def check_condition(self, message):
+        if message.startswith(self.sequence):
+            return len(self.sequence)
+
+    def parse(self, message):
+        length = self.check_condition(message)
+
+        if length > 0:
+            return Reply(result=self.subject, length = length)
+
+        return Reply()
