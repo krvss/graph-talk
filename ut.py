@@ -39,7 +39,7 @@ class Notion(Abstract):
         self.name = unicode(name)
 
     def parse(self, message):
-        if message.startswith("name"):
+        if message.lower().startswith("name"):
             return Reply(self.name, len("name"))
 
         return Reply()
@@ -94,6 +94,7 @@ class ComplexRelation(Relation):
     def addRelation(self, relation):
         if not relation in self._relations:
             self._relations.append(relation)
+
             relation.subject = self.subject
             self.object.append(relation.object)
 
@@ -103,35 +104,60 @@ class ComplexRelation(Relation):
             self.object.remove(relation.object)
 
     def parse(self, message):
-        length = 0
+        length = -1
         bestReply = None
 
         for relation in self._relations:
             reply = relation.parse(message)
 
-            if reply.length > length:
+            if reply.result and reply.length > length:
                 bestReply = reply
 
-        return bestReply if length > 0 else Reply()
+        return bestReply or Reply()
+
+
+# Next relation is just a simple sequence relation
+NEXT_RELATION = 1
+
+class NextRelation(Relation):
+    def __init__(self, subject, object):
+        super(NextRelation, self).__init__(subject, object)
+
+    def get_type(self):
+        return NEXT_RELATION
+
+    def parse(self, message):
+        return Reply(result=self.subject)
 
 
 # Conditional relation is a condition to go further if message starts with sequence
-CONDITIONAL_RELATION = 1
+CONDITIONAL_RELATION = 2
 
 class ConditionalRelation(Relation):
-    def __init__(self, subject, object, sequence):
+    def __init__(self, subject, object, checker):
         super(ConditionalRelation, self).__init__(subject, object)
-        self.sequence = sequence
+        self.checker = checker
 
     def get_type(self):
         return CONDITIONAL_RELATION
 
-    def check_condition(self, message):
-        if message.startswith(self.sequence):
-            return len(self.sequence)
+    def parse(self, message):
+        if callable(self.checker):
+            result, length = self.checker(message)
+
+            if result:
+                return Reply(result=self.subject, length = length)
+
+        return Reply()
+
+
+# Case of conditional: presence of char sequence
+class CharConditionalRelation(ConditionalRelation):
+    def __init__(self, subject, object, checker):
+        super(CharConditionalRelation, self).__init__(subject, object, checker)
 
     def parse(self, message):
-        length = self.check_condition(message)
+        length = len(self.checker) if message.lower().startswith(self.checker) else 0
 
         if length > 0:
             return Reply(result=self.subject, length = length)

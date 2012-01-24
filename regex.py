@@ -1,6 +1,77 @@
 # Regex classes
 from ut import *
 
+# Simple literal checker
+def is_simple_literal(message):
+    special_characters = "[]\\^$.|?*+()}" # Not like in Java: { is not a special character
+
+    c = str(message) [0]
+
+    if not c in special_characters:
+        return True, 1
+    else:
+        return False, 0
+
+
+# Octal literal checker
+def is_octal_literal(message):
+    max_value = 255
+
+    n = None
+    l = 0
+    s = ""
+
+    try:
+        for i in range(0, min(3, len(message))):
+            if message[i].isdigit():
+                s += message[i]
+
+        n = int(s, 8)
+        l = len(s) + 1
+
+    except (TypeError, ValueError):
+        pass
+
+    if n != None and n <= max_value:
+        return True, l
+
+    return None, 0
+
+# Hex literal checker
+def is_hex_literal(message):
+    n = None
+    l = 0
+
+    try:
+        if message[0] == "x":
+            s = message[1:3]
+
+            n = int(s, 16)
+            l = len(s) + 2
+
+    except (TypeError, ValueError):
+        pass
+
+    if n != None:
+        return True, l
+
+    return None, 0
+
+
+literal = ComplexNotion("Literal")
+
+simple_literal = Notion("Simple literal")
+encoded_literal = ComplexNotion("Encoded literal")
+
+literal.relation = ComplexRelation(literal)
+
+literal.relation.addRelation(ConditionalRelation(literal, simple_literal, is_simple_literal))
+literal.relation.addRelation(CharConditionalRelation(literal, encoded_literal, "\\"))
+
+
+
+
+
 class Literal(Abstract):
     special_characters = "[]\\^$.|?*+()}" # Not like in Java: { is not a special character
 
