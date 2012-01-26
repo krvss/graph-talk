@@ -65,11 +65,12 @@ encoded_literal = ComplexNotion("Encoded literal")
 
 literal.relation = ComplexRelation(literal)
 
+print literal.relation
+
 literal.relation.addRelation(ConditionalRelation(literal, simple_literal, is_simple_literal))
 literal.relation.addRelation(CharConditionalRelation(literal, encoded_literal, "\\"))
 
-
-
+exit()
 
 
 class Literal(Abstract):

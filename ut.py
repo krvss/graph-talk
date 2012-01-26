@@ -6,14 +6,14 @@ class Abstract(object):
     def __init__(self):
         self.callbacks = []
 
-    def parse(self, message):
+    def parse(self, message, context = None):
         return None
 
     def call(self, callback, forget = False):
         if forget and callback in self.callbacks:
             self.callbacks.remove(callback)
         else:
-            if callable(callback):
+            if callback and callable(callback):
                 self.callbacks.append(callback)
 
     def _notify(self, message):
@@ -23,10 +23,9 @@ class Abstract(object):
 
 # Class for simple replies
 class Reply(object):
-    def __init__(self, result = False, length = 0, context = None):
+    def __init__(self, result = False, length = 0):
         self.result = result
         self.length = length
-        self.context = context
 
     def is_error(self):
         return self.result == False
@@ -38,10 +37,7 @@ class Notion(Abstract):
         super(Abstract, self).__init__()
         self.name = unicode(name)
 
-    def parse(self, message):
-        if message.lower().startswith("name"):
-            return Reply(self.name, len("name"))
-
+    def parse(self, message, context = None):
         return Reply()
 
 
@@ -49,11 +45,62 @@ class Notion(Abstract):
 class Relation(Abstract):
     def __init__(self, subject, object):
         super(Relation, self).__init__()
+        self._subject = None
+        self._object = None
+
         self.subject = subject
         self.object = object
 
     def get_type(self):
         raise NotImplementedError()
+
+    def _notify_related(self, type, is_relating = True):
+        message = "unrelating" if not is_relating else "relating"
+
+        calling = self.subject if type == "subject" else self.object
+
+        if calling and callable(calling.parse):
+            calling.parse(message, {"type": self})
+
+    @property
+    def subject(self):
+        return self._subject
+
+    @subject.setter
+    def subject(self, value):
+        self._notify_related("subject", False)
+        self._subject = value
+        self._notify_related("subject")
+
+    @property
+    def object(self):
+        return self._object
+
+    @object.setter
+    def object(self, value):
+        self._notify_related("object", False)
+        self._object = value
+        self._notify_related("object")
+
+# Notion is an abstract with name
+class ValueNotion(Notion):
+    def __init__(self, name, value = None):
+        super(ValueNotion, self).__init__(name)
+        self.value = value
+
+    def parse(self, message, context = None):
+
+        if context and self in context:
+            value = context[self]
+            context.remove(self)
+            if not "result" in context:
+                context["result"] = []
+
+            context["result"] = ValueNotion(self.name, value)
+
+            return Reply(True)
+
+        return Reply()
 
 
 # Complex notion is a notion that relates to other notions
@@ -70,14 +117,23 @@ class ComplexNotion(Notion):
     def relation(self, value):
         self._relation = value
 
-        if value:
+        if value and value.subject != self:
             value.subject = self
 
-    def parse(self, message):
-        reply = self.parse(message)
+    def parse(self, message, context = None):
+        reply = super(ComplexNotion, self).parse(message)
 
         if reply.is_error():
-            return self.relation.parse(message)
+            if message == "relating":
+                if context and "subject" in context:
+                    self.relation = context["subject"]
+
+            elif message == "unrelating":
+                if context and "subject" in context:
+                    self.relation = None
+
+            else:
+                return self.relation.parse(message)
 
 
 # Complex relation is a relation that consists of many other relations and selects best when parsing
@@ -96,14 +152,13 @@ class ComplexRelation(Relation):
             self._relations.append(relation)
 
             relation.subject = self.subject
-            self.object.append(relation.object)
 
     def removeRelation(self, relation):
         if relation in self._relations:
             self._relations.remove(relation)
-            self.object.remove(relation.object)
+            relation.subject = None
 
-    def parse(self, message):
+    def parse(self, message, context = None):
         length = -1
         bestReply = None
 
@@ -126,7 +181,7 @@ class NextRelation(Relation):
     def get_type(self):
         return NEXT_RELATION
 
-    def parse(self, message):
+    def parse(self, message, context = None):
         return Reply(result=self.subject)
 
 
@@ -141,7 +196,7 @@ class ConditionalRelation(Relation):
     def get_type(self):
         return CONDITIONAL_RELATION
 
-    def parse(self, message):
+    def parse(self, message, context = None):
         if callable(self.checker):
             result, length = self.checker(message)
 
@@ -156,7 +211,7 @@ class CharConditionalRelation(ConditionalRelation):
     def __init__(self, subject, object, checker):
         super(CharConditionalRelation, self).__init__(subject, object, checker)
 
-    def parse(self, message):
+    def parse(self, message, Context = None):
         length = len(self.checker) if message.lower().startswith(self.checker) else 0
 
         if length > 0:
