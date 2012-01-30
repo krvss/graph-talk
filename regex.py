@@ -8,7 +8,7 @@ def is_simple_literal(message):
     c = str(message) [0]
 
     if not c in special_characters:
-        return True, 1
+        return c, 1
     else:
         return False, 0
 
@@ -33,7 +33,7 @@ def is_octal_literal(message):
         pass
 
     if n != None and n <= max_value:
-        return True, l
+        return n, l
 
     return None, 0
 
@@ -53,22 +53,38 @@ def is_hex_literal(message):
         pass
 
     if n != None:
-        return True, l
+        return n, l
 
     return None, 0
 
 
 literal = ComplexNotion("Literal")
 
-simple_literal = Notion("Simple literal")
+simple_literal = ValueNotion("Simple literal")
 encoded_literal = ComplexNotion("Encoded literal")
 
-literal.relation = ComplexRelation(literal)
+ComplexRelation(literal)
 
 print literal.relation
 
 literal.relation.addRelation(ConditionalRelation(literal, simple_literal, is_simple_literal))
-literal.relation.addRelation(CharConditionalRelation(literal, encoded_literal, "\\"))
+literal.relation.addRelation(CharSequenceConditionalRelation(literal, encoded_literal, "\\"))
+
+# Hex and Octal literals
+hex_literal = ValueNotion("Hex literal")
+octal_literal = ValueNotion("Octal literal")
+
+ComplexRelation(encoded_literal)
+
+encoded_literal.relation.addRelation(ConditionalRelation(encoded_literal, hex_literal, is_hex_literal))
+encoded_literal.relation.addRelation(ConditionalRelation(encoded_literal, octal_literal, is_octal_literal))
+
+# Process
+process = ParserProcess()
+context = {"start": literal}
+process.parse("z", context)
+
+print context
 
 exit()
 

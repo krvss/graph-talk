@@ -13,12 +13,13 @@ class Abstract(object):
         if forget and callback in self.callbacks:
             self.callbacks.remove(callback)
         else:
-            if callback and callable(callback):
+            if callback and callable(callback.parse):
                 self.callbacks.append(callback)
 
-    def _notify(self, message):
+    def _notify(self, message, context = None):
         for callee in self.callbacks:
-            callee(message)
+            if callable(callee.parse):
+                callee.parse(message, context)
 
 
 # Class for simple replies
@@ -54,13 +55,15 @@ class Relation(Abstract):
     def get_type(self):
         raise NotImplementedError()
 
-    def _notify_related(self, type, is_relating = True):
-        message = "unrelating" if not is_relating else "relating"
+    def _disconnect(self, value, target):
+        if value:
+            self._notify("unrelating", {"relation": self, target: value})
+            self.call(value, True)
 
-        calling = self.subject if type == "subject" else self.object
-
-        if calling and callable(calling.parse):
-            calling.parse(message, {"type": self})
+    def _connect(self, value, target):
+        if value:
+            self.call(value)
+            self._notify("relating", {"relation": self, target: value})
 
     @property
     def subject(self):
@@ -68,9 +71,9 @@ class Relation(Abstract):
 
     @subject.setter
     def subject(self, value):
-        self._notify_related("subject", False)
+        self._disconnect(self.subject, "subject")
         self._subject = value
-        self._notify_related("subject")
+        self._connect(value, "subject")
 
     @property
     def object(self):
@@ -78,24 +81,21 @@ class Relation(Abstract):
 
     @object.setter
     def object(self, value):
-        self._notify_related("object", False)
+        self._disconnect(self.object, "object")
         self._object = value
-        self._notify_related("object")
+        self._connect(value,  "object")
 
-# Notion is an abstract with name
+
+# Value notion is a name-value abstract
 class ValueNotion(Notion):
     def __init__(self, name, value = None):
         super(ValueNotion, self).__init__(name)
         self.value = value
 
     def parse(self, message, context = None):
-
         if context and self in context:
             value = context[self]
             context.remove(self)
-            if not "result" in context:
-                context["result"] = []
-
             context["result"] = ValueNotion(self.name, value)
 
             return Reply(True)
@@ -125,11 +125,11 @@ class ComplexNotion(Notion):
 
         if reply.is_error():
             if message == "relating":
-                if context and "subject" in context:
-                    self.relation = context["subject"]
+                if context.get("subject") == self:
+                    self.relation = context["relation"]
 
             elif message == "unrelating":
-                if context and "subject" in context:
+                if context.get("subject") == self:
                     self.relation = None
 
             else:
@@ -201,15 +201,18 @@ class ConditionalRelation(Relation):
             result, length = self.checker(message)
 
             if result:
-                return Reply(result=self.subject, length = length)
+                if context and self.object:
+                    context[self.object] = result
+
+                return Reply(result=self.object, length = length)
 
         return Reply()
 
 
 # Case of conditional: presence of char sequence
-class CharConditionalRelation(ConditionalRelation):
+class CharSequenceConditionalRelation(ConditionalRelation):
     def __init__(self, subject, object, checker):
-        super(CharConditionalRelation, self).__init__(subject, object, checker)
+        super(CharSequenceConditionalRelation, self).__init__(subject, object, checker)
 
     def parse(self, message, Context = None):
         length = len(self.checker) if message.lower().startswith(self.checker) else 0
@@ -218,3 +221,42 @@ class CharConditionalRelation(ConditionalRelation):
             return Reply(result=self.subject, length = length)
 
         return Reply()
+
+
+# Base process class
+class Process(Abstract):
+
+    def get_next(self, abstract, message, context):
+        raise NotImplementedError()
+
+    def parse(self, message, context = None):
+
+        abstract = context.get("start") if context else None
+
+        while abstract:
+             abstract, message = self.get_next(abstract, message, context)
+
+        return Reply(message)
+
+
+# Parser process
+class ParserProcess(Process):
+    def get_next(self, abstract, message, context):
+        if not abstract:
+            return None, message
+
+        reply = abstract.parse(message, context)
+
+        if reply.is_error(): # TODO: rollbacks etc
+            if context:
+                context["error"] = abstract
+            return None, message # TODO: return error somehow
+
+        if reply.length > 0:
+            message = message[reply.length:]
+
+        if reply.result:
+            abstract = reply.result
+
+        return abstract, message
+
