@@ -1,6 +1,8 @@
 # Universal Translator base classes
 # (c) krvss 2011-2012
 
+import types
+
 # Base class for all communicable objects
 class Abstract(object):
     def __init__(self):
@@ -94,8 +96,9 @@ class ValueNotion(Notion):
 
     def parse(self, message, context = None):
         if context and self in context:
+            # Spawining a new if there is something for us
             value = context[self]
-            context.remove(self)
+            del context[self]
             context["result"] = ValueNotion(self.name, value)
 
             return Reply(True)
@@ -107,18 +110,21 @@ class ValueNotion(Notion):
 class ComplexNotion(Notion):
     def __init__(self, name, relation = None):
         super(ComplexNotion, self).__init__(name)
-        self.relation = relation
+        self._relations = []
 
-    @property
-    def relation(self):
-        return self._relation
+        self._relate(relation)
 
-    @relation.setter
-    def relation(self, value):
-        self._relation = value
+    def _relate(self, relation):
+        if relation and (relation not in self._relations):
+            self._relations.append(relation)
+            if relation.subject != self:
+                relation.subject = self
 
-        if value and value.subject != self:
-            value.subject = self
+    def _unrelate(self, relation):
+        if relation and (relation in self._relations):
+            self._relations.remove(relation)
+            if relation.subject == self:
+                relation.subject = None
 
     def parse(self, message, context = None):
         reply = super(ComplexNotion, self).parse(message)
@@ -126,49 +132,14 @@ class ComplexNotion(Notion):
         if reply.is_error():
             if message == "relating":
                 if context.get("subject") == self:
-                    self.relation = context["relation"]
+                    self._relate(context["relation"])
 
             elif message == "unrelating":
                 if context.get("subject") == self:
-                    self.relation = None
+                    self._unrelate(context["relation"])
 
             else:
-                return self.relation.parse(message)
-
-
-# Complex relation is a relation that consists of many other relations and selects best when parsing
-COMPLEX_RELATION = 0
-
-class ComplexRelation(Relation):
-    def __init__(self, subject):
-        super(ComplexRelation, self).__init__(subject, [])
-        self._relations = []
-
-    def get_type(self):
-        return COMPLEX_RELATION
-
-    def addRelation(self, relation):
-        if not relation in self._relations:
-            self._relations.append(relation)
-
-            relation.subject = self.subject
-
-    def removeRelation(self, relation):
-        if relation in self._relations:
-            self._relations.remove(relation)
-            relation.subject = None
-
-    def parse(self, message, context = None):
-        length = -1
-        bestReply = None
-
-        for relation in self._relations:
-            reply = relation.parse(message)
-
-            if reply.result and reply.length > length:
-                bestReply = reply
-
-        return bestReply or Reply()
+                return Reply(self._relations)
 
 
 # Next relation is just a simple sequence relation
@@ -218,7 +189,7 @@ class CharSequenceConditionalRelation(ConditionalRelation):
         length = len(self.checker) if message.lower().startswith(self.checker) else 0
 
         if length > 0:
-            return Reply(result=self.subject, length = length)
+            return Reply(result=self.object, length = length)
 
         return Reply()
 
@@ -245,6 +216,12 @@ class ParserProcess(Process):
         if not abstract:
             return None, message
 
+        if not isinstance(abstract, Abstract):
+            return None, message
+
+        if hasattr(abstract, "name"):
+            print "Current name %s" % abstract.name
+
         reply = abstract.parse(message, context)
 
         if reply.is_error(): # TODO: rollbacks etc
@@ -252,11 +229,29 @@ class ParserProcess(Process):
                 context["error"] = abstract
             return None, message # TODO: return error somehow
 
+        if reply.result:
+            if type(reply.result) is types.ListType: # TODO check modes or result
+                length = -1
+                bestReply = None
+
+                for a in reply.result:
+                    r = a.parse(message, context)
+
+                    if r.result and r.length > length:
+                        bestReply = r
+                        length = r.length
+
+                if bestReply:
+                    reply = bestReply
+                else:
+                    return None, message
+
+            abstract = reply.result
+
         if reply.length > 0:
             message = message[reply.length:]
 
-        if reply.result:
-            abstract = reply.result
+        print "Next abstract %s, message %s" % (abstract, message)
 
         return abstract, message
 

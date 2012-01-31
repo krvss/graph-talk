@@ -25,6 +25,7 @@ def is_octal_literal(message):
         for i in range(0, min(3, len(message))):
             if message[i].isdigit():
                 s += message[i]
+            raise TypeError()
 
         n = int(s, 8)
         l = len(s) + 1
@@ -57,34 +58,51 @@ def is_hex_literal(message):
 
     return None, 0
 
+# Unicode literal checker
+def is_unicode_literal(message):
+    n = None
+    l = 0
+
+    try:
+        if message[0] == "u":
+            s = message[1:5]
+
+            n = int(s, 16)
+            l = len(s) + 2
+
+    except (TypeError, ValueError):
+        pass
+
+    if n != None:
+        return unichr(n), l
+
+    return None, 0
+
 
 literal = ComplexNotion("Literal")
 
 simple_literal = ValueNotion("Simple literal")
 encoded_literal = ComplexNotion("Encoded literal")
 
-ComplexRelation(literal)
-
-print literal.relation
-
-literal.relation.addRelation(ConditionalRelation(literal, simple_literal, is_simple_literal))
-literal.relation.addRelation(CharSequenceConditionalRelation(literal, encoded_literal, "\\"))
+ConditionalRelation(literal, simple_literal, is_simple_literal)
+CharSequenceConditionalRelation(literal, encoded_literal, "\\")
 
 # Hex and Octal literals
 hex_literal = ValueNotion("Hex literal")
 octal_literal = ValueNotion("Octal literal")
+unicode_literal = ValueNotion("Unicode literal")
 
-ComplexRelation(encoded_literal)
-
-encoded_literal.relation.addRelation(ConditionalRelation(encoded_literal, hex_literal, is_hex_literal))
-encoded_literal.relation.addRelation(ConditionalRelation(encoded_literal, octal_literal, is_octal_literal))
+ConditionalRelation(encoded_literal, hex_literal, is_hex_literal)
+ConditionalRelation(encoded_literal, octal_literal, is_octal_literal)
+ConditionalRelation(encoded_literal, unicode_literal, is_unicode_literal)
 
 # Process
 process = ParserProcess()
 context = {"start": literal}
-process.parse("z", context)
+process.parse("\\u3465", context)
 
-print context
+print context["result"].name
+print context["result"].value
 
 exit()
 
@@ -112,87 +130,6 @@ class Literal(Abstract):
 
     def __str__(self):
         return self.value
-
-
-class SimpleLiteral(Literal):
-
-    def parse_literal(self, message):
-        if message:
-            c = str(message) [0]
-
-            if not c in Literal.special_characters:
-                return SimpleLiteral(c), 1
-
-
-class OctalLiteral(Literal):
-    max_value = 255
-
-    def parse_literal(self, message):
-        n = None
-        l = 0
-
-        try:
-            s = ""
-            if message[0] == "\\":
-
-                for i in range(1, min(4, len(message))):
-                    if message[i].isdigit():
-                        s += message[i]
-
-                n = int(s, 8)
-                l = len(s) + 1
-
-        except (TypeError, ValueError):
-            pass
-
-        if n != None and n <= OctalLiteral.max_value:
-            return OctalLiteral(chr(n)), l
-
-        return None, 0
-
-
-class HexLiteral(Literal):
-
-    def parse_literal(self, message):
-        n = None
-        l = 0
-
-        try:
-            if message[0] == "\\" and message[1] == "x":
-                s = message[2:4]
-
-                n = int(s, 16)
-                l = len(s) + 2
-
-        except (TypeError, ValueError):
-            pass
-
-        if n != None:
-            return HexLiteral(chr(n)), l
-
-        return None, 0
-
-
-class UnicodeLiteral(Literal):
-
-    def parse_literal(self, message):
-        n = None
-        l = 0
-
-        try:
-            if message[0] == "\\" and message[1] == "u":
-                s = message[2:6]
-
-                n = int(s, 16)
-                l = len(s) + 2
-
-        except (TypeError, ValueError):
-            pass
-
-        if n != None:
-            return UnicodeLiteral(unichr(n)), l
-
-        return None, 0
 
 
 class NonPrintableLiteral(Literal):
