@@ -3,6 +3,9 @@ from ut import *
 
 # Simple literal checker
 def is_simple_literal(message):
+    if not message:
+        return False, 0
+
     special_characters = "[]\\^$.|?*+()}" # Not like in Java: { is not a special character
 
     c = str(message) [0]
@@ -15,6 +18,9 @@ def is_simple_literal(message):
 
 # Octal literal checker
 def is_octal_literal(message):
+    if not message:
+        return False, 0
+
     max_value = 255
 
     n = None
@@ -22,13 +28,14 @@ def is_octal_literal(message):
     s = ""
 
     try:
-        for i in range(0, min(3, len(message))):
+        for i in range(0, min(4, len(message))):
             if message[i].isdigit():
                 s += message[i]
-            raise TypeError()
+            else:
+                break
 
         n = int(s, 8)
-        l = len(s) + 1
+        l = len(s)
 
     except (TypeError, ValueError):
         pass
@@ -40,6 +47,9 @@ def is_octal_literal(message):
 
 # Hex literal checker
 def is_hex_literal(message):
+    if not message:
+        return False, 0
+
     n = None
     l = 0
 
@@ -48,7 +58,7 @@ def is_hex_literal(message):
             s = message[1:3]
 
             n = int(s, 16)
-            l = len(s) + 2
+            l = len(s) + 1
 
     except (TypeError, ValueError):
         pass
@@ -60,6 +70,9 @@ def is_hex_literal(message):
 
 # Unicode literal checker
 def is_unicode_literal(message):
+    if not message:
+        return False, 0
+
     n = None
     l = 0
 
@@ -68,7 +81,7 @@ def is_unicode_literal(message):
             s = message[1:5]
 
             n = int(s, 16)
-            l = len(s) + 2
+            l = len(s) + 1
 
     except (TypeError, ValueError):
         pass
@@ -78,8 +91,33 @@ def is_unicode_literal(message):
 
     return None, 0
 
+# Non printable checker
+def is_non_printable_literal(message):
+    if not message:
+        return False, 0
 
+    np_characters = {"t": 9, "v": 11, "r": 13, "n": 10, "f": 14, "a": 7, "e": 27, "b": 8} # TODO: check /b in []
+
+    try:
+        if message[0] in np_characters:
+            return np_characters[message[0]], 1
+
+        elif message[0] == "c":
+            n = ord(message[1]) - 64
+            if n in range(1, 27):
+                return chr(n), 2
+
+    except (ValueError, TypeError, IndexError):
+        pass
+
+    return None, 0
+
+symbol = ComplexNotion("Symbol")
+
+# Literals
 literal = ComplexNotion("Literal")
+
+LoopRelation(symbol, literal)
 
 simple_literal = ValueNotion("Simple literal")
 encoded_literal = ComplexNotion("Encoded literal")
@@ -87,71 +125,33 @@ encoded_literal = ComplexNotion("Encoded literal")
 ConditionalRelation(literal, simple_literal, is_simple_literal)
 CharSequenceConditionalRelation(literal, encoded_literal, "\\")
 
-# Hex and Octal literals
+# Hex, Octal, Unicode, Non-printable literals
 hex_literal = ValueNotion("Hex literal")
 octal_literal = ValueNotion("Octal literal")
 unicode_literal = ValueNotion("Unicode literal")
+non_printable_literal = ValueNotion("Non-printable literal")
 
 ConditionalRelation(encoded_literal, hex_literal, is_hex_literal)
 ConditionalRelation(encoded_literal, octal_literal, is_octal_literal)
 ConditionalRelation(encoded_literal, unicode_literal, is_unicode_literal)
+ConditionalRelation(encoded_literal, non_printable_literal, is_non_printable_literal)
+
+# Metacharacters
+
+meta_character = ComplexNotion("Metacharacter")
+dot = ValueNotion("Dot")
+
+CharSequenceConditionalRelation(meta_character, dot, ".")
 
 # Process
 process = ParserProcess()
-context = {"start": literal}
-process.parse("\\u3465", context)
+context = {"start": symbol}
+process.parse("\\0377345\\xFF\\t\\05\\u1234a", context)
 
 print context["result"].name
 print context["result"].value
 
 exit()
-
-
-class Literal(Abstract):
-    special_characters = "[]\\^$.|?*+()}" # Not like in Java: { is not a special character
-
-    def __init__(self, value):
-        super(Literal, self).__init__()
-        self.value = value
-
-    def parse_literal(self, message):
-        return None, 0
-
-    def parse(self, message):
-        reply = {"result": False}
-
-        c, l = self.parse_literal(message)
-        if c:
-            reply["result"] = True
-            reply["length"] = l # TODO: return number of parsed even in fail case?
-            reply["entity"] = c
-
-        return reply
-
-    def __str__(self):
-        return self.value
-
-
-class NonPrintableLiteral(Literal):
-    np_characters = {"t": 9, "v": 11, "r": 13, "n": 10, "f": 14, "a": 7, "e": 27, "b": 8} # TODO: check /b in []
-
-    def parse_literal(self, message):
-        try:
-            if message[0] == "\\":
-                if message[1] in NonPrintableLiteral.np_characters:
-                    return NonPrintableLiteral(chr(NonPrintableLiteral.np_characters[message[1]])), 2
-
-                elif message[1] == "c":
-                    n = ord(message[2]) - 64
-                    if n in range(1, 27):
-                        return NonPrintableLiteral(chr(n)), 3
-
-
-        except (ValueError, TypeError, IndexError):
-            pass
-
-        return None, 0
-
 
 class Metacharacter(Abstract):
 
@@ -179,13 +179,3 @@ class Digit(Metacharacter):
         finally:
             return {"result": False}
 
-s = "\\c"
-
-o = NonPrintableLiteral(None)
-
-p = o.parse(s)
-
-print p
-if "entity" in p:
-    print p["entity"].value
-    print ord(p["entity"].value)

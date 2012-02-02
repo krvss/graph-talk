@@ -6,20 +6,20 @@ import types
 # Base class for all communicable objects
 class Abstract(object):
     def __init__(self):
-        self.callbacks = []
+        self._callbacks = []
 
     def parse(self, message, context = None):
         return None
 
     def call(self, callback, forget = False):
-        if forget and callback in self.callbacks:
-            self.callbacks.remove(callback)
+        if forget and callback in self._callbacks:
+            self._callbacks.remove(callback)
         else:
             if callback and callable(callback.parse):
-                self.callbacks.append(callback)
+                self._callbacks.append(callback)
 
     def _notify(self, message, context = None):
-        for callee in self.callbacks:
+        for callee in self._callbacks:
             if callable(callee.parse):
                 callee.parse(message, context)
 
@@ -96,10 +96,10 @@ class ValueNotion(Notion):
 
     def parse(self, message, context = None):
         if context and self in context:
-            # Spawining a new if there is something for us
+            # Spawining a new ValueNotion if there is something for us
             value = context[self]
             del context[self]
-            context["result"] = ValueNotion(self.name, value)
+            context["result"] = ValueNotion(self.name, value) #TODO: many things in result
 
             return Reply(True)
 
@@ -171,7 +171,7 @@ class ConditionalRelation(Relation):
         if callable(self.checker):
             result, length = self.checker(message)
 
-            if result:
+            if result: # Storing information about passed condition in context
                 if context and self.object:
                     context[self.object] = result
 
@@ -194,6 +194,45 @@ class CharSequenceConditionalRelation(ConditionalRelation):
         return Reply()
 
 
+# Loop relation is a cycle that repeats object for specified or infinite number of times
+LOOP_RELATION = 3
+
+class LoopRelation(Relation):
+    def __init__(self, subject, object, n = None):
+        super(LoopRelation, self).__init__(subject, object)
+        self.n = n
+
+    def get_type(self):
+        return LOOP_RELATION
+
+    def parse(self, message, context = None):
+        if context:
+            counter = 1 if self.n else True
+
+            if self in context:
+                if "error" in context:
+                    if not self.n:
+                        del context["error"] # It is ok if error and * loop
+
+                        return Reply(True)
+                    else:
+                        return Reply()
+                else:
+                    if self.n:
+                        i = context[self]
+                        if i > self.n:
+                            return Reply(True) # No more iterations
+                        else:
+                            counter = i + 1
+
+            context[self] = counter
+
+        reply = Reply(self.object)
+        reply.next = self
+
+        return reply
+
+
 # Base process class
 class Process(Abstract):
 
@@ -212,27 +251,39 @@ class Process(Abstract):
 
 # Parser process
 class ParserProcess(Process):
+    def __init__(self):
+        super(ParserProcess, self).__init__()
+        self._stack = []
+
     def get_next(self, abstract, message, context):
         if not abstract:
             return None, message
 
         if not isinstance(abstract, Abstract):
-            return None, message
+            if len(self._stack) > 0: # If nowhere to go - pop stack
+                abstract = self._stack.pop()
+            else:
+                return None, message
 
         if hasattr(abstract, "name"):
             print "Current name %s" % abstract.name
 
         reply = abstract.parse(message, context)
 
-        if reply.is_error(): # TODO: rollbacks etc
+        if reply.is_error():
             if context:
                 context["error"] = abstract
-            return None, message # TODO: return error somehow
+
+            if len(self._stack) > 0:
+                abstract = self._stack.pop()
+                return abstract, message
+            else:
+                return None, message # TODO: return error somehow
 
         if reply.result:
             if type(reply.result) is types.ListType: # TODO check modes or result
                 length = -1
-                bestReply = None
+                bestReply = None # TODO: alternative
 
                 for a in reply.result:
                     r = a.parse(message, context)
@@ -250,6 +301,9 @@ class ParserProcess(Process):
 
         if reply.length > 0:
             message = message[reply.length:]
+
+        if hasattr(reply, "next"):
+            self._stack.append(reply.next)
 
         print "Next abstract %s, message %s" % (abstract, message)
 
