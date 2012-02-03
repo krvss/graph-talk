@@ -123,7 +123,7 @@ simple_literal = ValueNotion("Simple literal")
 encoded_literal = ComplexNotion("Encoded literal")
 
 ConditionalRelation(literal, simple_literal, is_simple_literal)
-CharSequenceConditionalRelation(literal, encoded_literal, "\\")
+ConditionalRelation(literal, encoded_literal, "\\")
 
 # Hex, Octal, Unicode, Non-printable literals
 hex_literal = ValueNotion("Hex literal")
@@ -141,7 +141,7 @@ ConditionalRelation(encoded_literal, non_printable_literal, is_non_printable_lit
 meta_character = ComplexNotion("Metacharacter")
 dot = ValueNotion("Dot")
 
-CharSequenceConditionalRelation(meta_character, dot, ".")
+ConditionalRelation(meta_character, dot, ".")
 
 # Process
 process = ParserProcess()

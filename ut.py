@@ -145,7 +145,7 @@ class ComplexNotion(Notion):
                     self._unrelate(context["relation"])
 
             else:
-                return Reply(self._relations)
+                return Reply(self._relations) # TODO: consider "next" in context
 
 
 # Next relation is just a simple sequence relation
@@ -174,33 +174,24 @@ class ConditionalRelation(Relation):
         return CONDITIONAL_RELATION
 
     def parse(self, message, context = None):
-        if callable(self.checker):
-            result, length = self.checker(message)
+        if self.checker:
+            result = None
 
-            if result: # Storing information about passed condition in context
+            if callable(self.checker):
+                result, length = self.checker(message)
+            else:
+                length = len(self.checker) if message.lower().startswith(self.checker) else 0
+
+                if length > 0:
+                    result = self.checker
+
+            if result:
                 if context and self.object:
                     context[self.object] = result
 
-                return Reply(result = self.object, length = length)
+                return Reply(self.object, length)
 
-        return Reply()
-
-
-# Case of conditional: presence of char sequence
-class CharSequenceConditionalRelation(ConditionalRelation):
-    def __init__(self, subject, object, checker):
-        super(CharSequenceConditionalRelation, self).__init__(subject, object, checker)
-
-    def parse(self, message, context = None):
-        length = len(self.checker) if message.lower().startswith(self.checker) else 0
-
-        if length > 0:
-            if context and self.object:
-                context[self.object] = self.checker
-
-            return Reply(result = self.object, length = length)
-
-        return Reply()
+        return Reply() # TODO: self.object if no context? and no next
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times
@@ -237,7 +228,7 @@ class LoopRelation(Relation):
         reply = Reply(self.object)
         reply.loop = self
 
-        return reply
+        return reply # TODO: same as above, return next/previous or parent method
 
 # Process waypoint
 class ProcessPoint(object):
@@ -267,7 +258,7 @@ class Process(Abstract):
         while pp.abstract:
             pp = self.get_next(pp)
 
-        return Reply(message)
+        return Reply(pp.message) # TODO: What to reply when done?
 
 
 # Parser process
