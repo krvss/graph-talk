@@ -95,7 +95,7 @@ class ValueNotion(Notion):
         self.value = value
 
     def parse(self, message, context = None):
-        if context and self in context:
+        if context and self in context: #TODO: custom context processors
             # Spawining a new ValueNotion if there is something for us
             value = context[self]
             del context[self]
@@ -131,7 +131,7 @@ class ComplexNotion(Notion):
 
         if reply.is_error():
             if message == "relating":
-                if context.get("subject") == self:
+                if context.get("subject") == self: # TODO: think about all relations
                     self._relate(context["relation"])
 
             elif message == "unrelating":
@@ -185,10 +185,13 @@ class CharSequenceConditionalRelation(ConditionalRelation):
     def __init__(self, subject, object, checker):
         super(CharSequenceConditionalRelation, self).__init__(subject, object, checker)
 
-    def parse(self, message, Context = None):
+    def parse(self, message, context = None):
         length = len(self.checker) if message.lower().startswith(self.checker) else 0
 
         if length > 0:
+            if context and self.object:
+                context[self.object] = self.checker
+
             return Reply(result=self.object, length = length)
 
         return Reply()
@@ -262,6 +265,7 @@ class ParserProcess(Process):
         if not isinstance(abstract, Abstract):
             if len(self._stack) > 0: # If nowhere to go - pop stack
                 abstract = self._stack.pop()
+                return abstract, message
             else:
                 return None, message
 
