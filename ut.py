@@ -73,6 +73,9 @@ class Relation(Abstract):
 
     @subject.setter
     def subject(self, value):
+        if value == self.subject:
+            return
+
         self._disconnect(self.subject, "subject")
         self._subject = value
         self._connect(value, "subject")
@@ -83,6 +86,9 @@ class Relation(Abstract):
 
     @object.setter
     def object(self, value):
+        if value == self.object:
+            return
+
         self._disconnect(self.object, "object")
         self._object = value
         self._connect(value,  "object")
@@ -106,7 +112,7 @@ class ValueNotion(Notion):
         return Reply()
 
 
-# Complex notion is a notion that relates to other notions
+# Complex notion is a notion that relates with other notions (objects)
 class ComplexNotion(Notion):
     def __init__(self, name, relation = None):
         super(ComplexNotion, self).__init__(name)
@@ -131,7 +137,7 @@ class ComplexNotion(Notion):
 
         if reply.is_error():
             if message == "relating":
-                if context.get("subject") == self: # TODO: think about all relations
+                if context.get("subject") == self:
                     self._relate(context["relation"])
 
             elif message == "unrelating":
@@ -153,7 +159,7 @@ class NextRelation(Relation):
         return NEXT_RELATION
 
     def parse(self, message, context = None):
-        return Reply(result=self.subject)
+        return Reply(result = self.subject)
 
 
 # Conditional relation is a condition to go further if message starts with sequence
@@ -175,7 +181,7 @@ class ConditionalRelation(Relation):
                 if context and self.object:
                     context[self.object] = result
 
-                return Reply(result=self.object, length = length)
+                return Reply(result = self.object, length = length)
 
         return Reply()
 
@@ -192,7 +198,7 @@ class CharSequenceConditionalRelation(ConditionalRelation):
             if context and self.object:
                 context[self.object] = self.checker
 
-            return Reply(result=self.object, length = length)
+            return Reply(result = self.object, length = length)
 
         return Reply()
 
@@ -215,9 +221,7 @@ class LoopRelation(Relation):
             if self in context:
                 if "error" in context:
                     if not self.n:
-                        del context["error"] # It is ok if error and * loop
-
-                        return Reply(True)
+                        return Reply(True) # It is ok if error and * loop
                     else:
                         return Reply()
                 else:
@@ -231,23 +235,37 @@ class LoopRelation(Relation):
             context[self] = counter
 
         reply = Reply(self.object)
-        reply.next = self
+        reply.loop = self
 
         return reply
+
+# Process waypoint
+class ProcessPoint(object):
+    def __init__(self, abstract = None, message = None, context = None):
+        super(ProcessPoint, self).__init__()
+
+        self.abstract = abstract
+        self.message = message
+        self.context = context
 
 
 # Base process class
 class Process(Abstract):
 
-    def get_next(self, abstract, message, context):
+    def get_next(self, process_point):
         raise NotImplementedError()
 
     def parse(self, message, context = None):
+        if not context:
+            context = {}
+            abstract = None
+        else:
+            abstract = context.get("start")
 
-        abstract = context.get("start") if context else None
+        pp = ProcessPoint(abstract, message, context)
 
-        while abstract:
-             abstract, message = self.get_next(abstract, message, context)
+        while pp.abstract:
+            pp = self.get_next(pp)
 
         return Reply(message)
 
@@ -256,33 +274,44 @@ class Process(Abstract):
 class ParserProcess(Process):
     def __init__(self):
         super(ParserProcess, self).__init__()
-        self._stack = []
+        self._stack = [] # TODO: separate for various starts? like move to ProcessPoint
 
-    def get_next(self, abstract, message, context):
-        if not abstract:
-            return None, message
+    def get_next(self, process_point):
+        rollback = False
+        reply = None
+        error = False
 
-        if not isinstance(abstract, Abstract):
-            if len(self._stack) > 0: # If nowhere to go - pop stack
-                abstract = self._stack.pop()
-                return abstract, message
+        # Check do we have where to go to
+        if not process_point.abstract or not isinstance(process_point.abstract, Abstract):
+            rollback = True # We don't, try to roll back
+        else:
+
+            if hasattr(process_point.abstract, "name"): # TODO DEBUG: remove later
+                print "Current name %s" % process_point.abstract.name
+
+            reply = process_point.abstract.parse(process_point.message, process_point.context)
+
+            if reply.is_error():
+                error = process_point.abstract # An error, try to roll back
+                rollback = True
             else:
-                return None, message
+                if "error" in process_point.context: # It is all right now
+                    del process_point.context["error"]
 
-        if hasattr(abstract, "name"):
-            print "Current name %s" % abstract.name
-
-        reply = abstract.parse(message, context)
-
-        if reply.is_error():
-            if context:
-                context["error"] = abstract
-
+        if rollback:
             if len(self._stack) > 0:
-                abstract = self._stack.pop()
-                return abstract, message
+                pp = self._stack.pop()
+
+                if hasattr(pp, "loop"):
+                    if error:
+                        pp.context["error"] = error
+                    else:
+                        pp.context = process_point.context
+                        pp.message = process_point.message
+
+                return pp
             else:
-                return None, message # TODO: return error somehow
+                return ProcessPoint(None, process_point.message, process_point.context)
 
         if reply.result:
             if type(reply.result) is types.ListType: # TODO check modes or result
@@ -290,7 +319,7 @@ class ParserProcess(Process):
                 bestReply = None # TODO: alternative
 
                 for a in reply.result:
-                    r = a.parse(message, context)
+                    r = a.parse(process_point.message, process_point.context)
 
                     if r.result and r.length > length:
                         bestReply = r
@@ -299,17 +328,19 @@ class ParserProcess(Process):
                 if bestReply:
                     reply = bestReply
                 else:
-                    return None, message
+                    return ProcessPoint(None, process_point.message, process_point.context)
 
-            abstract = reply.result
+            process_point.abstract = reply.result
 
         if reply.length > 0:
-            message = message[reply.length:]
+            process_point.message = process_point.message[reply.length:]
 
-        if hasattr(reply, "next"):
-            self._stack.append(reply.next)
+        if hasattr(reply, "loop"):
+            pp = ProcessPoint(reply.loop, process_point.message, process_point.context)
+            pp.loop = reply.loop
+            self._stack.append(pp)
 
-        print "Next abstract %s, message %s" % (abstract, message)
+        print "Next abstract %s, message %s" % (process_point.abstract, process_point.message)
 
-        return abstract, message
+        return process_point
 
