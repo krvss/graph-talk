@@ -112,6 +112,18 @@ def is_non_printable_literal(message):
 
     return None, 0
 
+
+# Custom processing function
+def custom_func(notion, context):
+    value = context[notion]
+
+    if not "result" in context:
+        context["result"] = {}
+
+    context["result"][notion.name] = value
+
+    return True
+
 symbol = ComplexNotion("Symbol")
 
 # Literals
@@ -119,17 +131,17 @@ literal = ComplexNotion("Literal")
 
 LoopRelation(symbol, literal)
 
-simple_literal = ValueNotion("Simple literal")
+simple_literal = FunctionNotion("Simple literal", custom_func)
 encoded_literal = ComplexNotion("Encoded literal")
 
 ConditionalRelation(literal, simple_literal, is_simple_literal)
 ConditionalRelation(literal, encoded_literal, "\\")
 
 # Hex, Octal, Unicode, Non-printable literals
-hex_literal = ValueNotion("Hex literal")
-octal_literal = ValueNotion("Octal literal")
-unicode_literal = ValueNotion("Unicode literal")
-non_printable_literal = ValueNotion("Non-printable literal")
+hex_literal = FunctionNotion("Hex literal", custom_func)
+octal_literal = FunctionNotion("Octal literal", custom_func)
+unicode_literal = FunctionNotion("Unicode literal", custom_func)
+non_printable_literal = FunctionNotion("Non-printable literal", custom_func)
 
 ConditionalRelation(encoded_literal, hex_literal, is_hex_literal)
 ConditionalRelation(encoded_literal, octal_literal, is_octal_literal)
@@ -139,7 +151,7 @@ ConditionalRelation(encoded_literal, non_printable_literal, is_non_printable_lit
 # Metacharacters
 
 meta_character = ComplexNotion("Metacharacter")
-dot = ValueNotion("Dot")
+dot = FunctionNotion("Dot", custom_func)
 
 ConditionalRelation(meta_character, dot, ".")
 
@@ -148,8 +160,10 @@ process = ParserProcess()
 context = {"start": symbol}
 process.parse("\\0377345\\xFF\\t\\05\\u1234a", context)
 
-print context["result"].name
-print context["result"].value
+if "result" in context:
+    print context["result"]
+else:
+    print context["error"]
 
 exit()
 

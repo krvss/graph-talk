@@ -94,20 +94,18 @@ class Relation(Abstract):
         self._connect(value,  "object")
 
 
-# Value notion is a name-value abstract
-class ValueNotion(Notion):
-    def __init__(self, name, value = None):
-        super(ValueNotion, self).__init__(name)
-        self.value = value
+# Function notion is notion that can call custom function
+class FunctionNotion(Notion):
+    def __init__(self, name, function):
+        super(FunctionNotion, self).__init__(name)
+        self.function = function
 
     def parse(self, message, context = None):
-        if context and self in context: #TODO: custom context processors
-            # Spawining a new ValueNotion if there is something for us
-            value = context[self]
-            del context[self]
-            context["result"] = ValueNotion(self.name, value) #TODO: many things in result
+        if context and self in context:
+            result = self.function(self, context)
+            del context[self]   # Not needed anymore
 
-            return Reply(True)
+            return Reply(result)
 
         return Reply()
 
@@ -145,7 +143,7 @@ class ComplexNotion(Notion):
                     self._unrelate(context["relation"])
 
             else:
-                return Reply(self._relations) # TODO: consider "next" in context
+                return Reply(self._relations)
 
 
 # Next relation is just a simple sequence relation
@@ -191,7 +189,7 @@ class ConditionalRelation(Relation):
 
                 return Reply(self.object, length)
 
-        return Reply() # TODO: self.object if no context? and no next
+        return Reply()
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times
@@ -228,7 +226,7 @@ class LoopRelation(Relation):
         reply = Reply(self.object)
         reply.loop = self
 
-        return reply # TODO: same as above, return next/previous or parent method
+        return reply
 
 # Process waypoint
 class ProcessPoint(object):
@@ -258,14 +256,23 @@ class Process(Abstract):
         while pp.abstract:
             pp = self.get_next(pp)
 
-        return Reply(pp.message) # TODO: What to reply when done?
+        return Reply(not "error" in context, len(message) - len(pp.message))
 
 
 # Parser process
 class ParserProcess(Process):
     def __init__(self):
         super(ParserProcess, self).__init__()
-        self._stack = [] # TODO: separate for various starts? like move to ProcessPoint
+
+    def _get_stack(self, process_point):
+        if not self in process_point.context:
+            _stack = []
+            process_point.context[self] = {}
+            process_point.context[self]["stack"] = _stack
+        else:
+            _stack = process_point.context[self]["stack"]
+
+        return _stack
 
     def get_next(self, process_point):
         rollback = False
@@ -290,8 +297,8 @@ class ParserProcess(Process):
                     del process_point.context["error"]
 
         if rollback:
-            if len(self._stack) > 0:
-                pp = self._stack.pop()
+            if len(self._get_stack(process_point)) > 0:
+                pp = self._get_stack(process_point).pop()
 
                 if hasattr(pp, "loop"):
                     if error:
@@ -329,7 +336,7 @@ class ParserProcess(Process):
         if hasattr(reply, "loop"):
             pp = ProcessPoint(reply.loop, process_point.message, process_point.context)
             pp.loop = reply.loop
-            self._stack.append(pp)
+            self._get_stack(process_point).append(pp)
 
         print "Next abstract %s, message %s" % (process_point.abstract, process_point.message)
 
