@@ -33,6 +33,9 @@ class Reply(object):
     def is_error(self):
         return self.result == False
 
+    def __str__(self):
+        return "[%s:%s]" % (self.result, self.length)
+
 
 # Notion is an abstract with name
 class Notion(Abstract):
@@ -42,6 +45,10 @@ class Notion(Abstract):
 
     def parse(self, message, context = None):
         return Reply()
+
+    def __str__(self):
+        if self.name:
+            return "Notion '%s'" % self.name
 
 
 # Relation is a connection between 1 or more abstracts
@@ -93,6 +100,9 @@ class Relation(Abstract):
         self._object = value
         self._connect(value,  "object")
 
+    def __str__(self):
+        return "<%s - %s>" % (self.subject, self.object)
+
 
 # Function notion is notion that can call custom function
 class FunctionNotion(Notion):
@@ -143,7 +153,12 @@ class ComplexNotion(Notion):
                     self._unrelate(context["relation"])
 
             else:
-                return Reply(self._relations)
+                if len(self._relations) == 1:
+                    return Reply(self._relations[0])
+                elif not self._relations:
+                    return Reply()
+                else:
+                    return Reply(self._relations)
 
 
 # Next relation is just a simple sequence relation
@@ -267,8 +282,7 @@ class ParserProcess(Process):
     def _get_stack(self, process_point):
         if not self in process_point.context:
             _stack = []
-            process_point.context[self] = {}
-            process_point.context[self]["stack"] = _stack
+            process_point.context[self] = {"stack": _stack}
         else:
             _stack = process_point.context[self]["stack"]
 
@@ -282,16 +296,17 @@ class ParserProcess(Process):
         # Check do we have where to go to
         if not process_point.abstract or not isinstance(process_point.abstract, Abstract):
             rollback = True # We don't, try to roll back
+            print "Not an abstract, rolling back"
         else:
 
-            if hasattr(process_point.abstract, "name"): # TODO DEBUG: remove later
-                print "Current name %s" % process_point.abstract.name
+            print "Current abstract %s" % process_point.abstract #TODO DEBUG: remove later
 
             reply = process_point.abstract.parse(process_point.message, process_point.context)
 
             if reply.is_error():
-                error = process_point.abstract # An error, try to roll back
+                error = process_point.abstract # An error at the current abstract, try to roll back
                 rollback = True
+                print "Error at %s, rolling back" % error
             else:
                 if "error" in process_point.context: # It is all right now
                     del process_point.context["error"]
@@ -307,26 +322,48 @@ class ParserProcess(Process):
                         pp.context = process_point.context
                         pp.message = process_point.message
 
+                print "Rolled back to %s" % pp.abstract
+
                 return pp
             else:
                 return ProcessPoint(None, process_point.message, process_point.context)
 
         if reply.result:
             if type(reply.result) is types.ListType: # TODO check modes or result
+
                 length = -1
                 bestReply = None # TODO: alternative
+                alternatives = []
 
                 for a in reply.result:
                     r = a.parse(process_point.message, process_point.context)
 
-                    if r.result and r.length > length:
-                        bestReply = r
-                        length = r.length
+                    if r.result:
+                        if r.length > length:
+                            bestReply = r
+                            length = r.length
+                            alternatives = []
+                        elif r.length == length:
+                            if bestReply:
+                                alternatives.append(bestReply)
+                                bestReply = None
+
+                            alternatives.append(r)
 
                 if bestReply:
                     reply = bestReply
+                    print "Best reply %s selected" % reply
                 else:
-                    return ProcessPoint(None, process_point.message, process_point.context)
+                    if alternatives:
+                        reply = alternatives.pop(0)
+
+                        for a in alternatives:
+                            self._get_stack(process_point).append(ProcessPoint(a.result, process_point.message, process_point.context))
+                        print "First alternative %s selected" % reply
+                    else:
+                        print "No alternatives, trying to roll back"
+                        process_point.context["error"] = process_point.abstract
+                        return ProcessPoint(len(self._get_stack(process_point)) > 0, process_point.message, process_point.context)
 
             process_point.abstract = reply.result
 
@@ -337,8 +374,9 @@ class ParserProcess(Process):
             pp = ProcessPoint(reply.loop, process_point.message, process_point.context)
             pp.loop = reply.loop
             self._get_stack(process_point).append(pp)
+            print "Adding loop %s to the stack, stack size is %s" % (pp.loop, len(self._get_stack(process_point)))
 
-        print "Next abstract %s, message %s" % (process_point.abstract, process_point.message)
+        print "Next abstract %s, message %s" % (process_point.abstract, process_point.message) #TODO DEBUG: remove later
 
         return process_point
 

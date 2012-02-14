@@ -1,5 +1,6 @@
 # Regex classes
 from ut import *
+from test import test
 
 # Simple literal checker
 def is_simple_literal(message):
@@ -124,6 +125,11 @@ def custom_func(notion, context):
 
     return True
 
+# Testing functions
+test()
+
+exit()
+
 symbol = ComplexNotion("Symbol")
 
 # Literals
@@ -151,6 +157,8 @@ ConditionalRelation(encoded_literal, non_printable_literal, is_non_printable_lit
 # Metacharacters
 
 meta_character = ComplexNotion("Metacharacter")
+LoopRelation(symbol, meta_character)
+
 dot = FunctionNotion("Dot", custom_func)
 
 ConditionalRelation(meta_character, dot, ".")
@@ -158,7 +166,7 @@ ConditionalRelation(meta_character, dot, ".")
 # Process
 process = ParserProcess()
 context = {"start": symbol}
-process.parse("\\0377345\\xFF\\t\\05\\u1234a", context)
+process.parse("\\0377345\\xFF\\t\\05\\u1234a.", context)
 
 if "result" in context:
     print context["result"]
