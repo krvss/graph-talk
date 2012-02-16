@@ -23,7 +23,9 @@ def test():
 
     ConditionalRelation(b_seq, b, "b")
 
-    test_string = "bbbaaaabb"
+    test_string = "bbaabb"
+
+    #test_string = "aaaaaab"
 
     process = ParserProcess()
     context = {"start": root}
