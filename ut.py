@@ -168,7 +168,7 @@ class NextRelation(Relation):
         return NEXT_RELATION
 
     def parse(self, message, context = None):
-        return Reply(result = self.subject)
+        return Reply(result = self.object)
 
 
 # Conditional relation is a condition to go further if message starts with sequence
@@ -311,11 +311,8 @@ class ParserProcess(Process):
                 else:
                     old_process_point.message = process_point.message # Restoring context for the loop but keep message
             else: # Alternatives
-                if process_point.has_error():
-                    old_process_point.context = process_point.context
-                    old_process_point.message = process_point.message
-                else:
-                    process_point.abstract = old_process_point.abstract #TODO: how should we restore context if no error for alternative
+                if not process_point.has_error():
+                    process_point.abstract = True
                     old_process_point = process_point
 
             print "Rolled back to %s" % old_process_point.abstract
@@ -397,6 +394,7 @@ class ParserProcess(Process):
                 else:
                     if alternatives:
                         reply = alternatives.pop(0)
+                        alternatives.reverse()
 
                         for a in alternatives:
                             self._add_to_stack(process_point, a)
@@ -408,6 +406,8 @@ class ParserProcess(Process):
                         return self._rollback(process_point)
 
             process_point.abstract = reply.result
+        else:
+            return self._rollback(process_point)
 
         if reply.length > 0:
             process_point.message = process_point.message[reply.length:]
