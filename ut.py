@@ -108,16 +108,10 @@ class Relation(Abstract):
 class FunctionNotion(Notion):
     def __init__(self, name, function):
         super(FunctionNotion, self).__init__(name)
-        self.function = function
+        self.function = function if callable(function) else None
 
     def parse(self, message, context = None):
-        if context and self in context:
-            result = self.function(self, context)
-            del context[self]   # Not needed anymore
-
-            return Reply(result)
-
-        return Reply()
+        return Reply(self.function(self, context) if self.function else True)
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -131,12 +125,14 @@ class ComplexNotion(Notion):
     def _relate(self, relation):
         if relation and (relation not in self._relations):
             self._relations.append(relation)
+
             if relation.subject != self:
                 relation.subject = self
 
     def _unrelate(self, relation):
         if relation and (relation in self._relations):
             self._relations.remove(relation)
+
             if relation.subject == self:
                 relation.subject = None
 
@@ -152,7 +148,7 @@ class ComplexNotion(Notion):
                 if context.get("subject") == self:
                     self._unrelate(context["relation"])
 
-            else:
+            else: # Returning relations by default
                 if len(self._relations) == 1:
                     return Reply(self._relations[0])
                 elif not self._relations:
@@ -193,13 +189,13 @@ class ConditionalRelation(Relation):
             if callable(self.checker):
                 result, length = self.checker(message)
             else:
-                length = len(self.checker) if message.lower().startswith(self.checker) else 0
+                length = len(self.checker) if message.startswith(self.checker) else 0
 
                 if length > 0:
                     result = self.checker
 
             if result:
-                if context and self.object:
+                if context and self.object: # May be this is something for the object
                     context[self.object] = result
 
                 return Reply(self.object, length)
@@ -285,7 +281,7 @@ class Process(Abstract):
 
         pp = ProcessPoint(abstract, message, context)
 
-        while pp.abstract:
+        while pp.abstract: # TODO : stop when message empty?
             pp = self.get_next(pp)
 
         return Reply(not "error" in context, len(message) - len(pp.message))
@@ -307,24 +303,24 @@ class ParserProcess(Process):
 
     def _rollback(self, process_point):
         if self._can_rollback(process_point):
-            new_process_point = self._get_stack(process_point).pop()
+            old_process_point = self._get_stack(process_point).pop()
 
-            if hasattr(new_process_point, "loop"):
+            if hasattr(old_process_point, "loop"):
                 if process_point.has_error():
-                    new_process_point.set_error(process_point.get_error()) # We need to keep error for the loop
+                    old_process_point.set_error(process_point.get_error()) # We need to keep error for the loop
                 else:
-                    new_process_point.message = process_point.message
-            else:
+                    old_process_point.message = process_point.message # Restoring context for the loop but keep message
+            else: # Alternatives
                 if process_point.has_error():
-                    new_process_point.context = process_point.context
-                    new_process_point.message = process_point.message
+                    old_process_point.context = process_point.context
+                    old_process_point.message = process_point.message
                 else:
-                    process_point.abstract = new_process_point.abstract #TODO: how should we restore context if no error for alternative
-                    new_process_point = process_point
+                    process_point.abstract = old_process_point.abstract #TODO: how should we restore context if no error for alternative
+                    old_process_point = process_point
 
-            print "Rolled back to %s" % new_process_point.abstract
+            print "Rolled back to %s" % old_process_point.abstract
 
-            return new_process_point
+            return old_process_point
         else:
             process_point.abstract = None
             return process_point

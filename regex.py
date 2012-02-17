@@ -116,12 +116,13 @@ def is_non_printable_literal(message):
 
 # Custom processing function
 def custom_func(notion, context):
-    value = context[notion]
+    if notion in context:
+        value = context[notion]
 
-    if not "result" in context:
-        context["result"] = {}
+        if not "result" in context:
+            context["result"] = {}
 
-    context["result"][notion.name] = value
+        context["result"][notion.name] = value
 
     return True
 
