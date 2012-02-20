@@ -19,6 +19,19 @@ def test_next():
 
     return context["result"] == "a" and r.result and r.length == 0
 
+def if_loop(loop, context):
+    if not loop in context:
+        context[loop] = 5
+        return True
+
+    i = context[loop] - 1
+
+    if i > 0:
+        context[loop] = i
+        return True
+
+    return False
+
 
 def is_a(message):
     if message.startswith("a"):
@@ -80,7 +93,15 @@ def test_loop():
     context = {"start": root}
     r = process.parse("aaaa", context)
 
-    return context["result"] == "aaaa" and r.result and r.length == 4
+    if context["result"] != "aaaa" and not r.result and not r.length == 4:
+        return False
+
+    l.n = if_loop
+
+    context = {"start": root}
+    r = process.parse("aaaaa", context)
+
+    return context["result"] == "aaaaa" and r.result and r.length == 5
 
 
 def test_alternative():
@@ -116,10 +137,10 @@ def custom_func(notion, context):
     return True
 
 def test():
-    print "Next test %s" % test_next()
-    print "Condition test %s" % test_condition()
-    print "Loop test %s" % test_loop()
-    print "Alternative test %s" % test_alternative()
+    print "** Next test %s" % test_next()
+    print "** Condition test %s" % test_condition()
+    print "** Loop test %s" % test_loop()
+    print "** Alternative test %s" % test_alternative()
 
     return
 

@@ -215,28 +215,35 @@ class LoopRelation(Relation):
         return LOOP_RELATION
 
     def parse(self, message, context = None):
-        if context:
+        repeat = True
+
+        if self.n and callable(self.n):
+            repeat = self.n(self, context)
+        elif context:
             counter = 1 if self.n else True
 
             if self in context:
                 if "error" in context:
                     if not self.n:
-                        del context[self]
-                        return Reply(True) # It is ok if error and * loop
+                        del context[self] # It is ok if error and * loop
+                        repeat = False
                     else:
                         return Reply()
                 else:
                     if self.n:
                         i = context[self]
-                        if i > self.n:
-                            return Reply(True) # No more iterations
-                        else:
+                        if i <= self.n:
                             counter = i + 1
+                        else:
+                            repeat = False
 
             context[self] = counter
 
-        reply = Reply(self.object)
-        reply.loop = self
+        if repeat:
+            reply = Reply(self.object)
+            reply.loop = self
+        else:
+            reply = Reply(True)
 
         return reply
 
