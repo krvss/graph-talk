@@ -67,6 +67,36 @@ def test_condition():
     return context["result"] == "a" and r.result and r.length == 1
 
 
+def test_complex():
+    root = ComplexNotion("root")
+    ab = ComplexNotion("ab")
+    NextRelation(root, ab)
+
+    a = FunctionNotion("a", add_to_result)
+    r1 = NextRelation(ab, a)
+
+    b = FunctionNotion("b", add_to_result)
+    r2 = NextRelation(ab, b)
+
+    process = ParserProcess()
+
+    context = {"start": root}
+    r = process.parse("", context)
+
+    if context["result"] != "ab" and not r.result and r.length:
+        return False
+
+    r1.subject = None
+    r2.subject = None
+
+    ConditionalRelation(ab, a, "a")
+    r2 = ConditionalRelation(ab, b, "b")
+
+    context = {"start": root}
+    r = process.parse("a", context)
+
+    return context["result"] == "a" and r.length == 1 and context["error"] == r2
+
 def test_loop():
     root = ComplexNotion("root")
     aa = ComplexNotion("a's")
@@ -139,8 +169,9 @@ def custom_func(notion, context):
 def test():
     print "** Next test %s" % test_next()
     print "** Condition test %s" % test_condition()
-    print "** Loop test %s" % test_loop()
-    print "** Alternative test %s" % test_alternative()
+    print "** Complex test %s" % test_complex()
+    #print "** Loop test %s" % test_loop()
+    #print "** Alternative test %s" % test_alternative()
 
     return
 

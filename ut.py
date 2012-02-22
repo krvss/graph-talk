@@ -154,7 +154,7 @@ class ComplexNotion(Notion):
                 elif not self._relations:
                     return Reply()
                 else:
-                    return Reply(self._relations)
+                    return Reply(list(self._relations))
 
 
 # Next relation is just a simple sequence relation
@@ -317,10 +317,13 @@ class ParserProcess(Process):
                     old_process_point.set_error(process_point.get_error()) # We need to keep error for the loop
                 else:
                     old_process_point.message = process_point.message # Restoring context for the loop but keep message
-            else: # Alternatives
+                '''else: # Alternatives
                 if not process_point.has_error():
                     process_point.abstract = True
-                    old_process_point = process_point
+                    old_process_point = process_point'''
+            else:
+                old_process_point.context = old_process_point.context or process_point.context
+                old_process_point.message = old_process_point.message or process_point.message
 
             print "Rolled back to %s" % old_process_point.abstract
 
@@ -334,8 +337,11 @@ class ParserProcess(Process):
 
     def _add_to_stack(self, process_point, reply):
         stack = self._get_stack(process_point)
+        stack.append(ProcessPoint(reply.result))
 
-        if hasattr(reply, "loop"):
+        print "Adding next %s to stack, stack size is %s" %( process_point, len(stack))
+
+        """if hasattr(reply, "loop"):
             pp = ProcessPoint(reply.loop, process_point.message, process_point.context)
 
             pp.loop = reply.loop
@@ -344,7 +350,7 @@ class ParserProcess(Process):
 
         else:
             stack.append(ProcessPoint(reply.result, process_point.message, process_point.context))
-            print "Adding alternative %s to stack, stack size is %s" %( reply.result, len(stack))
+            print "Adding alternative %s to stack, stack size is %s" %( reply.result, len(stack))"""
 
     def get_next(self, process_point): #TODO: remove prints or add callbacks
 
@@ -371,11 +377,15 @@ class ParserProcess(Process):
                 return self._rollback(process_point)
 
             else:
-                process_point.clear_error()
+                process_point.clear_error() # TODO not sure we should do this anymore
 
         if reply.result:
-            if type(reply.result) is types.ListType: # TODO check modes or result
+            if type(reply.result) is types.ListType: # TODO check modes of result
+                process_point.abstract = reply.result.pop(0)
+                for r in reply.result:
+                    self._add_to_stack(process_point, Reply(r, reply.length))
 
+                """
                 length = -1
                 bestReply = None # TODO: alternative
                 alternatives = []
@@ -411,8 +421,9 @@ class ParserProcess(Process):
                         print "No alternatives, trying to roll back"
                         process_point.set_error(process_point.abstract)
                         return self._rollback(process_point)
-
-            process_point.abstract = reply.result
+                """
+            else:
+                process_point.abstract = reply.result
         else:
             return self._rollback(process_point)
 
