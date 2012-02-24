@@ -301,12 +301,18 @@ class ParserProcess(Process):
     def _get_states(self, context):
         return self._get_context_info(context, "states", {})
 
+    def _progress_notify(self, info, abstract, parsing_message = None, parsing_context = None):
+        self._notify(info, {"abstract": abstract,
+                            "message": parsing_message or "",
+                            "context": parsing_context or ""})
+
     def _rollback(self, context):
         abstract = None
 
         if self._can_rollback(context):
             abstract = self._get_stack(context).pop()
-            print "Rolled back to %s" % abstract
+
+            self._progress_notify("rolled_back", abstract)
 
         return abstract
 
@@ -317,17 +323,17 @@ class ParserProcess(Process):
         stack = self._get_stack(context)
         stack.append(abstract)
 
-        print "Adding next %s to stack, stack size is %s" % (abstract, len(stack))
+        self._progress_notify("added_to_stack", abstract)
 
-    def get_next(self, abstract, message, context): #TODO: remove prints or add callbacks
+    def get_next(self, abstract, message, context):
 
         # Check do we have where to go to
         if not abstract or not isinstance(abstract, Abstract):
-            print "Not an abstract - %s, rolling back" % abstract
+            self._progress_notify("not_abstract", abstract)
 
             return self._rollback(context), message, context
 
-        print "Current abstract %s, message %s, context %s" % (abstract, message, context)
+        self._progress_notify("abstract_current", abstract, message, context)
 
         # Asking!
         reply = abstract.parse(message, context)
@@ -335,12 +341,14 @@ class ParserProcess(Process):
         # Attributes processing
         if hasattr(reply, "store"): # TODO: when to store - before or after list processing
             self._get_states(context)[reply.store] = (message, dict(context))
-            print "Saving context for %s" % abstract
+
+            self._progress_notify("storing", abstract)
 
         if hasattr(reply, "restore"):
             message, context = self._get_states(context)[reply.restore]
             del self._get_states(context)[reply.restore]
-            print "Restoring context for %s" % abstract
+
+            self._progress_notify("restoring_for", abstract)
 
         if hasattr(reply, "clear"):
             del self._get_states(context)[reply.clear]
@@ -349,7 +357,7 @@ class ParserProcess(Process):
         if reply.is_error():
             context["error"] = abstract #TODO: add error list
 
-            print "Error at %s, rolling back" % abstract
+            self._progress_notify("error at", abstract)
 
             return self._rollback(context), message, context
 
@@ -362,7 +370,7 @@ class ParserProcess(Process):
             else:
                 abstract = reply.result
         else:
-            print "Nowhere to go at at %s, rolling back" % abstract
+            self._progress_notify("dead_end", abstract)
             return self._rollback(context), message, context
 
         if reply.length > 0:
