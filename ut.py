@@ -230,7 +230,9 @@ class LoopRelation(Relation):
                         repeat = False
                         restore = True
                     else:
-                        return Reply()
+                        r =  Reply()
+                        r.clear = self
+                        return r
                 else:
                     if self.n:
                         i = context[self]
@@ -324,17 +326,32 @@ class ParserProcess(Process):
             print "Not an abstract - %s, rolling back" % abstract
 
             return self._rollback(context), message, context
-        else:
-            print "Current abstract %s, message %s, context %s" % (abstract, message, context)
 
-            reply = abstract.parse(message, context)
+        print "Current abstract %s, message %s, context %s" % (abstract, message, context)
 
-            if reply.is_error():
-                context["error"] = abstract
+        # Asking!
+        reply = abstract.parse(message, context)
 
-                print "Error at %s, rolling back" % abstract
+        # Attributes processing
+        if hasattr(reply, "store"): # TODO: when to store - before or after list processing
+            self._get_states(context)[reply.store] = (message, dict(context))
+            print "Saving context for %s" % abstract
 
-                return self._rollback(context), message, context
+        if hasattr(reply, "restore"):
+            message, context = self._get_states(context)[reply.restore]
+            del self._get_states(context)[reply.restore]
+            print "Restoring context for %s" % abstract
+
+        if hasattr(reply, "clear"):
+            del self._get_states(context)[reply.clear]
+
+        # Error control
+        if reply.is_error():
+            context["error"] = abstract #TODO: add error list
+
+            print "Error at %s, rolling back" % abstract
+
+            return self._rollback(context), message, context
 
         if reply.result:
             if type(reply.result) is types.ListType:
@@ -350,13 +367,6 @@ class ParserProcess(Process):
 
         if reply.length > 0:
             message = message[reply.length:]
-
-        if hasattr(reply, "store"): # TODO: when to store - before or after result parsing
-            self._get_states(context)[reply.store] = (message, dict(context))
-
-        if hasattr(reply, "restore"):
-            message, context = self._get_states(context)[reply.restore]
-            #del self._get_states(context)[reply.store] TODO
 
         return abstract, message, context
 
