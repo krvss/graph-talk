@@ -131,7 +131,7 @@ def test_loop():
     context = {"start": root}
     r = process.parse("aaaaa", context)
 
-    return context["result"] == "aaaaa" and r.result and r.length == 5
+    return context["result"] == "aaaaa" and r.result and r.length == 5 and not "error" in context
 
 
 def test_alternative():
@@ -170,7 +170,7 @@ def test():
     print "** Next test %s" % test_next()
     print "** Condition test %s" % test_condition()
     print "** Complex test %s" % test_complex()
-    #print "** Loop test %s" % test_loop()
+    print "** Loop test %s" % test_loop()
     #print "** Alternative test %s" % test_alternative()
 
     return

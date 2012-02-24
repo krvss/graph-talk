@@ -216,17 +216,19 @@ class LoopRelation(Relation):
 
     def parse(self, message, context = None):
         repeat = True
+        restore = False
 
         if self.n and callable(self.n):
             repeat = self.n(self, context)
+
         elif context:
             counter = 1 if self.n else True
 
             if self in context:
                 if "error" in context:
                     if not self.n:
-                        del context[self] # It is ok if error and * loop
                         repeat = False
+                        restore = True
                     else:
                         return Reply()
                 else:
@@ -237,46 +239,28 @@ class LoopRelation(Relation):
                         else:
                             repeat = False
 
-            context[self] = counter
+            if repeat:
+                context[self] = counter
 
         if repeat:
-            reply = Reply(self.object)
-            reply.loop = self
+            reply = Reply([self.object, self])
+            reply.store = self
         else:
             reply = Reply(True)
 
+            if context and self in context:
+                del context[self]
+
+            if restore:
+                reply.restore = self
+
         return reply
-
-# Process waypoint
-class ProcessPoint(object):
-    def __init__(self, abstract = None, message = None, context = None):
-        super(ProcessPoint, self).__init__()
-
-        self.abstract = abstract
-        self.message = message
-        self.context = context
-
-    def has_error(self):
-        return self.context and "error" in self.context
-
-    def set_error(self, value):
-        if not self.context:
-            self.context = {}
-
-        self.context["error"] = value
-
-    def get_error(self):
-        return self.context["error"] if self.has_error() else None
-
-    def clear_error(self):
-        if self.has_error():
-            del self.context["error"]
 
 
 # Base process class
 class Process(Abstract):
 
-    def get_next(self, process_point):
+    def get_next(self, abstract, message, context):
         raise NotImplementedError()
 
     def parse(self, message, context = None):
@@ -286,12 +270,12 @@ class Process(Abstract):
         else:
             abstract = context.get("start")
 
-        pp = ProcessPoint(abstract, message, context)
+        initial_length = len(message)
 
-        while pp.abstract: # TODO : stop when message empty?
-            pp = self.get_next(pp)
+        while abstract: # TODO : stop when message empty?
+            abstract, message, context = self.get_next(abstract, message, context)
 
-        return Reply(not "error" in context, len(message) - len(pp.message))
+        return Reply(not "error" in context, initial_length - len(message))
 
 
 # Parser process
@@ -299,139 +283,80 @@ class ParserProcess(Process):
     def __init__(self):
         super(ParserProcess, self).__init__()
 
-    def _get_stack(self, process_point):
-        if not self in process_point.context:
-            _stack = []
-            process_point.context[self] = {"stack": _stack}
+    def _get_context_info(self, context, name, default):
+        if not self in context:
+            context[self] = {}
+
+        if not name in context[self]:
+            context[self][name] = default
+            return default
         else:
-            _stack = process_point.context[self]["stack"]
+            return context[self][name]
 
-        return _stack
+    def _get_stack(self, context):
+        return self._get_context_info(context, "stack", [])
 
-    def _rollback(self, process_point):
-        if self._can_rollback(process_point):
-            old_process_point = self._get_stack(process_point).pop()
+    def _get_states(self, context):
+        return self._get_context_info(context, "states", {})
 
-            if hasattr(old_process_point, "loop"):
-                if process_point.has_error():
-                    old_process_point.set_error(process_point.get_error()) # We need to keep error for the loop
-                else:
-                    old_process_point.message = process_point.message # Restoring context for the loop but keep message
-                '''else: # Alternatives
-                if not process_point.has_error():
-                    process_point.abstract = True
-                    old_process_point = process_point'''
-            else:
-                old_process_point.context = old_process_point.context or process_point.context
-                old_process_point.message = old_process_point.message or process_point.message
+    def _rollback(self, context):
+        abstract = None
 
-            print "Rolled back to %s" % old_process_point.abstract
+        if self._can_rollback(context):
+            abstract = self._get_stack(context).pop()
+            print "Rolled back to %s" % abstract
 
-            return old_process_point
-        else:
-            process_point.abstract = None
-            return process_point
+        return abstract
 
-    def _can_rollback(self, process_point):
-        return len(self._get_stack(process_point)) > 0
+    def _can_rollback(self, context):
+        return len(self._get_stack(context)) > 0
 
-    def _add_to_stack(self, process_point, reply):
-        stack = self._get_stack(process_point)
-        stack.append(ProcessPoint(reply.result))
+    def _add_to_stack(self, context, abstract):
+        stack = self._get_stack(context)
+        stack.append(abstract)
 
-        print "Adding next %s to stack, stack size is %s" %( process_point, len(stack))
+        print "Adding next %s to stack, stack size is %s" % (abstract, len(stack))
 
-        """if hasattr(reply, "loop"):
-            pp = ProcessPoint(reply.loop, process_point.message, process_point.context)
-
-            pp.loop = reply.loop
-            stack.append(pp)
-            print "Adding loop %s to the stack, stack size is %s" % (pp.loop, len(stack))
-
-        else:
-            stack.append(ProcessPoint(reply.result, process_point.message, process_point.context))
-            print "Adding alternative %s to stack, stack size is %s" %( reply.result, len(stack))"""
-
-    def get_next(self, process_point): #TODO: remove prints or add callbacks
+    def get_next(self, abstract, message, context): #TODO: remove prints or add callbacks
 
         # Check do we have where to go to
-        if not process_point.abstract or not isinstance(process_point.abstract, Abstract):
-            print "Not an abstract - %s, rolling back" % process_point.abstract if hasattr(process_point, "abstract")  \
-                                                                              else process_point
+        if not abstract or not isinstance(abstract, Abstract):
+            print "Not an abstract - %s, rolling back" % abstract
 
-            if self._can_rollback(process_point):
-                return self._rollback(process_point)
-            else:
-                process_point.abstract = None
-                return process_point
+            return self._rollback(context), message, context
         else:
-            print "Current abstract %s, message %s" % (process_point.abstract, process_point.message)
+            print "Current abstract %s, message %s, context %s" % (abstract, message, context)
 
-            reply = process_point.abstract.parse(process_point.message, process_point.context)
+            reply = abstract.parse(message, context)
 
             if reply.is_error():
-                process_point.set_error(process_point.abstract)
+                context["error"] = abstract
 
-                print "Error at %s, rolling back" % process_point.get_error()
+                print "Error at %s, rolling back" % abstract
 
-                return self._rollback(process_point)
-
-            else:
-                process_point.clear_error() # TODO not sure we should do this anymore
+                return self._rollback(context), message, context
 
         if reply.result:
-            if type(reply.result) is types.ListType: # TODO check modes of result
-                process_point.abstract = reply.result.pop(0)
+            if type(reply.result) is types.ListType:
+                abstract = reply.result.pop(0) # First one is ready to be processed
+
                 for r in reply.result:
-                    self._add_to_stack(process_point, Reply(r, reply.length))
-
-                """
-                length = -1
-                bestReply = None # TODO: alternative
-                alternatives = []
-
-                for a in reply.result:
-                    r = a.parse(process_point.message, process_point.context)
-
-                    if r.result:
-                        if r.length > length:
-                            bestReply = r
-                            length = r.length
-                            alternatives = []
-                        elif r.length == length:
-                            if bestReply:
-                                alternatives.append(bestReply)
-                                bestReply = None
-
-                            alternatives.append(r)
-
-                if bestReply:
-                    reply = bestReply
-                    print "Best reply %s selected" % reply
-                else:
-                    if alternatives:
-                        reply = alternatives.pop(0)
-                        alternatives.reverse()
-
-                        for a in alternatives:
-                            self._add_to_stack(process_point, a)
-
-                        print "First alternative %s selected" % reply
-                    else:
-                        print "No alternatives, trying to roll back"
-                        process_point.set_error(process_point.abstract)
-                        return self._rollback(process_point)
-                """
+                    self._add_to_stack(context, r)
             else:
-                process_point.abstract = reply.result
+                abstract = reply.result
         else:
-            return self._rollback(process_point)
+            print "Nowhere to go at at %s, rolling back" % abstract
+            return self._rollback(context), message, context
 
         if reply.length > 0:
-            process_point.message = process_point.message[reply.length:]
+            message = message[reply.length:]
 
-        if hasattr(reply, "loop"):
-            self._add_to_stack(process_point, reply)
+        if hasattr(reply, "store"): # TODO: when to store - before or after result parsing
+            self._get_states(context)[reply.store] = (message, dict(context))
 
-        return process_point
+        if hasattr(reply, "restore"):
+            message, context = self._get_states(context)[reply.restore]
+            #del self._get_states(context)[reply.store] TODO
+
+        return abstract, message, context
 
