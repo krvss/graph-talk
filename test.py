@@ -1,5 +1,23 @@
 from ut import *
 
+# Simple process logger
+class Logger(Abstract):
+    filter = None
+    logging = True
+
+    def parse(self, message, context = None):
+        if not Logger.logging:
+            return None
+
+        if Logger.filter and not Logger.filter in message:
+            return False
+
+        print "%s: %s, message:%s" % (message, context["abstract"], context["message"] if "message" in context else "")
+
+        return True
+
+logger = Logger()
+
 def add_to_result(notion, context):
     if not "result" in context:
         context["result"] = ""
@@ -14,6 +32,8 @@ def test_next():
     NextRelation(root, a)
 
     process = ParserProcess()
+    process.call(logger)
+
     context = {"start": root}
     r = process.parse("", context)
 
@@ -47,6 +67,8 @@ def test_condition():
     c = ConditionalRelation(root, a, "a")
 
     process = ParserProcess()
+    process.call(logger)
+
     context = {"start": root}
     r = process.parse("a", context)
 
@@ -79,6 +101,7 @@ def test_complex():
     r2 = NextRelation(ab, b)
 
     process = ParserProcess()
+    process.call(logger)
 
     context = {"start": root}
     r = process.parse("", context)
@@ -106,10 +129,12 @@ def test_loop():
     c = ConditionalRelation(aa, a, "a")
 
     process = ParserProcess()
+    process.call(logger)
+
     context = {"start": root}
     r = process.parse("aaaaa", context)
 
-    if not context["result"] == "aaaaa" and not r.result and r.length != 5:
+    if not context["result"] == "aaaaa" and not r.result and r.length != 5: #TODO: check state space
         return False
 
     context = {"start": root}
@@ -155,6 +180,8 @@ def test_alternative():
     NextRelation(root, bb)
 
     process = ParserProcess()
+    process.call(logger)
+
     context = {"start": root}
     r = process.parse("aa", context)
 
