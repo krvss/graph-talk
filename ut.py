@@ -198,42 +198,40 @@ class LoopRelation(Relation):
 
     def parse(self, message, context = None):
         repeat = True
-        restore = False
+        error = restore = False
 
         if self.n and callable(self.n):
             repeat = self.n(self, context)
 
         elif context:
-            counter = 1 if self.n else True
-
             if self in context:
                 if "error" in context:
+                    repeat = False
+
                     if not self.n:
-                        repeat = False
-                        restore = True
+                        restore = True # Number of iterations is arbitrary if no restriction
                     else:
-                        r =  Reply()
-                        r.clear = self
-                        return r
+                        error = True # Number is fixed so we have an error
                 else:
                     if self.n:
                         i = context[self]
-                        if i < self.n:
-                            counter = i + 1
-                        else:
-                            repeat = False
 
-            if repeat:
-                context[self] = counter
+                        if i < self.n:
+                            context[self] = i + 1
+                        else:
+                            repeat = False # No more iterations
+
+            else:
+                context[self] = 1 if self.n else True # Initializing the loop
 
         if repeat:
-            reply = Reply([self.object, self])
-            reply.store = self
+            reply = Reply([self.object, self]) # Self is a new next to think should we repeat or not
+            reply.store = self # Saving the context
         else:
-            reply = Reply(True)
+            reply = Reply(not error)
 
             if context and self in context:
-                del context[self]
+                del context[self] # Clean up
 
             if restore:
                 reply.restore = self

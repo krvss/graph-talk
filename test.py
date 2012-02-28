@@ -161,6 +161,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(context["result"], "aaaaa")
         self.assertTrue(r.result)
         self.assertEqual(r.length, 5)
+        self.assertTrue(not l in context)
 
         # Negative loop test: root -5!-> a's -a-> a for "aaaa"
         context = {"start": root}
@@ -170,6 +171,7 @@ class BasicTests(unittest.TestCase):
         self.assertFalse(r.result)
         self.assertEqual(r.length, 4)
         self.assertListEqual(context["error"], [c, l])
+        self.assertTrue(not l in context)
 
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = None
@@ -180,6 +182,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(context["result"], "aaaa")
         self.assertTrue(r.result)
         self.assertEqual(r.length, 4)
+        self.assertTrue(not l in context)
 
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
@@ -191,6 +194,7 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(r.result)
         self.assertEqual(r.length, 5)
         self.assertTrue(not "error" in context)
+        self.assertTrue(not l in context)
 
         # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
         l.n = 2
@@ -207,6 +211,8 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(r.result)
         self.assertEqual(r.length, 4)
         self.assertTrue(not "error" in context)
+        self.assertTrue(not l in context)
+        self.assertTrue(not l2 in context)
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
         context = {"start": root}
@@ -216,6 +222,8 @@ class BasicTests(unittest.TestCase):
         self.assertFalse(r.result)
         self.assertEqual(r.length, 3)
         self.assertListEqual(context["error"], [c, l, l2])
+        self.assertTrue(not l in context)
+        self.assertTrue(not l2 in context)
 
 
 def test_alternative():
