@@ -61,9 +61,6 @@ class Relation(Abstract):
         self.subject = subject
         self.object = object
 
-    def get_type(self):
-        raise NotImplementedError()
-
     def _disconnect(self, value, target):
         if value:
             self._notify("unrelating", {"relation": self, target: value})
@@ -158,29 +155,19 @@ class ComplexNotion(Notion):
 
 
 # Next relation is just a simple sequence relation
-NEXT_RELATION = 1
-
 class NextRelation(Relation):
     def __init__(self, subject, object):
         super(NextRelation, self).__init__(subject, object)
-
-    def get_type(self):
-        return NEXT_RELATION
 
     def parse(self, message, context = None):
         return Reply(result = self.object)
 
 
 # Conditional relation is a condition to go further if message starts with sequence
-CONDITIONAL_RELATION = 2
-
 class ConditionalRelation(Relation):
     def __init__(self, subject, object, checker):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
-
-    def get_type(self):
-        return CONDITIONAL_RELATION
 
     def parse(self, message, context = None):
         if self.checker:
@@ -204,15 +191,10 @@ class ConditionalRelation(Relation):
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times
-LOOP_RELATION = 3
-
 class LoopRelation(Relation):
     def __init__(self, subject, object, n = None):
         super(LoopRelation, self).__init__(subject, object)
         self.n = n
-
-    def get_type(self):
-        return LOOP_RELATION
 
     def parse(self, message, context = None):
         repeat = True
@@ -236,7 +218,7 @@ class LoopRelation(Relation):
                 else:
                     if self.n:
                         i = context[self]
-                        if i <= self.n:
+                        if i < self.n:
                             counter = i + 1
                         else:
                             repeat = False
@@ -255,6 +237,8 @@ class LoopRelation(Relation):
 
             if restore:
                 reply.restore = self
+            else:
+                reply.clear = self
 
         return reply
 
@@ -301,6 +285,15 @@ class ParserProcess(Process):
     def _get_states(self, context):
         return self._get_context_info(context, "states", {})
 
+    def _get_error(self, context):
+        if not "error" in context:
+            error = []
+            context["error"] = error
+        else:
+            error = context["error"]
+
+        return error
+
     def _progress_notify(self, info, abstract, parsing_message = None, parsing_context = None):
         self._notify(info, {"abstract": abstract,
                             "message": parsing_message or "",
@@ -342,20 +335,20 @@ class ParserProcess(Process):
         if hasattr(reply, "store"): # TODO: when to store - before or after list processing
             self._get_states(context)[reply.store] = (message, dict(context))
 
-            self._progress_notify("storing", abstract)
+            self._progress_notify("storing", abstract, message)
 
         if hasattr(reply, "restore"):
             message, context = self._get_states(context)[reply.restore]
             del self._get_states(context)[reply.restore]
 
-            self._progress_notify("restoring_for", abstract)
+            self._progress_notify("restored_for", abstract, message)
 
         if hasattr(reply, "clear"):
             del self._get_states(context)[reply.clear]
 
         # Error control
         if reply.is_error():
-            context["error"] = abstract #TODO: add error list
+            self._get_error(context).append(abstract)
 
             self._progress_notify("error at", abstract)
 

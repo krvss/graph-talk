@@ -78,7 +78,7 @@ def test_condition():
     context = {"start": root}
     r = process.parse("n", context)
 
-    if context["error"] != c and not r.result and r.length == 0:
+    if not c in context["error"] and not r.result and r.length == 0:
         return False
 
     c.checker = is_a
@@ -118,7 +118,7 @@ def test_complex():
     context = {"start": root}
     r = process.parse("a", context)
 
-    return context["result"] == "a" and r.length == 1 and context["error"] == r2
+    return context["result"] == "a" and r.length == 1 and r2 in context["error"]
 
 def test_loop():
     root = ComplexNotion("root")
@@ -134,13 +134,13 @@ def test_loop():
     context = {"start": root}
     r = process.parse("aaaaa", context)
 
-    if not context["result"] == "aaaaa" and not r.result and r.length != 5: #TODO: check state space
+    if not context["result"] == "aaaaa" and not r.result and r.length != 5:
         return False
 
     context = {"start": root}
     r = process.parse("aaaa", context)
 
-    if context["error"] != c and r.result and r.length != 4:
+    if c not in context["error"] and r.result and r.length != 4:
         return False
 
     l.n = None
@@ -156,8 +156,29 @@ def test_loop():
     context = {"start": root}
     r = process.parse("aaaaa", context)
 
-    return context["result"] == "aaaaa" and r.result and r.length == 5 and not "error" in context
+    if context["result"] != "aaaaa" and not r.result and r.length != 5 and "error" in context:
+        return False
 
+    l.n = 2
+
+    aaa = ComplexNotion("a2")
+    l.subject = aaa
+
+    l2 = LoopRelation(root, aaa, 2)
+
+    context = {"start": root}
+    r = process.parse("aaaaa", context)
+
+    if context["result"] != "aaaa" and not r.result and r.length != 4 and "error" in context:
+        return False
+
+    context = {"start": root}
+    r = process.parse("aaab", context)
+
+    if context["result"] != "aaa" and not r.result and r.length != 3 and not c in context["error"]:
+        return False
+
+    return True
 
 def test_alternative():
     root = ComplexNotion("root")
