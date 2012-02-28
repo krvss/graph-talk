@@ -1,12 +1,14 @@
 from ut import *
 
+import unittest
+
 # Simple process logger
 class Logger(Abstract):
     filter = None
     logging = True
 
     def parse(self, message, context = None):
-        if not Logger.logging:
+        if not self.logging:
             return None
 
         if Logger.filter and not Logger.filter in message:
@@ -18,26 +20,13 @@ class Logger(Abstract):
 
 logger = Logger()
 
+
 def add_to_result(notion, context):
     if not "result" in context:
         context["result"] = ""
 
     context["result"] += notion.name
 
-
-def test_next():
-    root = ComplexNotion("root")
-    a = FunctionNotion("a", add_to_result)
-
-    NextRelation(root, a)
-
-    process = ParserProcess()
-    process.call(logger)
-
-    context = {"start": root}
-    r = process.parse("", context)
-
-    return context["result"] == "a" and r.result and r.length == 0
 
 def if_loop(loop, context):
     if not loop in context:
@@ -60,125 +49,174 @@ def is_a(message):
         return False, 0
 
 
-def test_condition():
-    root = ComplexNotion("root")
-    a = FunctionNotion("a", add_to_result)
+class BasicTests(unittest.TestCase):
 
-    c = ConditionalRelation(root, a, "a")
+    def test_next(self):
+        # Simple next test: root -> a
+        root = ComplexNotion("root")
+        a = FunctionNotion("a", add_to_result)
 
-    process = ParserProcess()
-    process.call(logger)
+        NextRelation(root, a)
 
-    context = {"start": root}
-    r = process.parse("a", context)
+        process = ParserProcess()
+        process.call(logger)
 
-    if context["result"] != "a" and r.result and r.length == 1:
-        return False
+        context = {"start": root}
+        r = process.parse("", context)
 
-    context = {"start": root}
-    r = process.parse("n", context)
-
-    if not c in context["error"] and not r.result and r.length == 0:
-        return False
-
-    c.checker = is_a
-
-    context = {"start": root}
-    r = process.parse("a", context)
-
-    return context["result"] == "a" and r.result and r.length == 1
+        self.assertEqual(context["result"], "a")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 0)
 
 
-def test_complex():
-    root = ComplexNotion("root")
-    ab = ComplexNotion("ab")
-    NextRelation(root, ab)
+    def test_condition(self):
+        # Simple positive condition test root -a-> a for "a"
+        root = ComplexNotion("root")
+        a = FunctionNotion("a", add_to_result)
 
-    a = FunctionNotion("a", add_to_result)
-    r1 = NextRelation(ab, a)
+        c = ConditionalRelation(root, a, "a")
 
-    b = FunctionNotion("b", add_to_result)
-    r2 = NextRelation(ab, b)
+        process = ParserProcess()
+        process.call(logger)
 
-    process = ParserProcess()
-    process.call(logger)
+        context = {"start": root}
+        r = process.parse("a", context)
 
-    context = {"start": root}
-    r = process.parse("", context)
+        self.assertEqual(context["result"], "a")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 1)
 
-    if context["result"] != "ab" and not r.result and r.length:
-        return False
+        # Simple negative condition test root -a-> a for "n"
+        r = process.parse("n", context)
 
-    r1.subject = None
-    r2.subject = None
+        self.assertListEqual(context["error"], [c])
+        self.assertFalse(r.result)
+        self.assertEqual(r.length, 0)
 
-    ConditionalRelation(ab, a, "a")
-    r2 = ConditionalRelation(ab, b, "b")
+        # Simple positive condition test root -function-> a for "a"
+        c.checker = is_a
 
-    context = {"start": root}
-    r = process.parse("a", context)
+        context = {"start": root}
+        r = process.parse("a", context)
 
-    return context["result"] == "a" and r.length == 1 and r2 in context["error"]
+        self.assertEqual(context["result"], "a")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 1)
 
-def test_loop():
-    root = ComplexNotion("root")
-    aa = ComplexNotion("a's")
-    l = LoopRelation(root, aa, 5)
 
-    a = FunctionNotion("a", add_to_result)
-    c = ConditionalRelation(aa, a, "a")
+    def test_complex(self):
+        # Complex notion test: root -> ab -> (a -> b) with empty message
+        root = ComplexNotion("root")
+        ab = ComplexNotion("ab")
+        NextRelation(root, ab)
 
-    process = ParserProcess()
-    process.call(logger)
+        a = FunctionNotion("a", add_to_result)
+        r1 = NextRelation(ab, a)
 
-    context = {"start": root}
-    r = process.parse("aaaaa", context)
+        b = FunctionNotion("b", add_to_result)
+        r2 = NextRelation(ab, b)
 
-    if not context["result"] == "aaaaa" and not r.result and r.length != 5:
-        return False
+        process = ParserProcess()
+        process.call(logger)
 
-    context = {"start": root}
-    r = process.parse("aaaa", context)
+        context = {"start": root}
+        r = process.parse("", context)
 
-    if c not in context["error"] and r.result and r.length != 4:
-        return False
+        self.assertEqual(context["result"], "ab")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 0)
 
-    l.n = None
+        # Complex notion negative test: root -> ab -> ( (-a-> a) -> (-b-> b) ) for "a"
 
-    context = {"start": root}
-    r = process.parse("aaaa", context)
+        r1.subject = None
+        r2.subject = None
 
-    if context["result"] != "aaaa" and not r.result and not r.length == 4:
-        return False
+        ConditionalRelation(ab, a, "a")
+        r2 = ConditionalRelation(ab, b, "b")
 
-    l.n = if_loop
+        context = {"start": root}
+        r = process.parse("a", context)
 
-    context = {"start": root}
-    r = process.parse("aaaaa", context)
+        self.assertEqual(context["result"], "a")
+        self.assertFalse(r.result)
+        self.assertEqual(r.length, 1)
+        self.assertListEqual(context["error"], [r2])
 
-    if context["result"] != "aaaaa" and not r.result and r.length != 5 and "error" in context:
-        return False
 
-    l.n = 2
+    def test_loop(self):
+        # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
+        root = ComplexNotion("root")
+        aa = ComplexNotion("a's")
+        l = LoopRelation(root, aa, 5)
 
-    aaa = ComplexNotion("a2")
-    l.subject = aaa
+        a = FunctionNotion("a", add_to_result)
+        c = ConditionalRelation(aa, a, "a")
 
-    l2 = LoopRelation(root, aaa, 2)
+        process = ParserProcess()
+        process.call(logger)
 
-    context = {"start": root}
-    r = process.parse("aaaaa", context)
+        context = {"start": root}
+        r = process.parse("aaaaa", context)
 
-    if context["result"] != "aaaa" and not r.result and r.length != 4 and "error" in context:
-        return False
+        self.assertEqual(context["result"], "aaaaa")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 5)
 
-    context = {"start": root}
-    r = process.parse("aaab", context)
+        # Negative loop test: root -5!-> a's -a-> a for "aaaa"
+        context = {"start": root}
+        r = process.parse("aaaa", context)
 
-    if context["result"] != "aaa" and not r.result and r.length != 3 and not c in context["error"]:
-        return False
+        self.assertEqual(context["result"], "aaaa")
+        self.assertFalse(r.result)
+        self.assertEqual(r.length, 4)
+        self.assertListEqual(context["error"], [c, l])
 
-    return True
+        # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
+        l.n = None
+
+        context = {"start": root}
+        r = process.parse("aaaa", context)
+
+        self.assertEqual(context["result"], "aaaa")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 4)
+
+        # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
+        l.n = if_loop
+
+        context = {"start": root}
+        r = process.parse("aaaaa", context)
+
+        self.assertEqual(context["result"], "aaaaa")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 5)
+        self.assertTrue(not "error" in context)
+
+        # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
+        l.n = 2
+
+        aaa = ComplexNotion("a2")
+        l.subject = aaa
+
+        l2 = LoopRelation(root, aaa, 2)
+
+        context = {"start": root}
+        r = process.parse("aaaaa", context)
+
+        self.assertEqual(context["result"], "aaaa")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 4)
+        self.assertTrue(not "error" in context)
+
+        # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
+        context = {"start": root}
+        r = process.parse("aaab", context)
+
+        self.assertEqual(context["result"], "aaa")
+        self.assertFalse(r.result)
+        self.assertEqual(r.length, 3)
+        self.assertListEqual(context["error"], [c, l, l2])
+
 
 def test_alternative():
     root = ComplexNotion("root")
@@ -215,10 +253,12 @@ def custom_func(notion, context):
     return True
 
 def test():
-    print "** Next test %s" % test_next()
-    print "** Condition test %s" % test_condition()
-    print "** Complex test %s" % test_complex()
-    print "** Loop test %s" % test_loop()
+    logger.logging = False
+    suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
+    unittest.TextTestRunner(verbosity=2).run(suite)
+
+    #print "** Complex test %s" % test_complex()
+    #print "** Loop test %s" % test_loop()
     #print "** Alternative test %s" % test_alternative()
 
     return
