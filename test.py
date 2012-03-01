@@ -105,7 +105,7 @@ class BasicTests(unittest.TestCase):
 
 
     def test_complex(self):
-        # Complex notion test: root -> ab -> (a -> b) with empty message
+        # Complex notion test: root -> ab -> (a , b) with empty message
         root = ComplexNotion("root")
         ab = ComplexNotion("ab")
         NextRelation(root, ab)
@@ -126,7 +126,7 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(r.result)
         self.assertEqual(r.length, 0)
 
-        # Complex notion negative test: root -> ab -> ( (-a-> a) -> (-b-> b) ) for "a"
+        # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for "a"
 
         r1.subject = None
         r2.subject = None
@@ -141,6 +141,27 @@ class BasicTests(unittest.TestCase):
         self.assertFalse(r.result)
         self.assertEqual(r.length, 1)
         self.assertListEqual(context["error"], [r2])
+
+        # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
+        c = ComplexNotion("c")
+        NextRelation(ab, c)
+
+        d = FunctionNotion("d", add_to_result)
+        NextRelation(c, d)
+
+        e = FunctionNotion("e", add_to_result)
+        NextRelation(c, e)
+
+        f = FunctionNotion("f", add_to_result)
+        ConditionalRelation(ab, f, "f")
+
+        context = {"start": root}
+        r = process.parse("abf", context)
+
+        self.assertEqual(context["result"], "abdef")
+        self.assertTrue(r.result)
+        self.assertEqual(r.length, 3)
+        self.assertTrue(not "error" in context)
 
 
     def test_loop(self):

@@ -301,7 +301,7 @@ class ParserProcess(Process):
         abstract = None
 
         if self._can_rollback(context):
-            abstract = self._get_stack(context).pop()
+            abstract = self._get_stack(context).pop(0)
 
             self._progress_notify("rolled_back", abstract)
 
@@ -312,7 +312,7 @@ class ParserProcess(Process):
 
     def _add_to_stack(self, context, abstract):
         stack = self._get_stack(context)
-        stack.append(abstract)
+        stack.insert(0, abstract)
 
         self._progress_notify("added_to_stack", abstract)
 
@@ -356,7 +356,7 @@ class ParserProcess(Process):
             if type(reply.result) is types.ListType:
                 abstract = reply.result.pop(0) # First one is ready to be processed
 
-                for r in reply.result:
+                for r in reversed(reply.result): # We need to reverse to keep the right order
                     self._add_to_stack(context, r)
             else:
                 abstract = reply.result
