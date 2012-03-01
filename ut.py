@@ -26,9 +26,10 @@ class Abstract(object):
 
 # Class for simple replies
 class Reply(object):
-    def __init__(self, result = False, length = 0):
+    def __init__(self, result = False, length = 0, message = None):
         self.result = result
         self.length = length
+        self.message = message
 
     def is_error(self):
         return self.result == False
@@ -226,7 +227,7 @@ class LoopRelation(Relation):
 
         if repeat:
             reply = Reply([self.object, self]) # Self is a new next to think should we repeat or not
-            reply.store = self # Saving the context
+            reply.message = "store" # Saving the context
         else:
             reply = Reply(not error)
 
@@ -234,9 +235,9 @@ class LoopRelation(Relation):
                 del context[self] # Clean up
 
             if restore:
-                reply.restore = self
+                reply.message = "restore"
             else:
-                reply.clear = self
+                reply.message = "clear"
 
         return reply
 
@@ -281,7 +282,7 @@ class ParserProcess(Process):
         return self._get_context_info(context, "stack", [])
 
     def _get_states(self, context):
-        return self._get_context_info(context, "states", {})
+        return self._get_context_info(context, "states", [])
 
     def _get_error(self, context):
         if not "error" in context:
@@ -329,20 +330,21 @@ class ParserProcess(Process):
         # Asking!
         reply = abstract.parse(message, context)
 
-        # Attributes processing
-        if hasattr(reply, "store"): # TODO: when to store - before or after list processing
-            self._get_states(context)[reply.store] = (message, dict(context))
+        if reply.message:
+            cmd = str(reply.message).lower()
 
-            self._progress_notify("storing", abstract, message)
+            # Commands processing
+            if cmd == "store":
+                self._get_states(context).append((message, dict(context)))
 
-        if hasattr(reply, "restore"):
-            message, context = self._get_states(context)[reply.restore]
-            del self._get_states(context)[reply.restore]
+                self._progress_notify("storing", abstract, message)
+            elif cmd == "restore":
+                message, context = self._get_states(context).pop()
 
-            self._progress_notify("restored_for", abstract, message)
+                self._progress_notify("restored_for", abstract, message)
 
-        if hasattr(reply, "clear"):
-            del self._get_states(context)[reply.clear]
+            elif cmd == "clear":
+                self._get_states(context).pop()
 
         # Error control
         if reply.is_error():
