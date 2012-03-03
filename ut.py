@@ -162,6 +162,42 @@ class ComplexNotion(Notion):
                     return Reply(list(self._relations))
 
 
+# Selective notion: complex notion that can consist of one of its objects
+class SelectiveNotion(ComplexNotion):
+    def __init__(self, name, relation = None):
+        super(SelectiveNotion, self).__init__(name, relation)
+
+    def parse(self, message, context = None):
+        if context:
+            if self in context:
+                if "error" in context:
+                    cases = context[self]
+
+                    if cases:
+                        case = cases.pop(0)
+
+                        return Reply([case, self], {"process":{"state": "refresh", "update": {self: cases}}}) # TODO: real dialogue?
+                    else:
+                        return Reply(False, {"process":{"state": "restore"}})
+
+                else:
+                    del context[self]
+                    return Reply(True, {"process": {"state":"clear"}})
+
+        reply = super(SelectiveNotion, self).parse(message, context)
+
+        if not reply or (reply and reply.result and not type(reply.result) is types.ListType):
+            return reply
+
+        elif context:
+            case = reply.result.pop(0)
+            context[self] = reply.result
+
+            return Reply([case, self], {"process":{"state":"store"}})
+
+        return reply
+
+
 # Next relation is just a simple sequence relation
 class NextRelation(Relation):
     def __init__(self, subject, object):
@@ -267,7 +303,7 @@ class Process(Abstract):
         while abstract: # TODO : stop when message empty?
             abstract, message, context = self.get_next(abstract, message, context)
 
-        return Reply(not "error" in context, {"length": initial_length - len(message)})
+        return Reply(not "error" in context, {"length": initial_length - len(message), "final": context}) # TODO: try to keep original
 
 
 # Parser process
@@ -341,17 +377,22 @@ class ParserProcess(Process):
             cmd = str(reply.process["state"])
 
             # Commands processing
-            if cmd == "store":
-                self._get_states(context)[abstract] = (message, dict(context))
-
-                self._progress_notify("storing", abstract, message)
-            elif cmd == "restore":
+            if cmd == "restore" or cmd == "refresh":
                 message, context = self._get_states(context)[abstract]
-                del self._get_states(context)[abstract]
+                if abstract in self._get_states(context):
+                    del self._get_states(context)[abstract]
 
                 self._progress_notify("restored_for", abstract, message)
 
-            elif cmd == "clear":
+                if cmd == "refresh" and "update" in reply.process:
+                    context.update(reply.process["update"])
+
+            if cmd == "store" or cmd == "refresh":
+                self._get_states(context)[abstract] = (message, dict(context))
+
+                self._progress_notify("storing", abstract, message)
+
+            if cmd == "clear":
                 del self._get_states(context)[abstract]
 
         # Error control
