@@ -26,13 +26,20 @@ class Abstract(object):
 
 # Class for simple replies
 class Reply(object):
-    def __init__(self, result = False, length = 0, message = None):
+    def __init__(self, result = False, context = None):
         self.result = result
-        self.length = length
-        self.message = message
+        self.context = context
 
     def is_error(self):
         return self.result == False
+
+    @property
+    def length(self):
+        return self.context["length"] if self.context and "length" in self.context else 0
+
+    @property
+    def process(self):
+        return self.context["process"] if self.context and "process" in self.context else None
 
     def __str__(self):
         return "[%s:%s]" % (self.result, self.length)
@@ -186,7 +193,7 @@ class ConditionalRelation(Relation):
                 if context and self.object: # May be this is something for the object
                     context[self.object] = result
 
-                return Reply(self.object, length)
+                return Reply(self.object, {"length": length})
 
         return Reply()
 
@@ -226,18 +233,18 @@ class LoopRelation(Relation):
                 context[self] = 1 if self.n else True # Initializing the loop
 
         if repeat:
-            reply = Reply([self.object, self]) # Self is a new next to think should we repeat or not
-            reply.message = "store" # Saving the context
+            reply = Reply([self.object, self], {"process":{"state":"store"}}) # Self is a new next to think should we repeat or not
         else:
-            reply = Reply(not error)
 
             if context and self in context:
                 del context[self] # Clean up
 
             if restore:
-                reply.message = "restore"
+                state = "restore"
             else:
-                reply.message = "clear"
+                state = "clear"
+
+            reply = Reply(not error, {"process": {"state": state}})
 
         return reply
 
@@ -260,7 +267,7 @@ class Process(Abstract):
         while abstract: # TODO : stop when message empty?
             abstract, message, context = self.get_next(abstract, message, context)
 
-        return Reply(not "error" in context, initial_length - len(message))
+        return Reply(not "error" in context, {"length": initial_length - len(message)})
 
 
 # Parser process
@@ -282,7 +289,7 @@ class ParserProcess(Process):
         return self._get_context_info(context, "stack", [])
 
     def _get_states(self, context):
-        return self._get_context_info(context, "states", [])
+        return self._get_context_info(context, "states", {})
 
     def _get_error(self, context):
         if not "error" in context:
@@ -330,21 +337,22 @@ class ParserProcess(Process):
         # Asking!
         reply = abstract.parse(message, context)
 
-        if reply.message:
-            cmd = str(reply.message).lower()
+        if reply.process:
+            cmd = str(reply.process["state"])
 
             # Commands processing
             if cmd == "store":
-                self._get_states(context).append((message, dict(context)))
+                self._get_states(context)[abstract] = (message, dict(context))
 
                 self._progress_notify("storing", abstract, message)
             elif cmd == "restore":
-                message, context = self._get_states(context).pop()
+                message, context = self._get_states(context)[abstract]
+                del self._get_states(context)[abstract]
 
                 self._progress_notify("restored_for", abstract, message)
 
             elif cmd == "clear":
-                self._get_states(context).pop()
+                del self._get_states(context)[abstract]
 
         # Error control
         if reply.is_error():
