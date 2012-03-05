@@ -159,7 +159,7 @@ class ComplexNotion(Notion):
                 elif not self._relations:
                     return Reply()
                 else:
-                    return Reply(list(self._relations))
+                    return [Reply(relation) for relation in self._relations]
 
 
 # Selective notion: complex notion that can consist of one of its objects
@@ -176,9 +176,9 @@ class SelectiveNotion(ComplexNotion):
                     if cases:
                         case = cases.pop(0)
 
-                        return Reply([case, self], {"process":{"state": "refresh", "update": {self: cases}}}) # TODO: real dialogue?
+                        return [Reply(True, {"process":{"state": "refresh", "update": {self: cases}}}), case, Reply(self)]
                     else:
-                        return Reply(False, {"process":{"state": "clear"}}) # TODO: only self in error?
+                        return [Reply(True, {"process":{"state": "clear"}}), Reply()] # TODO: only self in error?
 
                 else:
                     del context[self]
@@ -186,14 +186,14 @@ class SelectiveNotion(ComplexNotion):
 
         reply = super(SelectiveNotion, self).parse(message, context)
 
-        if not reply or (reply and reply.result and not type(reply.result) is types.ListType):
+        if not reply or (reply and not type(reply) is types.ListType):
             return reply
 
         elif context:
-            case = reply.result.pop(0)
-            context[self] = reply.result
+            case = reply.pop(0)
+            context[self] = reply
 
-            return Reply([case, self], {"process":{"state":"store"}})
+            return [Reply(True, {"process":{"state":"store"}}), case, Reply(self)]
 
         return reply
 
@@ -269,7 +269,7 @@ class LoopRelation(Relation):
                 context[self] = 1 if self.n else True # Initializing the loop
 
         if repeat:
-            reply = Reply([self.object, self], {"process":{"state":"store"}}) # Self is a new next to think should we repeat or not
+            reply = [Reply(True, {"process":{"state":"store"}}), Reply(self.object), Reply(self)] # Self is a new next to think should we repeat or not
         else:
 
             if context and self in context:
@@ -280,7 +280,7 @@ class LoopRelation(Relation):
             else:
                 state = "clear"
 
-            reply = Reply(not error, {"process": {"state": state}})
+            reply = [Reply(True, {"process": {"state": state}}), Reply(not error)]
 
         return reply
 
@@ -296,7 +296,7 @@ class Process(Abstract):
             context = {}
             abstract = None
         else:
-            abstract = context.get("start")
+            abstract = context.get("start") #TODO we can use message for start
 
         initial_length = len(message)
 
@@ -361,18 +361,40 @@ class ParserProcess(Process):
         self._progress_notify("added_to_stack", abstract)
 
     def get_next(self, abstract, message, context):
-
         # Check do we have where to go to
         if not abstract or not isinstance(abstract, Abstract):
             self._progress_notify("not_abstract", abstract)
 
-            return self._rollback(context), message, context
-
-        self._progress_notify("abstract_current", abstract, message, context)
+            if self._can_rollback(context):
+                reply = self._rollback(context) # TODO: consider non-Reply type here
+            else:
+                return False, message, context # Stopping
 
         # Asking!
-        reply = abstract.parse(message, context)
+        else:
+            self._progress_notify("abstract_current", abstract, message, context)
 
+            reply = abstract.parse(message, context)
+
+        # Got sequence?
+        if type(reply) is types.ListType:
+            if len(reply) >= 1:
+                for r in reply:
+                    if not hasattr(r, "abstract"): #TODO integrate
+                        r.abstract = abstract
+
+                r = reply.pop(0) # First one is ready to be processed
+
+                if reply:
+                    self._add_to_stack(context, reply)
+
+                reply = r
+            else:
+                return True, message, context # Let's try to roll back
+        else:
+            reply.abstract = abstract # TODO integrate
+
+        # Todo: string analysis
         if reply.process:
             cmd = str(reply.process["state"])
 
@@ -397,26 +419,20 @@ class ParserProcess(Process):
 
         # Error control
         if reply.is_error():
-            self._get_error(context).append(abstract)
+            self._get_error(context).append(reply.abstract)
 
             self._progress_notify("error at", abstract)
 
-            return self._rollback(context), message, context
+            return self._can_rollback(context), message, context
 
         if reply.result:
-            if type(reply.result) is types.ListType:
-                abstract = reply.result.pop(0) # First one is ready to be processed
+            abstract = reply.result
 
-                for r in reversed(reply.result): # We need to reverse to keep the right order
-                    self._add_to_stack(context, r)
-            else:
-                abstract = reply.result
+            if reply.length > 0:
+                message = message[reply.length:]
         else:
             self._progress_notify("dead_end", abstract)
-            return self._rollback(context), message, context
-
-        if reply.length > 0:
-            message = message[reply.length:]
+            return self._can_rollback(context), message, context
 
         return abstract, message, context
 
