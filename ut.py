@@ -178,7 +178,7 @@ class SelectiveNotion(ComplexNotion):
 
                         return Reply([case, self], {"process":{"state": "refresh", "update": {self: cases}}}) # TODO: real dialogue?
                     else:
-                        return Reply(False, {"process":{"state": "restore"}})
+                        return Reply(False, {"process":{"state": "clear"}}) # TODO: only self in error?
 
                 else:
                     del context[self]

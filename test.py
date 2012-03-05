@@ -257,7 +257,7 @@ class BasicTests(unittest.TestCase):
         process = ParserProcess()
         process.call(logger)
 
-        # Simple selective test: root -a-> a, -b-> b
+        # Simple selective test: root -a-> a, -b-> b for "b"
         root = SelectiveNotion("root")
         a = FunctionNotion("a", add_to_result)
 
@@ -277,7 +277,18 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(not root in context)
         self.assertFalse(context[process]["states"])
 
-        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa, -bb->bb) ) )
+        # Alternative negative test: same tree, message "xx"
+        context = {"start": root}
+        r = process.parse("xx", context)
+        context = r.context["final"]
+
+        self.assertFalse("result" in context)
+        self.assertFalse(r.result)
+        self.assertEqual(r.length, 0)
+        self.assertListEqual(context["error"], [c2, root])
+        self.assertFalse(context[process]["states"])
+
+        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa, -bb->bb) ) ) for "aa"
         c1.subject = None
         c2.subject = None
 
