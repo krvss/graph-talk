@@ -31,7 +31,7 @@ class Reply(object):
         self.context = context
 
     def is_error(self):
-        return self.result == False
+        return self.context and "error" in self.context
 
     @property
     def length(self):
@@ -144,7 +144,7 @@ class ComplexNotion(Notion):
     def parse(self, message, context = None):
         reply = super(ComplexNotion, self).parse(message)
 
-        if reply.is_error():
+        if not reply.result:
             if message == "relating":
                 if context.get("subject") == self:
                     self._relate(context["relation"])
@@ -178,7 +178,7 @@ class SelectiveNotion(ComplexNotion):
 
                         return [Reply(True, {"process":{"state": "refresh", "update": {self: cases}}}), case, Reply(self)]
                     else:
-                        return [Reply(True, {"process":{"state": "clear"}}), Reply()] # TODO: only self in error?
+                        return [Reply(True, {"process":{"state": "clear"}}), Reply(context= {"error":self})] # TODO: only self in error?
 
                 else:
                     del context[self]
@@ -231,7 +231,7 @@ class ConditionalRelation(Relation):
 
                 return Reply(self.object, {"length": length})
 
-        return Reply()
+        return Reply(context={"error":self})
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times
@@ -280,7 +280,13 @@ class LoopRelation(Relation):
             else:
                 state = "clear"
 
-            reply = [Reply(True, {"process": {"state": state}}), Reply(not error)]
+            reply = [Reply(True, {"process": {"state": state}})]
+
+            if error:
+                reply.append(Reply(context={"error": self}))
+            else:
+                reply.append(Reply(True))
+
 
         return reply
 
@@ -379,10 +385,6 @@ class ParserProcess(Process):
         # Got sequence?
         if type(reply) is types.ListType:
             if len(reply) >= 1:
-                for r in reply:
-                    if not hasattr(r, "abstract"): #TODO integrate
-                        r.abstract = abstract
-
                 r = reply.pop(0) # First one is ready to be processed
 
                 if reply:
@@ -391,11 +393,9 @@ class ParserProcess(Process):
                 reply = r
             else:
                 return True, message, context # Let's try to roll back
-        else:
-            reply.abstract = abstract # TODO integrate
 
         # Todo: string analysis
-        if reply.process:
+        if isinstance(reply, Reply) and reply.process:
             cmd = str(reply.process["state"])
 
             # Commands processing
@@ -419,9 +419,9 @@ class ParserProcess(Process):
 
         # Error control
         if reply.is_error():
-            self._get_error(context).append(reply.abstract)
+            self._get_error(context).append(reply.context["error"])
 
-            self._progress_notify("error at", abstract)
+            self._progress_notify("error at", reply.context["error"])
 
             return self._can_rollback(context), message, context
 
