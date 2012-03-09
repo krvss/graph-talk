@@ -305,9 +305,22 @@ class Process(Abstract):
             abstract = context.get("start") #TODO we can use message for start
 
         initial_length = len(message)
+        stop = False
 
-        while abstract: # TODO : stop when message empty?
-            abstract, message, context = self.get_next(abstract, message, context)
+        while not stop: # TODO : stop when message empty?
+            next = self.get_next(abstract, message, context)
+
+            if "message" in next:
+                message = next["message"]
+
+            if "context" in next:
+                context = next["context"]
+
+            if "abstract" in next:
+                abstract = next["abstract"]
+
+            if "stop" in next:
+                stop = next["stop"]
 
         return Reply(not "error" in context, {"length": initial_length - len(message), "final": context}) # TODO: try to keep original
 
@@ -374,7 +387,7 @@ class ParserProcess(Process):
             if self._can_rollback(context):
                 reply = self._rollback(context) # TODO: consider non-Reply type here
             else:
-                return False, message, context # Stopping
+                return {"stop": True} # Stopping
 
         # Asking!
         else:
@@ -392,7 +405,7 @@ class ParserProcess(Process):
 
                 reply = r
             else:
-                return True, message, context # Let's try to roll back
+                return {"abstract": True} # Let's try to roll back
 
         # Todo: string analysis
         if isinstance(reply, Reply) and reply.process:
@@ -423,7 +436,7 @@ class ParserProcess(Process):
 
             self._progress_notify("error at", reply.context["error"])
 
-            return self._can_rollback(context), message, context
+            return {"abstract": self._can_rollback(context), "message": message, "context": context}
 
         if reply.result:
             abstract = reply.result
@@ -432,7 +445,7 @@ class ParserProcess(Process):
                 message = message[reply.length:]
         else:
             self._progress_notify("dead_end", abstract)
-            return self._can_rollback(context), message, context
+            return {"abstract": self._can_rollback(context), "message": message, "context": context}
 
-        return abstract, message, context
+        return {"abstract": abstract, "message": message, "context": context}
 
