@@ -49,7 +49,7 @@ class Reply(object):
 class Notion(Abstract):
     def __init__(self, name):
         super(Abstract, self).__init__()
-        self.name = unicode(name)
+        self.name = name
 
     def parse(self, message, context = None):
         return Reply()
@@ -155,11 +155,11 @@ class ComplexNotion(Notion):
 
             else: # Returning relations by default
                 if len(self._relations) == 1:
-                    return Reply(self._relations[0])
+                    return Reply(self._relations[0]) # Todo return abstract without reply
                 elif not self._relations:
-                    return Reply()
+                    return Reply() # TODO return none
                 else:
-                    return [Reply(relation) for relation in self._relations]
+                    return [Reply(relation) for relation in self._relations] # TODO return list
 
 
 # Selective notion: complex notion that can consist of one of its objects
@@ -176,13 +176,13 @@ class SelectiveNotion(ComplexNotion):
                     if cases:
                         case = cases.pop(0)
 
-                        return [Reply(True, {"process":{"state": "refresh", "update": {self: cases}}}), case, Reply(self)]
+                        return [Reply(True, {"process":{"state": "refresh", "update": {self: cases}}}), case, Reply(self)] # TODO return list
                     else:
                         return [Reply(True, {"process":{"state": "clear"}}), Reply(context= {"error":self})] # TODO: only self in error?
 
                 else:
                     del context[self]
-                    return Reply(True, {"process": {"state":"clear"}})
+                    return Reply(True, {"process": {"state":"clear"}}) # todo return string only
 
         reply = super(SelectiveNotion, self).parse(message, context)
 
@@ -193,7 +193,7 @@ class SelectiveNotion(ComplexNotion):
             case = reply.pop(0)
             context[self] = reply
 
-            return [Reply(True, {"process":{"state":"store"}}), case, Reply(self)]
+            return [Reply(True, {"process":{"state":"store"}}), case, Reply(self)] # todo return string only
 
         return reply
 
@@ -253,7 +253,7 @@ class LoopRelation(Relation):
                     repeat = False
 
                     if not self.n:
-                        restore = True # Number of iterations is arbitrary if no restriction
+                        restore = True # Number of iterations is arbitrary if no restriction, we need to restore last good context
                     else:
                         error = True # Number is fixed so we have an error
                 else:
@@ -268,7 +268,7 @@ class LoopRelation(Relation):
             else:
                 context[self] = 1 if self.n else True # Initializing the loop
 
-        if repeat:
+        if repeat: # todo return string only
             reply = [Reply(True, {"process":{"state":"store"}}), Reply(self.object), Reply(self)] # Self is a new next to think should we repeat or not
         else:
 
@@ -280,12 +280,12 @@ class LoopRelation(Relation):
             else:
                 state = "clear"
 
-            reply = [Reply(True, {"process": {"state": state}})]
+            reply = [Reply(True, {"process": {"state": state}})] # todo return list
 
             if error:
                 reply.append(Reply(context={"error": self}))
             else:
-                reply.append(Reply(True))
+                reply.append(Reply(True)) # todo return true only
 
 
         return reply
