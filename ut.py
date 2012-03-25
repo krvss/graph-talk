@@ -52,7 +52,7 @@ class Notion(Abstract):
         self.name = name
 
     def parse(self, message, context = None):
-        return Reply()
+        return None
 
     def __str__(self):
         if self.name:
@@ -116,7 +116,7 @@ class FunctionNotion(Notion):
         self.function = function if callable(function) else None
 
     def parse(self, message, context = None):
-        return Reply(self.function(self, context) if self.function else True)
+        return self.function(self, context) if self.function else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -144,7 +144,7 @@ class ComplexNotion(Notion):
     def parse(self, message, context = None):
         reply = super(ComplexNotion, self).parse(message)
 
-        if not reply.result:
+        if not reply:
             if message == "relating":
                 if context.get("subject") == self:
                     self._relate(context["relation"])
@@ -155,11 +155,11 @@ class ComplexNotion(Notion):
 
             else: # Returning relations by default
                 if len(self._relations) == 1:
-                    return Reply(self._relations[0]) # Todo return abstract without reply
+                    return self._relations[0]
                 elif not self._relations:
-                    return Reply() # TODO return none
+                    return None
                 else:
-                    return [Reply(relation) for relation in self._relations] # TODO return list
+                    return list(self._relations)
 
 
 # Selective notion: complex notion that can consist of one of its objects
@@ -176,13 +176,13 @@ class SelectiveNotion(ComplexNotion):
                     if cases:
                         case = cases.pop(0)
 
-                        return [Reply(True, {"process":{"state": "refresh", "update": {self: cases}}}), case, Reply(self)] # TODO return list
+                        return ["restore", Command("update", {self: cases}), "store", case, self]
                     else:
-                        return [Reply(True, {"process":{"state": "clear"}}), Reply(context= {"error":self})] # TODO: only self in error?
+                        return ["clear", "error"]
 
                 else:
                     del context[self]
-                    return Reply(True, {"process": {"state":"clear"}}) # todo return string only
+                    return "clear"
 
         reply = super(SelectiveNotion, self).parse(message, context)
 
@@ -193,7 +193,7 @@ class SelectiveNotion(ComplexNotion):
             case = reply.pop(0)
             context[self] = reply
 
-            return [Reply(True, {"process":{"state":"store"}}), case, Reply(self)] # todo return string only
+            return ["store", case, self]
 
         return reply
 
@@ -204,7 +204,7 @@ class NextRelation(Relation):
         super(NextRelation, self).__init__(subject, object)
 
     def parse(self, message, context = None):
-        return Reply(result = self.object)
+        return self.object
 
 
 # Conditional relation is a condition to go further if message starts with sequence
@@ -229,9 +229,9 @@ class ConditionalRelation(Relation):
                 if context and self.object: # May be this is something for the object
                     context[self.object] = result
 
-                return Reply(self.object, {"length": length})
+                return [Command("move", length), self.object]
 
-        return Reply(context={"error":self})
+        return "error"
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times
@@ -268,8 +268,8 @@ class LoopRelation(Relation):
             else:
                 context[self] = 1 if self.n else True # Initializing the loop
 
-        if repeat: # todo return string only
-            reply = [Reply(True, {"process":{"state":"store"}}), Reply(self.object), Reply(self)] # Self is a new next to think should we repeat or not
+        if repeat:
+            reply = ["store", self.object, self] # Self is a new next to think should we repeat or not
         else:
 
             if context and self in context:
@@ -280,13 +280,10 @@ class LoopRelation(Relation):
             else:
                 state = "clear"
 
-            reply = [Reply(True, {"process": {"state": state}})] # todo return list
+            reply = [state]
 
             if error:
-                reply.append(Reply(context={"error": self}))
-            else:
-                reply.append(Reply(True)) # todo return true only
-
+                reply.append("error")
 
         return reply
 
@@ -307,7 +304,7 @@ class Process(Abstract):
         initial_length = len(message)
         stop = False
 
-        while not stop: # TODO : stop when message empty?
+        while not stop: #TODO refactor
             next = self.get_next(abstract, message, context)
 
             if "message" in next:
@@ -323,6 +320,13 @@ class Process(Abstract):
                 stop = next["stop"]
 
         return Reply(not "error" in context, {"length": initial_length - len(message), "final": context}) # TODO: try to keep original
+
+
+# Process command class
+class Command(object):
+    def __init__(self, name, arg = None):
+        self.name = name
+        self.arg = arg
 
 
 # Parser process
@@ -362,20 +366,21 @@ class ParserProcess(Process):
 
     def _rollback(self, context):
         abstract = None
+        reply = None
 
         if self._can_rollback(context):
-            abstract = self._get_stack(context).pop(0)
+            abstract, reply = self._get_stack(context).pop(0)
 
             self._progress_notify("rolled_back", abstract)
 
-        return abstract
+        return abstract, reply
 
     def _can_rollback(self, context):
         return len(self._get_stack(context)) > 0
 
-    def _add_to_stack(self, context, abstract):
+    def _add_to_stack(self, context, abstract, reply):
         stack = self._get_stack(context)
-        stack.insert(0, abstract)
+        stack.insert(0, (abstract, reply))
 
         self._progress_notify("added_to_stack", abstract)
 
@@ -385,7 +390,7 @@ class ParserProcess(Process):
             self._progress_notify("not_abstract", abstract)
 
             if self._can_rollback(context):
-                reply = self._rollback(context) # TODO: consider non-Reply type here
+                abstract, reply = self._rollback(context)
             else:
                 return {"stop": True} # Stopping
 
@@ -400,52 +405,55 @@ class ParserProcess(Process):
             if len(reply) >= 1:
                 r = reply.pop(0) # First one is ready to be processed
 
-                if reply:
-                    self._add_to_stack(context, reply)
+                if reply: # No need to push empty list
+                    self._add_to_stack(context, abstract, reply)
 
                 reply = r
             else:
-                return {"abstract": True} # Let's try to roll back
+                return {"abstract": None} # Let's try to roll back
 
-        # Todo: string analysis
-        if isinstance(reply, Reply) and reply.process:
-            cmd = str(reply.process["state"])
+        # Got command?
+        if isinstance(reply, str):
+            reply = Command(reply)
 
+        if isinstance(reply, Command):
             # Commands processing
-            if cmd == "restore" or cmd == "refresh":
+            if reply.name == "restore":
                 message, context = self._get_states(context)[abstract]
                 if abstract in self._get_states(context):
                     del self._get_states(context)[abstract]
 
                 self._progress_notify("restored_for", abstract, message)
 
-                if cmd == "refresh" and "update" in reply.process:
-                    context.update(reply.process["update"])
+            elif reply.name == "update":
+                context.update(reply.arg)
 
-            if cmd == "store" or cmd == "refresh":
+                self._progress_notify("updated_for", abstract, message)
+
+            elif reply.name == "store":
                 self._get_states(context)[abstract] = (message, dict(context))
 
                 self._progress_notify("storing", abstract, message)
 
-            if cmd == "clear":
+            elif reply.name == "clear":
                 del self._get_states(context)[abstract]
 
-        # Error control
-        if reply.is_error():
-            self._get_error(context).append(reply.context["error"])
+            elif reply.name == "error":
+                error = reply.arg or abstract
 
-            self._progress_notify("error at", reply.context["error"])
+                self._get_error(context).append(error)
 
-            return {"abstract": self._can_rollback(context), "message": message, "context": context}
+                self._progress_notify("error_at", error)
 
-        if reply.result:
-            abstract = reply.result
+            elif reply.name == "move":
+                message = message[reply.arg:]
 
-            if reply.length > 0:
-                message = message[reply.length:]
+            elif reply.name == "replace":
+                message = reply.arg
+
+            abstract = None
+
         else:
-            self._progress_notify("dead_end", abstract)
-            return {"abstract": self._can_rollback(context), "message": message, "context": context}
+            abstract = reply
 
         return {"abstract": abstract, "message": message, "context": context}
-
