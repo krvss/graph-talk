@@ -65,8 +65,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("", context)
 
         self.assertEqual(context["result"], "a")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 0)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 0)
 
 
     def test_condition(self):
@@ -83,15 +83,15 @@ class BasicTests(unittest.TestCase):
         r = process.parse("a", context)
 
         self.assertEqual(context["result"], "a")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 1)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 1)
 
         # Simple negative condition test root -a-> a for "n"
         r = process.parse("n", context)
 
         self.assertListEqual(context["error"], [c])
-        self.assertFalse(r.result)
-        self.assertEqual(r.length, 0)
+        self.assertFalse(r["result"])
+        self.assertEqual(r["length"], 0)
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a
@@ -100,8 +100,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("a", context)
 
         self.assertEqual(context["result"], "a")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 1)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 1)
 
 
     def test_complex(self):
@@ -123,8 +123,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("", context)
 
         self.assertEqual(context["result"], "ab")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 0)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 0)
 
         # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for "a"
 
@@ -138,8 +138,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("a", context)
 
         self.assertEqual(context["result"], "a")
-        self.assertFalse(r.result)
-        self.assertEqual(r.length, 1)
+        self.assertFalse(r["result"])
+        self.assertEqual(r["length"], 1)
         self.assertListEqual(context["error"], [r2])
 
         # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
@@ -159,8 +159,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("abf", context)
 
         self.assertEqual(context["result"], "abdef")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 3)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 3)
         self.assertTrue(not "error" in context)
 
 
@@ -180,8 +180,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("aaaaa", context)
 
         self.assertEqual(context["result"], "aaaaa")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 5)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 5)
         self.assertTrue(not l in context)
         self.assertFalse(context[process]["states"])
 
@@ -190,8 +190,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("aaaa", context)
 
         self.assertEqual(context["result"], "aaaa")
-        self.assertFalse(r.result)
-        self.assertEqual(r.length, 4)
+        self.assertFalse(r["result"])
+        self.assertEqual(r["length"], 4)
         self.assertListEqual(context["error"], [c, l])
         self.assertTrue(not l in context)
         self.assertFalse(context[process]["states"])
@@ -203,8 +203,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("aaaa", context)
 
         self.assertEqual(context["result"], "aaaa")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 4)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 4)
         self.assertTrue(not l in context)
         self.assertFalse(context[process]["states"])
 
@@ -215,8 +215,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("aaaaa", context)
 
         self.assertEqual(context["result"], "aaaaa")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 5)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 5)
         self.assertTrue(not "error" in context)
         self.assertTrue(not l in context)
         self.assertFalse(context[process]["states"])
@@ -233,8 +233,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("aaaaa", context)
 
         self.assertEqual(context["result"], "aaaa")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 4)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 4)
         self.assertTrue(not "error" in context)
         self.assertTrue(not l in context)
         self.assertTrue(not l2 in context)
@@ -245,8 +245,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("aaab", context)
 
         self.assertEqual(context["result"], "aaa")
-        self.assertFalse(r.result)
-        self.assertEqual(r.length, 3)
+        self.assertFalse(r["result"])
+        self.assertEqual(r["length"], 3)
         self.assertListEqual(context["error"], [c, l, l2])
         self.assertTrue(not l in context)
         self.assertTrue(not l2 in context)
@@ -268,11 +268,11 @@ class BasicTests(unittest.TestCase):
 
         context = {"start": root}
         r = process.parse("b", context)
-        context = r.context["final"]
+        context = r["final"]
 
         self.assertEqual(context["result"], "b")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 1)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 1)
         self.assertTrue(not "error" in context)
         self.assertTrue(not root in context)
         self.assertFalse(context[process]["states"])
@@ -280,11 +280,11 @@ class BasicTests(unittest.TestCase):
         # Alternative negative test: same tree, message "xx"
         context = {"start": root}
         r = process.parse("xx", context)
-        context = r.context["final"]
+        context = r["final"]
 
         self.assertFalse("result" in context)
-        self.assertFalse(r.result)
-        self.assertEqual(r.length, 0)
+        self.assertFalse(r["result"])
+        self.assertEqual(r["length"], 0)
         self.assertListEqual(context["error"], [c2, root])
         self.assertFalse(context[process]["states"])
 
@@ -312,11 +312,11 @@ class BasicTests(unittest.TestCase):
 
         context = {"start": root}
         r = process.parse("aa", context)
-        context = r.context["final"]
+        context = r["final"]
 
         self.assertEqual(context["result"], "aa")
-        self.assertTrue(r.result)
-        self.assertEqual(r.length, 2)
+        self.assertTrue(r["result"])
+        self.assertEqual(r["length"], 2)
         self.assertTrue(not "error" in context)
         self.assertTrue(not root in context)
         self.assertFalse(context[process]["states"])

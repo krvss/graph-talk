@@ -24,27 +24,6 @@ class Abstract(object):
                 callee.parse(message, context)
 
 
-# Class for simple replies
-class Reply(object):
-    def __init__(self, result = False, context = None):
-        self.result = result
-        self.context = context
-
-    def is_error(self):
-        return self.context and "error" in self.context
-
-    @property
-    def length(self):
-        return self.context["length"] if self.context and "length" in self.context else 0
-
-    @property
-    def process(self):
-        return self.context["process"] if self.context and "process" in self.context else None
-
-    def __str__(self):
-        return "[%s:%s]" % (self.result, self.length)
-
-
 # Notion is an abstract with name
 class Notion(Abstract):
     def __init__(self, name):
@@ -154,12 +133,8 @@ class ComplexNotion(Notion):
                     self._unrelate(context["relation"])
 
             else: # Returning relations by default
-                if len(self._relations) == 1:
-                    return self._relations[0]
-                elif not self._relations:
-                    return None
-                else:
-                    return list(self._relations)
+                if self._relations:
+                    return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
 
 # Selective notion: complex notion that can consist of one of its objects
@@ -176,7 +151,7 @@ class SelectiveNotion(ComplexNotion):
                     if cases:
                         case = cases.pop(0)
 
-                        return ["restore", Command("update", {self: cases}), "store", case, self]
+                        return ["restore", {"update": {self: cases}}, "store", case, self]
                     else:
                         return ["clear", "error"]
 
@@ -229,7 +204,7 @@ class ConditionalRelation(Relation):
                 if context and self.object: # May be this is something for the object
                     context[self.object] = result
 
-                return [Command("move", length), self.object]
+                return [{"move": length}, self.object]
 
         return "error"
 
@@ -319,14 +294,7 @@ class Process(Abstract):
             if "stop" in next:
                 stop = next["stop"]
 
-        return Reply(not "error" in context, {"length": initial_length - len(message), "final": context}) # TODO: try to keep original
-
-
-# Process command class
-class Command(object):
-    def __init__(self, name, arg = None):
-        self.name = name
-        self.arg = arg
+        return {"result": not "error" in context, "length": initial_length - len(message), "final": context} # TODO: try to keep original
 
 
 # Parser process
@@ -386,7 +354,7 @@ class ParserProcess(Process):
 
     def get_next(self, abstract, message, context):
         # Check do we have where to go to
-        if not abstract or not isinstance(abstract, Abstract):
+        if not abstract or not isinstance(abstract, Abstract): # TODO: What if abstract is string with command - keep current in context?
             self._progress_notify("not_abstract", abstract)
 
             if self._can_rollback(context):
@@ -414,42 +382,43 @@ class ParserProcess(Process):
 
         # Got command?
         if isinstance(reply, str):
-            reply = Command(reply)
+            reply = {reply: None}
 
-        if isinstance(reply, Command):
-            # Commands processing
-            if reply.name == "restore":
-                message, context = self._get_states(context)[abstract]
-                if abstract in self._get_states(context):
+        if isinstance(reply, dict):
+            for name, arg in reply.iteritems():
+                # Commands processing
+                if name == "restore":
+                    message, context = self._get_states(context)[abstract]
+                    if abstract in self._get_states(context):
+                        del self._get_states(context)[abstract]
+
+                    self._progress_notify("restored_for", abstract, message)
+
+                elif name == "update":
+                    context.update(arg)
+
+                    self._progress_notify("updated_for", abstract, message)
+
+                elif name == "store":
+                    self._get_states(context)[abstract] = (message, dict(context))
+
+                    self._progress_notify("storing", abstract, message)
+
+                elif name == "clear":
                     del self._get_states(context)[abstract]
 
-                self._progress_notify("restored_for", abstract, message)
+                elif name == "error":
+                    error = arg or abstract
 
-            elif reply.name == "update":
-                context.update(reply.arg)
+                    self._get_error(context).append(error)
 
-                self._progress_notify("updated_for", abstract, message)
+                    self._progress_notify("error_at", error)
 
-            elif reply.name == "store":
-                self._get_states(context)[abstract] = (message, dict(context))
+                elif name == "move":
+                    message = message[arg:]
 
-                self._progress_notify("storing", abstract, message)
-
-            elif reply.name == "clear":
-                del self._get_states(context)[abstract]
-
-            elif reply.name == "error":
-                error = reply.arg or abstract
-
-                self._get_error(context).append(error)
-
-                self._progress_notify("error_at", error)
-
-            elif reply.name == "move":
-                message = message[reply.arg:]
-
-            elif reply.name == "replace":
-                message = reply.arg
+                elif name == "replace":
+                    message = arg
 
             abstract = None
 
