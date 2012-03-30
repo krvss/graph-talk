@@ -268,7 +268,6 @@ class BasicTests(unittest.TestCase):
 
         context = {"start": root}
         r = process.parse("b", context)
-        context = r["final"]
 
         self.assertEqual(context["result"], "b")
         self.assertTrue(r["result"])
@@ -280,7 +279,6 @@ class BasicTests(unittest.TestCase):
         # Alternative negative test: same tree, message "xx"
         context = {"start": root}
         r = process.parse("xx", context)
-        context = r["final"]
 
         self.assertFalse("result" in context)
         self.assertFalse(r["result"])
@@ -312,7 +310,6 @@ class BasicTests(unittest.TestCase):
 
         context = {"start": root}
         r = process.parse("aa", context)
-        context = r["final"]
 
         self.assertEqual(context["result"], "aa")
         self.assertTrue(r["result"])

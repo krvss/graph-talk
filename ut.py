@@ -156,7 +156,6 @@ class SelectiveNotion(ComplexNotion):
                         return ["clear", "error"]
 
                 else:
-                    del context[self]
                     return "clear"
 
         reply = super(SelectiveNotion, self).parse(message, context)
@@ -246,16 +245,10 @@ class LoopRelation(Relation):
         if repeat:
             reply = ["store", self.object, self] # Self is a new next to think should we repeat or not
         else:
-
-            if context and self in context:
-                del context[self] # Clean up
-
             if restore:
-                state = "restore"
+                reply = ["restore", "clear"] # Clean up after restore needed to remove self from context
             else:
-                state = "clear"
-
-            reply = [state]
+                reply = ["clear"] # No need to restore, just clear self
 
             if error:
                 reply.append("error")
@@ -285,16 +278,13 @@ class Process(Abstract):
             if "message" in next:
                 message = next["message"]
 
-            if "context" in next:
-                context = next["context"]
-
             if "abstract" in next:
                 abstract = next["abstract"]
 
             if "stop" in next:
                 stop = next["stop"]
 
-        return {"result": not "error" in context, "length": initial_length - len(message), "final": context} # TODO: try to keep original
+        return {"result": not "error" in context, "length": initial_length - len(message)}
 
 
 # Parser process
@@ -388,7 +378,11 @@ class ParserProcess(Process):
             for name, arg in reply.iteritems():
                 # Commands processing
                 if name == "restore":
-                    message, context = self._get_states(context)[abstract]
+                    message, old_context = self._get_states(context)[abstract]
+
+                    context.clear() # Keeping context object intact
+                    context.update(old_context)
+
                     if abstract in self._get_states(context):
                         del self._get_states(context)[abstract]
 
@@ -405,7 +399,12 @@ class ParserProcess(Process):
                     self._progress_notify("storing", abstract, message)
 
                 elif name == "clear":
-                    del self._get_states(context)[abstract]
+                    if abstract in self._get_states(context): # TODO: copy of restore part, combine or remove
+                        del self._get_states(context)[abstract]
+
+                    if arg != "state":
+                        if abstract in context:
+                            del context[abstract]
 
                 elif name == "error":
                     error = arg or abstract
@@ -425,4 +424,4 @@ class ParserProcess(Process):
         else:
             abstract = reply
 
-        return {"abstract": abstract, "message": message, "context": context}
+        return {"abstract": abstract, "message": message}
