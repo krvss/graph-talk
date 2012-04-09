@@ -149,14 +149,15 @@ class SelectiveNotion(ComplexNotion):
                     cases = context[self]
 
                     if cases:
-                        case = cases.pop(0)
+                        case = cases.pop(0) # Try another case
 
+                        # Pop and update context, then try another case and come back here
                         return ["restore", {"update": {self: cases}}, "store", case, self]
                     else:
-                        return ["clear", "error"]
+                        return ["clear", "error"] # Nowhere to go, stop
 
                 else:
-                    return "clear"
+                    return "clear" # Everything is ok, clear the past
 
         reply = super(SelectiveNotion, self).parse(message, context)
 
@@ -165,9 +166,9 @@ class SelectiveNotion(ComplexNotion):
 
         elif context:
             case = reply.pop(0)
-            context[self] = reply
+            context[self] = reply # Store the cases
 
-            return ["store", case, self]
+            return ["store", case, self] # Try first one
 
         return reply
 
