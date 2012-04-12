@@ -42,7 +42,7 @@ def if_loop(loop, context):
     return False
 
 
-def is_a(message):
+def is_a(message, context):
     if message.startswith("a"):
         return True, 1
     else:

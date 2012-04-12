@@ -193,7 +193,7 @@ class ConditionalRelation(Relation):
             result = None
 
             if callable(self.checker):
-                result, length = self.checker(message)
+                result, length = self.checker(message, context)
             else:
                 length = len(self.checker) if message.startswith(self.checker) else 0
 
@@ -260,38 +260,8 @@ class LoopRelation(Relation):
 # Base process class
 class Process(Abstract):
 
-    def get_next(self, abstract, message, context):
+    def get_next(self, context):
         raise NotImplementedError()
-
-    def parse(self, message, context = None):
-        if not context:
-            context = {}
-            abstract = None
-        else:
-            abstract = context.get("start") #TODO we can use message for start
-
-        initial_length = len(message)
-        stop = False
-
-        while not stop: #TODO refactor
-            next = self.get_next(abstract, message, context)
-
-            if "message" in next:
-                message = next["message"]
-
-            if "abstract" in next:
-                abstract = next["abstract"]
-
-            if "stop" in next:
-                stop = next["stop"]
-
-        return {"result": not "error" in context, "length": initial_length - len(message)}
-
-
-# Parser process
-class ParserProcess(Process):
-    def __init__(self):
-        super(ParserProcess, self).__init__()
 
     def _get_context_info(self, context, name, default):
         if not self in context:
@@ -302,6 +272,46 @@ class ParserProcess(Process):
             return default
         else:
             return context[self][name]
+
+    def _get_message(self, context):
+        return self._get_context_info(context, "message", None)
+
+    def _set_message(self, context, message):
+        self._get_context_info(context, "message", None)
+
+        context[self]["message"] = message
+
+    def _get_current(self, context):
+        return self._get_context_info(context, "current", None)
+
+    def _set_current(self, context, abstract):
+        self._get_context_info(context, "current", None)
+
+        context[self]["current"] = abstract
+
+    def parse(self, message, context = None):
+        if not context:
+            context = {}
+            abstract = None
+        else:
+            abstract = context.get("start") #TODO we can use message for start
+
+        self._set_message(context, message)
+        self._set_current(context, abstract)
+
+        initial_length = len(message)
+
+        while self.get_next(context): #TODO refactor
+            pass
+
+        message = self._get_message(context)
+        return {"result": not "error" in context, "length": initial_length - len(message)}
+
+
+# Parser process
+class ParserProcess(Process):
+    def __init__(self):
+        super(ParserProcess, self).__init__()
 
     def _get_stack(self, context):
         return self._get_context_info(context, "stack", [])
@@ -343,7 +353,11 @@ class ParserProcess(Process):
 
         self._progress_notify("added_to_stack", abstract)
 
-    def get_next(self, abstract, message, context):
+    def get_next(self, context):
+
+        message = self._get_message(context)
+        abstract = self._get_current(context)
+
         # Check do we have where to go to
         if not abstract or not isinstance(abstract, Abstract): # TODO: What if abstract is string with command - keep current in context?
             self._progress_notify("not_abstract", abstract)
@@ -351,7 +365,7 @@ class ParserProcess(Process):
             if self._can_rollback(context):
                 abstract, reply = self._rollback(context)
             else:
-                return {"stop": True} # Stopping
+                return False # Stopping
 
         # Asking!
         else:
@@ -369,7 +383,8 @@ class ParserProcess(Process):
 
                 reply = r
             else:
-                return {"abstract": None} # Let's try to roll back
+                self._set_current(context, None)
+                return True # Let's try to roll back
 
         # Got command?
         if isinstance(reply, str):
@@ -425,4 +440,7 @@ class ParserProcess(Process):
         else:
             abstract = reply
 
-        return {"abstract": abstract, "message": message}
+        self._set_message(context, message)
+        self._set_current(context, abstract)
+
+        return True
