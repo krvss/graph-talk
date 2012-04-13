@@ -8,7 +8,7 @@ class Abstract(object):
     def __init__(self):
         self._callbacks = []
 
-    def parse(self, message, context = None):
+    def parse(self, message, context = None): # TODO: context = {}
         return None
 
     def call(self, callback, forget = False):
@@ -21,7 +21,7 @@ class Abstract(object):
     def _notify(self, message, context = None):
         for callee in self._callbacks:
             if callable(callee.parse):
-                callee.parse(message, context)
+                callee.parse(message, context) # TODO add from and use think
 
 
 # Notion is an abstract with name
@@ -50,7 +50,7 @@ class Relation(Abstract):
 
     def _disconnect(self, value, target):
         if value:
-            self._notify("unrelating", {"relation": self, target: value})
+            self._notify("unrelating", {"relation": self, target: value}) # TODO relation -> from
             self.call(value, True)
 
     def _connect(self, value, target):
@@ -331,7 +331,7 @@ class ParserProcess(Process):
     def _progress_notify(self, info, abstract, parsing_message = None, parsing_context = None):
         self._notify(info, {"abstract": abstract,
                             "message": parsing_message or "",
-                            "context": parsing_context or ""})
+                            "context": parsing_context or ""}) # TODO remove, add from instead
 
     def _rollback(self, context):
         abstract = None
