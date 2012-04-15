@@ -289,23 +289,33 @@ class Process(Abstract):
 
         context[self]["current"] = abstract
 
+    def _get_text(self, context):
+        return context["text"] if "text" in context else "" # TODO: should be within process context, here because of ctx copy problems
+
+    def _set_text(self, context, text):
+        context["text"] = text
+
+
     def parse(self, message, context = None):
         if not context:
             context = {}
-            abstract = None
-        else:
-            abstract = context.get("start") #TODO we can use message for start
-
-        self._set_message(context, message)
-        self._set_current(context, abstract)
+        #
+        #    abstract = None
+        #else:
+        #    abstract = context.get("start") #TODO we can use message for start
 
         initial_length = len(message)
+        message = {"start": context.get("start"), "text": message}
+
+        
+        self._set_message(context, message)
+        #self._set_current(context, abstract)
 
         while self.get_next(context): #TODO refactor
             pass
 
-        message = self._get_message(context)
-        return {"result": not "error" in context, "length": initial_length - len(message)}
+        text = self._get_text(context)
+        return {"result": not "error" in context, "length": initial_length - len(text)}
 
 
 # Parser process
@@ -331,7 +341,8 @@ class ParserProcess(Process):
     def _progress_notify(self, info, abstract, parsing_message = None, parsing_context = None):
         self._notify(info, {"abstract": abstract,
                             "message": parsing_message or "",
-                            "context": parsing_context or ""}) # TODO remove, add from instead
+                            "text": self._get_text(parsing_context) if parsing_context else "",
+                            "context": parsing_context or ""}) # TODO remove, add from instead, use message/abs from ctx
 
     def _rollback(self, context):
         abstract = None
@@ -356,91 +367,117 @@ class ParserProcess(Process):
     def get_next(self, context):
 
         message = self._get_message(context)
+        text = self._get_text(context)
         abstract = self._get_current(context)
 
-        # Check do we have where to go to
-        if not abstract or not isinstance(abstract, Abstract): # TODO: What if abstract is string with command - keep current in context?
-            self._progress_notify("not_abstract", abstract)
-
-            if self._can_rollback(context):
-                abstract, reply = self._rollback(context)
-            else:
-                return False # Stopping
-
-        # Asking!
-        else:
-            self._progress_notify("abstract_current", abstract, message, context)
-
-            reply = abstract.parse(message, context)
-
         # Got sequence?
-        if type(reply) is types.ListType:
-            if len(reply) >= 1:
-                r = reply.pop(0) # First one is ready to be processed
+        if type(message) is types.ListType:
+            if len(message) >= 1:
+                m = message.pop(0) # First one is ready to be processed
 
-                if reply: # No need to push empty list
-                    self._add_to_stack(context, abstract, reply)
+                if message: # No need to push empty list
+                    self._add_to_stack(context, abstract, message)
 
-                reply = r
+                message = m
             else:
                 self._set_current(context, None)
+                self._set_message(context, None)
+
                 return True # Let's try to roll back
 
         # Got command?
-        if isinstance(reply, str):
-            reply = {reply: None}
+        if isinstance(message, str):
+            message = {message: None}
 
-        if isinstance(reply, dict):
-            for name, arg in reply.iteritems():
-                # Commands processing
-                if name == "restore":
-                    message, old_context = self._get_states(context)[abstract]
+        # Commands where abstract is not needed
+        if isinstance(message, dict):
+            for name, arg in message.iteritems():
+                if name == "start":
+                    self._set_current(context, arg)
+                    
+                elif name == "stop":
+                    return False # Stop at once
+                
+                elif name == "text":
+                    text = arg
+                    self._set_text(context, arg)
 
-                    context.clear() # Keeping context object intact
-                    context.update(old_context)
+                elif name == "move":
 
-                    if abstract in self._get_states(context):
-                        del self._get_states(context)[abstract]
-
-                    self._progress_notify("restored_for", abstract, message)
-
-                elif name == "update":
-                    context.update(arg)
-
-                    self._progress_notify("updated_for", abstract, message)
-
-                elif name == "store":
-                    self._get_states(context)[abstract] = (message, dict(context))
-
-                    self._progress_notify("storing", abstract, message)
-
-                elif name == "clear":
-                    if abstract in self._get_states(context): # TODO: copy of restore part, combine or remove
-                        del self._get_states(context)[abstract]
-
-                    if arg != "state":
-                        if abstract in context:
-                            del context[abstract]
+                    text = text[arg:]
+                    self._set_text(context, text)
 
                 elif name == "error":
-                    error = arg or abstract
-
+                    error = arg or abstract or self
                     self._get_error(context).append(error)
 
                     self._progress_notify("error_at", error)
 
-                elif name == "move":
-                    message = message[arg:]
+                if abstract:
+                # Commands processing with abstract
+                    if name == "restore":
+                        old_context = self._get_states(context)[abstract]
 
-                elif name == "replace":
-                    message = arg
+                        context.clear() # Keeping context object intact
+                        context.update(old_context)
 
-            abstract = None
+                        if abstract in self._get_states(context):
+                            del self._get_states(context)[abstract]
 
+                        self._progress_notify("restored_for", abstract, text)
+
+                    elif name == "update":
+                        context.update(arg)
+
+                        self._progress_notify("updated_for", abstract, text)
+
+                    elif name == "store":
+                        self._get_states(context)[abstract] = dict(context)
+
+                        self._progress_notify("storing", abstract, text)
+
+                    elif name == "clear":
+                        if abstract in self._get_states(context): # TODO: copy of restore part, combine or remove
+                            del self._get_states(context)[abstract]
+
+                        if arg != "state":
+                            if abstract in context:
+                                del context[abstract]
+
+            # Message processing finished
+            self._set_message(context, None)
+            if abstract == self._get_current(context): # Abstract was not changed => rollback
+                self._set_current(context, None)
+            return True
+
+        # We have a new next maybe?
+        if isinstance(message, Abstract):
+            self._set_current(context, message)
+            self._set_message(context, None)
+
+            return True
+
+        # Asking!
+        if not message and abstract:
+            self._progress_notify("abstract_current", abstract, text, context)
+
+            message = abstract.parse(text, context)
+
+            self._set_message(context, message)
+
+            if message:
+                return True
+
+        # If we are here we have no next from message and no new data, let's roll back
+        self._progress_notify("rollback", abstract)
+
+        if self._can_rollback(context):
+            abstract, reply = self._rollback(context)
+            self._set_message(context, reply)
+            self._set_current(context, abstract)
+
+            return True
         else:
-            abstract = reply
+            return False # Stopping
 
-        self._set_message(context, message)
-        self._set_current(context, abstract)
 
-        return True
