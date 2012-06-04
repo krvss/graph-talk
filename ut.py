@@ -8,7 +8,7 @@ class Abstract(object):
     def __init__(self):
         self._callbacks = []
 
-    def parse(self, message, context = None): # TODO: context = {}
+    def parse(self, message, **context):
         return None
 
     def call(self, callback, forget = False):
@@ -18,10 +18,10 @@ class Abstract(object):
             if callback and callable(callback.parse):
                 self._callbacks.append(callback)
 
-    def _notify(self, message, context = None):
+    def _notify(self, message, **context):
         for callee in self._callbacks:
             if callable(callee.parse):
-                callee.parse(message, context) # TODO add from and use think
+                callee.parse(message, **context)
 
 
 # Notion is an abstract with name
@@ -30,7 +30,7 @@ class Notion(Abstract):
         super(Abstract, self).__init__()
         self.name = name
 
-    def parse(self, message, context = None):
+    def parse(self, message, **context):
         return None
 
     def __str__(self):
@@ -38,7 +38,7 @@ class Notion(Abstract):
             return "'%s'" % self.name
 
 
-# Relation is a connection between 1 or more abstracts
+# Relation is a connection between one or more abstracts
 class Relation(Abstract):
     def __init__(self, subject, object):
         super(Relation, self).__init__()
@@ -48,15 +48,21 @@ class Relation(Abstract):
         self.subject = subject
         self.object = object
 
-    def _disconnect(self, value, target):
-        if value:
-            self._notify("unrelating", {"relation": self, target: value}) # TODO relation -> from
+    def _connect(self, value, target):
+        old_value = getattr(self, target)
+
+        if old_value == value:
+            return
+
+        if old_value:
+            self._notify("unrelating", **{"from": self, target: value})
             self.call(value, True)
 
-    def _connect(self, value, target):
+        setattr(self, "_" + target, value)
+
         if value:
             self.call(value)
-            self._notify("relating", {"relation": self, target: value})
+            self._notify("relating", **{"from": self, target: value})
 
     @property
     def subject(self):
@@ -64,11 +70,6 @@ class Relation(Abstract):
 
     @subject.setter
     def subject(self, value):
-        if value == self.subject:
-            return
-
-        self._disconnect(self.subject, "subject")
-        self._subject = value
         self._connect(value, "subject")
 
     @property
@@ -77,12 +78,7 @@ class Relation(Abstract):
 
     @object.setter
     def object(self, value):
-        if value == self.object:
-            return
-
-        self._disconnect(self.object, "object")
-        self._object = value
-        self._connect(value,  "object")
+        self._connect(value, "object")
 
     def __str__(self):
         return "<%s - %s>" % (self.subject, self.object)
@@ -94,8 +90,8 @@ class FunctionNotion(Notion):
         super(FunctionNotion, self).__init__(name)
         self.function = function if callable(function) else None
 
-    def parse(self, message, context = None):
-        return self.function(self, context) if self.function else None
+    def parse(self, message, **context):
+        return self.function(self, message, **context) if self.function else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -120,17 +116,17 @@ class ComplexNotion(Notion):
             if relation.subject == self:
                 relation.subject = None
 
-    def parse(self, message, context = None):
-        reply = super(ComplexNotion, self).parse(message)
+    def parse(self, message, **context):
+        reply = super(ComplexNotion, self).parse(message, **context)
 
         if not reply:
             if message == "relating":
                 if context.get("subject") == self:
-                    self._relate(context["relation"])
+                    self._relate(context.get("from"))
 
             elif message == "unrelating":
                 if context.get("subject") == self:
-                    self._unrelate(context["relation"])
+                    self._unrelate(context.get("from"))
 
             else: # Returning relations by default
                 if self._relations:
@@ -178,7 +174,7 @@ class NextRelation(Relation):
     def __init__(self, subject, object):
         super(NextRelation, self).__init__(subject, object)
 
-    def parse(self, message, context = None):
+    def parse(self, message, **context):
         return self.object
 
 
@@ -260,6 +256,20 @@ class LoopRelation(Relation):
 # Base process class
 class Process(Abstract):
 
+    def parse(self, message, **context):
+
+        while message:
+            if isinstance(message, Abstract):
+                message = message.parse("next", **context)
+            else:
+                break
+
+        return {"result": message}
+
+
+# Base process class
+class oProcess(Abstract):
+
     def get_next(self, context):
         raise NotImplementedError()
 
@@ -319,7 +329,7 @@ class Process(Abstract):
 
 
 # Parser process
-class ParserProcess(Process):
+class ParserProcess(oProcess):
     def __init__(self):
         super(ParserProcess, self).__init__()
 
