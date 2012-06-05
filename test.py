@@ -89,7 +89,7 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root)
 
-        self.assertEqual(r.get("result"), "a")
+        self.assertEqual(r, "a")
 
     '''
     def test_condition(self):

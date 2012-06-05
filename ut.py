@@ -133,6 +133,15 @@ class ComplexNotion(Notion):
                     return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
 
+# Next relation is just a simple sequence relation
+class NextRelation(Relation):
+    def __init__(self, subject, object):
+        super(NextRelation, self).__init__(subject, object)
+
+    def parse(self, message, **context):
+        return self.object
+
+
 # Selective notion: complex notion that can consist of one of its objects
 class SelectiveNotion(ComplexNotion):
     def __init__(self, name, relation = None):
@@ -167,15 +176,6 @@ class SelectiveNotion(ComplexNotion):
             return ["store", case, self] # Try first one
 
         return reply
-
-
-# Next relation is just a simple sequence relation
-class NextRelation(Relation):
-    def __init__(self, subject, object):
-        super(NextRelation, self).__init__(subject, object)
-
-    def parse(self, message, **context):
-        return self.object
 
 
 # Conditional relation is a condition to go further if message starts with sequence
@@ -264,7 +264,7 @@ class Process(Abstract):
             else:
                 break
 
-        return {"result": message}
+        return message
 
 
 # Base process class
