@@ -255,16 +255,89 @@ class LoopRelation(Relation):
 
 # Base process class
 class Process(Abstract):
+    def notify_progress(self, info, current, message = None):
+        self._notify(message = info, context = {"current": current, "message": message})
 
     def parse(self, message, **context):
+        current = None
 
         while message:
             if isinstance(message, Abstract):
-                message = message.parse("next", **context)
-            else:
-                break
+                current = message
 
-        return message
+                self.notify_progress("next", current, message) # TODO: what is the message and what is a current, customize it
+
+                message = current.parse("next", **context)
+            else:
+                self.notify_progress("next_stop", current, message)
+                break # Do not know what to do
+
+        return {"result": message, "from": current}
+
+
+# Process with support of list processing with stack
+class StackedProcess(Process):
+    def __init__(self):
+        super(StackedProcess, self).__init__()
+
+        self._stack = []
+
+    def parse(self, message, **context):
+        current = None
+
+        while True:
+            r = super(StackedProcess, self).parse(message, **context)
+
+            # If we are here - we stopped at unknown message
+            message = r["result"]
+            current = r["from"]
+
+            # Got sequence?
+            if type(message) is types.ListType:
+                self.notify_progress("stack_list", current, message)
+                if len(message) >= 1:
+                    m = message.pop(0) # First one is ready to be processed
+
+                    if message: # No need to push empty list
+                        self.notify_progress("stack_push", current, message)
+
+                        self._stack.append((current, message))
+
+                    message = m
+                    continue
+                else:
+                    message = None # New message needed
+
+            # If nothing to work with let's try to pop from stack
+            if not message:
+                if self._stack:
+                    self.notify_progress("stack_pop", current)
+
+                    current, message = self._stack.pop()
+
+                    self.notify_progress("stack_popped", current, message)
+
+                else:
+                    self.notify_progress("stack_empty", current)
+
+                    break
+            else:
+                self.notify_progress("stack_stop", current, message)
+                break # Do not know what to do
+
+        return {"result": message, "from": current}
+
+
+# Abstract state; together states represent a tree-like structure
+class State(object):
+    def __init__(self, abstract, data, previous):
+        self.abstract = abstract
+        self.data = data
+        self.previous = previous
+        self.next = []
+
+    def clear_next(self):
+        del self.next[:]
 
 
 # Base process class

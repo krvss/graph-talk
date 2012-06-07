@@ -7,14 +7,14 @@ class Logger(Abstract):
     filter = None
     logging = True
 
-    def parse(self, message, context = None):
+    def parse(self, message, **context):
         if not self.logging:
             return None
 
         if Logger.filter and not Logger.filter in message:
             return False
 
-        print "%s: %s, message:%s" % (message, context["abstract"], context["message"] if "message" in context else "")
+        print "%s: %s, message: %s" % (message, context["context"]["current"], context["context"]["message"])
 
         return True
 
@@ -24,6 +24,17 @@ logger = Logger()
 def showstopper(notion, message, **context):
     return notion.name
 
+
+_acc = 0
+def acc(notion, message, **context):
+    global _acc
+    _acc += 1
+    return _acc
+
+def accF(notion, message, **context):
+    global _acc
+    _acc += 1
+    return False
 
 def add_to_result(notion, message, **context):
     if not "result" in context:
@@ -89,7 +100,48 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root)
 
-        self.assertEqual(r, "a")
+        self.assertEqual(r["result"], "a")
+        self.assertEqual(r["from"], a)
+
+
+    def test_stack(self):
+        global _acc
+
+        # Simple next test: root -> a
+        root = ComplexNotion("root")
+        a = ComplexNotion("a")
+
+        NextRelation(root, a)
+
+        b = FunctionNotion("b", accF)
+        c = FunctionNotion("c", showstopper)
+
+        NextRelation(a, b)
+        NextRelation(a, c)
+
+        d = FunctionNotion("d", showstopper)
+
+        NextRelation(root, d)
+
+        process = StackedProcess()
+        process.call(logger)
+
+        _acc = 0
+        r = process.parse(root)
+
+        self.assertEqual(r["result"], "c")
+        self.assertEqual(r["from"], c)
+        self.assertEqual(_acc, 1)
+
+        r = process.parse(None)
+
+        self.assertEqual(r["result"], "d")
+        self.assertEqual(r["from"], d)
+
+        r = process.parse(None)
+
+        self.assertEqual(r["result"], None)
+        self.assertEqual(r["from"], None)
 
     '''
     def test_condition(self):
@@ -348,7 +400,7 @@ def custom_func(notion, context):
     return True
 
 def test():
-    logger.logging = False
+    logger.logging = True
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
     unittest.TextTestRunner(verbosity=2).run(suite)
 
