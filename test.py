@@ -14,7 +14,8 @@ class Logger(Abstract):
         if Logger.filter and not Logger.filter in message:
             return False
 
-        print "%s: %s, message: %s" % (message, context["context"]["current"], context["context"]["message"])
+        print "%s: %s, message: %s, reply: %s" % (message, context["context"]["current"],
+                                                  context["context"]["message"], context["context"]["reply"])
 
         return True
 
@@ -100,7 +101,7 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root)
 
-        self.assertEqual(r["result"], "a")
+        self.assertEqual(r["reply"], "a")
         self.assertEqual(r["from"], a)
 
 
@@ -129,18 +130,18 @@ class BasicTests(unittest.TestCase):
         _acc = 0
         r = process.parse(root)
 
-        self.assertEqual(r["result"], "c")
+        self.assertEqual(r["reply"], "c")
         self.assertEqual(r["from"], c)
         self.assertEqual(_acc, 1)
 
         r = process.parse(None)
 
-        self.assertEqual(r["result"], "d")
+        self.assertEqual(r["reply"], "d")
         self.assertEqual(r["from"], d)
 
         r = process.parse(None)
 
-        self.assertEqual(r["result"], None)
+        self.assertEqual(r["reply"], None)
         self.assertEqual(r["from"], None)
 
     '''

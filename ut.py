@@ -255,24 +255,24 @@ class LoopRelation(Relation):
 
 # Base process class
 class Process(Abstract):
-    def notify_progress(self, info, current, message = None):
-        self._notify(message = info, context = {"current": current, "message": message})
+    def notify_progress(self, info, current, message = None, reply = None):
+        self._notify(message = info, context = {"current": current, "message": message, "reply": reply})
 
     def parse(self, message, **context):
-        current = None
+        current = context.get("start")
+        reply = context.get("reply") or current or message # TODO: think how to store the state
 
-        while message:
-            if isinstance(message, Abstract):
-                current = message
+        while reply:
+            if isinstance(reply, Abstract):
+                current = reply
+                reply = current.parse(message, **context)
 
-                self.notify_progress("next", current, message) # TODO: what is the message and what is a current, customize it
-
-                message = current.parse("next", **context)
+                self.notify_progress("next", current, message, reply)
             else:
-                self.notify_progress("next_stop", current, message)
+                self.notify_progress("next_stop", current, message, reply)
                 break # Do not know what to do
 
-        return {"result": message, "from": current}
+        return {"reply": reply, "from": current}
 
 
 # Process with support of list processing with stack
@@ -283,49 +283,49 @@ class StackedProcess(Process):
         self._stack = []
 
     def parse(self, message, **context):
-        current = None
-
         while True:
             r = super(StackedProcess, self).parse(message, **context)
 
             # If we are here - we stopped at unknown message
-            message = r["result"]
+            reply = r["reply"]
             current = r["from"]
 
             # Got sequence?
-            if type(message) is types.ListType:
-                self.notify_progress("stack_list", current, message)
-                if len(message) >= 1:
-                    m = message.pop(0) # First one is ready to be processed
+            if type(reply) is types.ListType:
+                self.notify_progress("stack_list", current, message, reply)
 
-                    if message: # No need to push empty list
-                        self.notify_progress("stack_push", current, message)
+                if len(reply) >= 1:
+                    c = reply.pop(0) # First one is ready to be processed
 
-                        self._stack.append((current, message))
+                    if reply: # No need to push empty list
+                        self.notify_progress("stack_push", current, message, reply)
 
-                    message = m
+                        self._stack.append((current, reply))
+
+                    context.update({"start": c}) # New current
+
                     continue
                 else:
-                    message = None # New message needed
+                    reply = None # New reply needed
 
             # If nothing to work with let's try to pop from stack
-            if not message:
+            if not reply:
                 if self._stack:
-                    self.notify_progress("stack_pop", current)
+                    self.notify_progress("stack_pop", current, message)
 
-                    current, message = self._stack.pop()
+                    current, reply = self._stack.pop()
+                    context.update({"start": current, "reply": reply})
 
-                    self.notify_progress("stack_popped", current, message)
-
+                    self.notify_progress("stack_popped", current, message, reply)
                 else:
-                    self.notify_progress("stack_empty", current)
+                    self.notify_progress("stack_empty", current, message)
 
                     break
             else:
-                self.notify_progress("stack_stop", current, message)
+                self.notify_progress("stack_stop", current, message, reply)
                 break # Do not know what to do
 
-        return {"result": message, "from": current}
+        return {"reply": reply, "from": current}
 
 
 # Abstract state; together states represent a tree-like structure
