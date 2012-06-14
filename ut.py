@@ -1,8 +1,6 @@
 # Universal Translator base classes
 # (c) krvss 2011-2012
 
-import types
-
 # Base class for all communicable objects
 class Abstract(object):
     def __init__(self):
@@ -37,13 +35,15 @@ class Notion(Abstract):
         if self.name:
             return "'%s'" % self.name
 
+    def __repr__(self):
+        return self.__str__()
+
 
 # Relation is a connection between one or more abstracts
 class Relation(Abstract):
     def __init__(self, subject, object):
         super(Relation, self).__init__()
-        self._subject = None
-        self._object = None
+        self._object = self._subject = None
 
         self.subject = subject
         self.object = object
@@ -54,12 +54,14 @@ class Relation(Abstract):
         if old_value == value:
             return
 
+        # Disconnect old one
         if old_value:
             self._notify("unrelating", **{"from": self, target: value})
             self.call(value, True)
 
         setattr(self, "_" + target, value)
 
+        # Connect new one
         if value:
             self.call(value)
             self._notify("relating", **{"from": self, target: value})
@@ -82,6 +84,9 @@ class Relation(Abstract):
 
     def __str__(self):
         return "<%s - %s>" % (self.subject, self.object)
+
+    def __repr__(self):
+        return self.__str__()
 
 
 # Function notion is notion that can call custom function
@@ -128,7 +133,7 @@ class ComplexNotion(Notion):
                 if context.get("subject") == self:
                     self._unrelate(context.get("from"))
 
-            else: # Returning relations by default
+            else: # Returning relations by default, not using a list if there is only one
                 if self._relations:
                     return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
@@ -255,77 +260,97 @@ class LoopRelation(Relation):
 
 # Base process class
 class Process(Abstract):
-    def notify_progress(self, info, current, message = None, reply = None):
-        self._notify(message = info, context = {"current": current, "message": message, "reply": reply})
+    def __init__(self):
+        super(Process, self).__init__()
+
+        self._reply = self._current = None
+
+    def notify_progress(self, info, message = None):
+        self._notify(message = info, context = {"current": self._current, "message": message, "reply": self._reply})
 
     def parse(self, message, **context):
-        current = context.get("start")
-        reply = context.get("reply") or current or message # TODO: think how to store the state
+        context = get_recursive_context(context) # Needed for recursive calls to keep changes
+        result = "ok"
 
-        while reply:
-            if isinstance(reply, Abstract):
-                current = reply
-                reply = current.parse(message, **context)
+        # Reading "start" parameter and deleting it when done
+        if "start" in context:
+            self._reply = self._current = context["start"]
 
-                self.notify_progress("next", current, message, reply)
+            del context["start"]
+
+        while self._reply:
+            if isinstance(self._reply, Abstract):
+                self._current = self._reply
+                self._reply = self._current.parse(message, **context)
+
+                self.notify_progress("next", message)
             else:
-                self.notify_progress("next_stop", current, message, reply)
-                break # Do not know what to do
+                result =  "unknown"
 
-        return {"reply": reply, "from": current}
+                self.notify_progress("next_unknown", message)
+                break # Du not know what to do
+
+        return {"result": result}
+
+    @property
+    def current(self):
+        return self._current
+
+    @property
+    def reply(self):
+        return self._reply
 
 
 # Process with support of list processing with stack
 class StackedProcess(Process):
     def __init__(self):
         super(StackedProcess, self).__init__()
-
         self._stack = []
 
     def parse(self, message, **context):
-        while True:
-            r = super(StackedProcess, self).parse(message, **context)
+        context = get_recursive_context(context)
+        result = "ok"
 
-            # If we are here - we stopped at unknown message
-            reply = r["reply"]
-            current = r["from"]
+        while True:
+            r = super(StackedProcess, self).parse(message, context=context)
 
             # Got sequence?
-            if type(reply) is types.ListType:
-                self.notify_progress("stack_list", current, message, reply)
+            if r["result"] == "unknown" and isinstance(self._reply, list):
+                self.notify_progress("stack_list", message)
 
-                if len(reply) >= 1:
-                    c = reply.pop(0) # First one is ready to be processed
+                if len(self._reply) >= 1:
+                    c = self._reply.pop(0) # First one is ready to be processed
 
-                    if reply: # No need to push empty list
-                        self.notify_progress("stack_push", current, message, reply)
+                    if self._reply: # No need to push empty list
+                        self._stack.append((self._current, self._reply))
 
-                        self._stack.append((current, reply))
+                        self.notify_progress("stack_push", message)
 
-                    context.update({"start": c}) # New current
+                    self._reply = self._current = c
 
                     continue
                 else:
-                    reply = None # New reply needed
+                    self._reply = None # Rollback needed
 
             # If nothing to work with let's try to pop from stack
-            if not reply:
+            if not self._reply:
                 if self._stack:
-                    self.notify_progress("stack_pop", current, message)
+                    self.notify_progress("stack_pop", message)
 
-                    current, reply = self._stack.pop()
-                    context.update({"start": current, "reply": reply})
+                    self._current, self._reply = self._stack.pop()
 
-                    self.notify_progress("stack_popped", current, message, reply)
+                    self.notify_progress("stack_popped", message)
                 else:
-                    self.notify_progress("stack_empty", current, message)
+                    self.notify_progress("stack_empty", message)
 
                     break
             else:
-                self.notify_progress("stack_stop", current, message, reply)
+                result = "unknown"
+
+                self.notify_progress("stack_stop", message)
                 break # Do not know what to do
 
-        return {"reply": reply, "from": current}
+        return {"result": result}
 
 
 # Abstract state; together states represent a tree-like structure
@@ -564,3 +589,10 @@ class ParserProcess(oProcess):
             return False # Stopping
 
 
+def get_recursive_context(context):
+    if len(context) == 1:
+        first = context.values()[0]
+        if isinstance(first, dict):
+            return first
+
+    return context

@@ -99,14 +99,23 @@ class BasicTests(unittest.TestCase):
         process = Process()
         process.call(logger)
 
-        r = process.parse(root)
+        r = process.parse(message="test_next", start=root)
 
-        self.assertEqual(r["reply"], "a")
-        self.assertEqual(r["from"], a)
+        self.assertEqual(process.reply, "a")
+        self.assertEqual(process.current, a)
+        self.assertEqual(r["result"], "unknown")
+
+        a.function = None
+        r = process.parse(message="test_next_2", start=root)
+
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, a)
+        self.assertEqual(r["result"], "ok")
 
 
     def test_stack(self):
         global _acc
+        logger.logging = True
 
         # Simple next test: root -> a
         root = ComplexNotion("root")
@@ -128,21 +137,24 @@ class BasicTests(unittest.TestCase):
         process.call(logger)
 
         _acc = 0
-        r = process.parse(root)
+        r = process.parse("test_stack", start=root)
 
-        self.assertEqual(r["reply"], "c")
-        self.assertEqual(r["from"], c)
+        self.assertEqual(process.reply, "c")
+        self.assertEqual(process.current, c)
+        self.assertEqual(r["result"], "unknown")
         self.assertEqual(_acc, 1)
 
-        r = process.parse(None)
+        r = process.parse("test_stack 2", start=None)
 
-        self.assertEqual(r["reply"], "d")
-        self.assertEqual(r["from"], d)
+        self.assertEqual(process.reply, "d")
+        self.assertEqual(process.current, d)
+        self.assertEqual(r["result"], "unknown")
 
-        r = process.parse(None)
+        r = process.parse("test_stack_3", start=None)
 
-        self.assertEqual(r["reply"], None)
-        self.assertEqual(r["from"], None)
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, None)
+        self.assertEqual(r["result"], "ok")
 
     '''
     def test_condition(self):
@@ -401,7 +413,7 @@ def custom_func(notion, context):
     return True
 
 def test():
-    logger.logging = True
+    logger.logging = False
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
     unittest.TextTestRunner(verbosity=2).run(suite)
 
