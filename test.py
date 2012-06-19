@@ -7,15 +7,15 @@ class Logger(Abstract):
     filter = None
     logging = True
 
-    def parse(self, message, **context):
+    def parse(self, *message, **kwmessage):
         if not self.logging:
             return None
 
         if Logger.filter and not Logger.filter in message:
             return False
 
-        print "%s: %s, message: %s, reply: %s" % (message, context["context"]["current"],
-                                                  context["context"]["message"], context["context"]["reply"])
+        print "%s: %s, message: %s, reply: %s" % (message[0], kwmessage["current"], kwmessage["message"],
+                                                  kwmessage["reply"])
 
         return True
 
@@ -81,12 +81,12 @@ class BasicTests(unittest.TestCase):
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it
-        self.assertEqual(cn.parse(None), r1)
+        self.assertEqual(cn.parse(), r1)
 
         r2 = Relation(cn, n1)
 
         # If there is more than 1 relation ComplexNotion should return the list
-        self.assertListEqual(cn.parse(None), [r1, r2])
+        self.assertListEqual(cn.parse(), [r1, r2])
 
 
     def test_next(self):
@@ -99,14 +99,14 @@ class BasicTests(unittest.TestCase):
         process = Process()
         process.call(logger)
 
-        r = process.parse(message="test_next", start=root)
+        r = process.parse("test_next", start=root)
 
         self.assertEqual(process.reply, "a")
         self.assertEqual(process.current, a)
         self.assertEqual(r["result"], "unknown")
 
         a.function = None
-        r = process.parse(message="test_next_2", start=root)
+        r = process.parse("test_next_2", start=root)
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, a)

@@ -6,7 +6,7 @@ class Abstract(object):
     def __init__(self):
         self._callbacks = []
 
-    def parse(self, message, **context):
+    def parse(self, *message, **kwmessage):
         return None
 
     def call(self, callback, forget = False):
@@ -16,10 +16,10 @@ class Abstract(object):
             if callback and callable(callback.parse):
                 self._callbacks.append(callback)
 
-    def _notify(self, message, **context):
+    def _notify(self, *message, **kwmessage):
         for callee in self._callbacks:
             if callable(callee.parse):
-                callee.parse(message, **context)
+                callee.parse(*message, **kwmessage)
 
 
 # Notion is an abstract with name
@@ -28,7 +28,7 @@ class Notion(Abstract):
         super(Abstract, self).__init__()
         self.name = name
 
-    def parse(self, message, **context):
+    def parse(self, *message, **kwmessage):
         return None
 
     def __str__(self):
@@ -95,8 +95,8 @@ class FunctionNotion(Notion):
         super(FunctionNotion, self).__init__(name)
         self.function = function if callable(function) else None
 
-    def parse(self, message, **context):
-        return self.function(self, message, **context) if self.function else None
+    def parse(self, *message, **kwmessage):
+        return self.function(self, *message, **kwmessage) if self.function else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -121,21 +121,24 @@ class ComplexNotion(Notion):
             if relation.subject == self:
                 relation.subject = None
 
-    def parse(self, message, **context):
-        reply = super(ComplexNotion, self).parse(message, **context)
+    def parse(self, *message, **kwmessage):
+        reply = super(ComplexNotion, self).parse(*message, **kwmessage)
 
         if not reply:
-            if message == "relating":
-                if context.get("subject") == self:
-                    self._relate(context.get("from"))
+            if message:
+                if message[0] == "relating":
+                    if kwmessage.get("subject") == self:
+                        self._relate(kwmessage.get("from"))
+                        return True
 
-            elif message == "unrelating":
-                if context.get("subject") == self:
-                    self._unrelate(context.get("from"))
+                elif message[0] == "unrelating":
+                    if kwmessage.get("subject") == self:
+                        self._unrelate(kwmessage.get("from"))
+                        return True
 
-            else: # Returning relations by default, not using a list if there is only one
-                if self._relations:
-                    return self._relations[0] if len(self._relations) == 1 else list(self._relations)
+             # Returning relations by default, not using a list if there is only one
+            if self._relations:
+                return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
 
 # Next relation is just a simple sequence relation
@@ -143,10 +146,11 @@ class NextRelation(Relation):
     def __init__(self, subject, object):
         super(NextRelation, self).__init__(subject, object)
 
-    def parse(self, message, **context):
+    def parse(self, *message, **kwmessage):
         return self.object
 
 
+# TODO: update for latest parse spec
 # Selective notion: complex notion that can consist of one of its objects
 class SelectiveNotion(ComplexNotion):
     def __init__(self, name, relation = None):
@@ -266,22 +270,21 @@ class Process(Abstract):
         self._reply = self._current = None
 
     def notify_progress(self, info, message = None):
-        self._notify(message = info, context = {"current": self._current, "message": message, "reply": self._reply})
+        self._notify(info, current = self._current, message = message, reply = self._reply)
 
-    def parse(self, message, **context):
-        context = get_recursive_context(context) # Needed for recursive calls to keep changes
+    def parse(self, *message, **kwmessage):
         result = "ok"
 
-        # Reading "start" parameter and deleting it when done
-        if "start" in context:
-            self._reply = self._current = context["start"]
+        # Reading parameters and deleting them when done
+        if "start" in kwmessage:
+            self._reply = self._current = kwmessage["start"]
 
-            del context["start"]
+            del kwmessage["start"]
 
         while self._reply:
             if isinstance(self._reply, Abstract):
                 self._current = self._reply
-                self._reply = self._current.parse(message, **context)
+                self._reply = self._current.parse(*message, **kwmessage)
 
                 self.notify_progress("next", message)
             else:
@@ -290,7 +293,7 @@ class Process(Abstract):
                 self.notify_progress("next_unknown", message)
                 break # Du not know what to do
 
-        return {"result": result}
+        return {"result": result, "message": message, "kwmessage": kwmessage}
 
     @property
     def current(self):
@@ -307,12 +310,14 @@ class StackedProcess(Process):
         super(StackedProcess, self).__init__()
         self._stack = []
 
-    def parse(self, message, **context):
-        context = get_recursive_context(context)
+    def parse(self,  *message, **kwmessage):
         result = "ok"
 
         while True:
-            r = super(StackedProcess, self).parse(message, context=context)
+            r = super(StackedProcess, self).parse(*message, **kwmessage)
+
+            message = r["message"]
+            kwmessage = r["kwmessage"]
 
             # Got sequence?
             if r["result"] == "unknown" and isinstance(self._reply, list):
@@ -350,7 +355,7 @@ class StackedProcess(Process):
                 self.notify_progress("stack_stop", message)
                 break # Do not know what to do
 
-        return {"result": result}
+        return {"result": result, "message": message, "kwmessage": kwmessage}
 
 
 # Abstract state; together states represent a tree-like structure
