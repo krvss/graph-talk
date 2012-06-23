@@ -270,7 +270,7 @@ class Process(Abstract):
         self._reply = self._current = None
 
     def notify_progress(self, info, message = None):
-        self._notify(info, current = self._current, message = message, reply = self._reply)
+        self._notify(info, current = self._current, message = message, reply = self._reply) # TODO: add kwmessage?
 
     def parse(self, *message, **kwmessage):
         result = "ok"
@@ -291,7 +291,7 @@ class Process(Abstract):
                 result =  "unknown"
 
                 self.notify_progress("next_unknown", message)
-                break # Du not know what to do
+                break # Do not know what to do
 
         return {"result": result, "message": message, "kwmessage": kwmessage}
 
@@ -340,8 +340,6 @@ class StackedProcess(Process):
             # If nothing to work with let's try to pop from stack
             if not self._reply:
                 if self._stack:
-                    self.notify_progress("stack_pop", message)
-
                     self._current, self._reply = self._stack.pop()
 
                     self.notify_progress("stack_popped", message)
@@ -356,6 +354,61 @@ class StackedProcess(Process):
                 break # Do not know what to do
 
         return {"result": result, "message": message, "kwmessage": kwmessage}
+
+
+# Process with support of stop, continue and error commands
+class ControllableProcess(StackedProcess):
+
+    # Command parser
+    def parse_command(self, cmd_dict, message, kwmessage):
+        if "error" in cmd_dict:
+            self.notify_progress("stop_error", message)
+
+            return "error" # TODO: multiple errors in ["errors"]
+
+        elif "stop" in cmd_dict:
+            self.notify_progress("stopped", message)
+
+            return "stopped"
+
+        else:
+            return "unknown"
+
+    def parse(self,  *message, **kwmessage):
+        going = True
+
+        if "continue" in message and not "start" in kwmessage:
+            kwmessage["start"] = None # Make pop
+
+            self.notify_progress("continue", message)
+
+        while going:
+            r = super(ControllableProcess, self).parse(*message, **kwmessage)
+
+            message = r["message"]
+            kwmessage = r["kwmessage"]
+
+            going = False # If we are here most likely we have nothing to do
+
+            if r["result"] == "unknown":
+                cmd_dict = None
+
+                if isinstance(self._reply, str):
+                    cmd_dict = {self._reply: None}
+
+                # Commands where abstract is not needed
+                elif isinstance(self._reply, dict):
+                    cmd_dict = self._reply
+
+                # Processing commands, if any
+                if cmd_dict:
+                    result = self.parse_command(cmd_dict, message, kwmessage)
+                    if result:
+                        r["result"] = result
+                    else:
+                        going = True
+
+        return r
 
 
 # Abstract state; together states represent a tree-like structure
@@ -593,11 +646,3 @@ class ParserProcess(oProcess):
         else:
             return False # Stopping
 
-
-def get_recursive_context(context):
-    if len(context) == 1:
-        first = context.values()[0]
-        if isinstance(first, dict):
-            return first
-
-    return context

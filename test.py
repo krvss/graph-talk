@@ -22,7 +22,7 @@ class Logger(Abstract):
 logger = Logger()
 
 
-def showstopper(notion, message, **context):
+def showstopper(notion, *message, **kwmessage):
     return notion.name
 
 
@@ -115,16 +115,15 @@ class BasicTests(unittest.TestCase):
 
     def test_stack(self):
         global _acc
-        logger.logging = True
 
-        # Simple next test: root -> a
+        # Stack test: root -> (a, d); a -> (b,c)
         root = ComplexNotion("root")
         a = ComplexNotion("a")
 
         NextRelation(root, a)
 
-        b = FunctionNotion("b", accF)
-        c = FunctionNotion("c", showstopper)
+        b = FunctionNotion("b", accF) # Just return False to keep going to C
+        c = FunctionNotion("c", showstopper) # Stop here
 
         NextRelation(a, b)
         NextRelation(a, c)
@@ -144,17 +143,64 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["result"], "unknown")
         self.assertEqual(_acc, 1)
 
-        r = process.parse("test_stack 2", start=None)
+        r = process.parse("test_stack 2", start=None) # Make process pop from stack
 
         self.assertEqual(process.reply, "d")
         self.assertEqual(process.current, d)
         self.assertEqual(r["result"], "unknown")
 
-        r = process.parse("test_stack_3", start=None)
+        r = process.parse("test_stack_3", start=None) # Trying empty stack
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
         self.assertEqual(r["result"], "ok")
+
+
+    def test_stop(self):
+        logger.logging = True
+        root = ComplexNotion("root")
+        a = ComplexNotion("a")
+
+        NextRelation(root, a)
+
+        b = FunctionNotion("error", showstopper) # First stop by error
+        c = FunctionNotion("stop", showstopper) # Stop here
+        d = FunctionNotion("end", showstopper) # And finally here
+
+        NextRelation(a, b)
+        NextRelation(a, c)
+        NextRelation(a, d)
+
+        process = ControllableProcess()
+        process.call(logger)
+
+        r = process.parse("test_stop", start=root)
+
+        self.assertEqual(process.reply, "error")
+        self.assertEqual(process.current, b)
+        self.assertEqual(r["result"], "error")
+
+        # Now let's try to resume
+        r = process.parse("test_stop_2", "continue")
+
+        self.assertEqual(process.reply, "stop")
+        self.assertEqual(process.current, c)
+        self.assertEqual(r["result"], "stopped")
+
+        # Now go unknown
+        r = process.parse("test_stop_3", "continue")
+
+        self.assertEqual(process.reply, "end")
+        self.assertEqual(process.current, d)
+        self.assertEqual(r["result"], "unknown")
+
+        # And now go None
+        r = process.parse("test_stop_4", "continue")
+
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, None)
+        self.assertEqual(r["result"], "ok")
+
 
     '''
     def test_condition(self):
