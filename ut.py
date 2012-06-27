@@ -269,8 +269,8 @@ class Process(Abstract):
 
         self._reply = self._current = None
 
-    def notify_progress(self, info, message = None):
-        self._notify(info, current = self._current, message = message, reply = self._reply) # TODO: add kwmessage?
+    def notify_progress(self, info, message = None, kwmessage = None):
+        self._notify(info, **{"from": self, "message": message, "kwmessage" :kwmessage})
 
     def parse(self, *message, **kwmessage):
         result = "ok"
@@ -286,11 +286,11 @@ class Process(Abstract):
                 self._current = self._reply
                 self._reply = self._current.parse(*message, **kwmessage)
 
-                self.notify_progress("next", message)
+                self.notify_progress("next", message, kwmessage)
             else:
                 result =  "unknown"
 
-                self.notify_progress("next_unknown", message)
+                self.notify_progress("next_unknown", message, kwmessage)
                 break # Do not know what to do
 
         return {"result": result, "message": message, "kwmessage": kwmessage}
@@ -311,17 +311,17 @@ class StackedProcess(Process):
         self._stack = []
 
     def parse(self,  *message, **kwmessage):
-        result = "ok"
-
         while True:
             r = super(StackedProcess, self).parse(*message, **kwmessage)
 
+            # Get updates
             message = r["message"]
             kwmessage = r["kwmessage"]
+            result = r["result"]
 
             # Got sequence?
-            if r["result"] == "unknown" and isinstance(self._reply, list):
-                self.notify_progress("stack_list", message)
+            if result == "unknown" and isinstance(self._reply, list):
+                self.notify_progress("stack_list", message, kwmessage)
 
                 if len(self._reply) >= 1:
                     c = self._reply.pop(0) # First one is ready to be processed
@@ -329,7 +329,7 @@ class StackedProcess(Process):
                     if self._reply: # No need to push empty list
                         self._stack.append((self._current, self._reply))
 
-                        self.notify_progress("stack_push", message)
+                        self.notify_progress("stack_push", message, kwmessage)
 
                     self._reply = self._current = c
 
@@ -338,19 +338,18 @@ class StackedProcess(Process):
                     self._reply = None # Rollback needed
 
             # If nothing to work with let's try to pop from stack
-            if not self._reply:
+            if not self._reply and result == "ok":
                 if self._stack:
                     self._current, self._reply = self._stack.pop()
 
-                    self.notify_progress("stack_popped", message)
+                    self.notify_progress("stack_popped", message, kwmessage)
                 else:
-                    self.notify_progress("stack_empty", message)
+                    self.notify_progress("stack_empty", message, kwmessage)
 
-                    break
+                    break # Nowhere to go
             else:
-                result = "unknown"
+                self.notify_progress("stack_stop", message, kwmessage)
 
-                self.notify_progress("stack_stop", message)
                 break # Do not know what to do
 
         return {"result": result, "message": message, "kwmessage": kwmessage}
@@ -358,41 +357,50 @@ class StackedProcess(Process):
 
 # Process with support of stop, continue and error commands
 class ControllableProcess(StackedProcess):
+    def __init__(self):
+        super(ControllableProcess, self).__init__()
+        self._errors = {}
 
     # Command parser
     def parse_command(self, cmd_dict, message, kwmessage):
         if "error" in cmd_dict:
-            self.notify_progress("stop_error", message)
+            self._errors[self._current or self] = cmd_dict["error"] or "error"
+            del cmd_dict["error"]
 
-            return "error" # TODO: multiple errors in ["errors"]
+            cmd_dict["continue"] = True
+            self.notify_progress("error", message, kwmessage)
 
-        elif "stop" in cmd_dict:
-            self.notify_progress("stopped", message)
+        if "stop" in cmd_dict:
+            self.notify_progress("stopped", message, kwmessage)
 
             return "stopped"
 
+        if "continue" in cmd_dict:
+            kwmessage["start"] = None
+
+            self.notify_progress("continue", message, kwmessage)
         else:
             return "unknown"
 
     def parse(self,  *message, **kwmessage):
         going = True
 
-        if "continue" in message and not "start" in kwmessage:
-            kwmessage["start"] = None # Make pop
+        if "continue" in message:
+            self._reply = "continue" # Pass it to the command
 
-            self.notify_progress("continue", message)
+        if "start" in kwmessage and self._errors:
+            self._errors = {} # Clean errors on start
 
         while going:
             r = super(ControllableProcess, self).parse(*message, **kwmessage)
 
             message = r["message"]
             kwmessage = r["kwmessage"]
+            result = r["result"]
 
             going = False # If we are here most likely we have nothing to do
 
-            if r["result"] == "unknown":
-                cmd_dict = None
-
+            if result == "unknown":
                 if isinstance(self._reply, str):
                     cmd_dict = {self._reply: None}
 
@@ -400,16 +408,24 @@ class ControllableProcess(StackedProcess):
                 elif isinstance(self._reply, dict):
                     cmd_dict = self._reply
 
-                # Processing commands, if any
-                if cmd_dict:
-                    result = self.parse_command(cmd_dict, message, kwmessage)
-                    if result:
-                        r["result"] = result
-                    else:
-                        going = True
+                else:
+                    break
+
+                # Processing commands
+                cmd_result = self.parse_command(cmd_dict, message, kwmessage)
+                if cmd_result:
+                    result = cmd_result
+                else:
+                    going = True
+
+        r = { "message": message, "kwmessage": kwmessage}
+
+        if self._errors:
+            r.update({"result": "error", "errors": self._errors})
+        else:
+            r.update({"result": result})
 
         return r
-
 
 # Abstract state; together states represent a tree-like structure
 class State(object):

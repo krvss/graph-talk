@@ -14,8 +14,9 @@ class Logger(Abstract):
         if Logger.filter and not Logger.filter in message:
             return False
 
-        print "%s: %s, message: %s, reply: %s" % (message[0], kwmessage["current"], kwmessage["message"],
-                                                  kwmessage["reply"])
+        print "%s: at: %s, reply: %s, message: %s, kwmessage: %s" % (message[0], kwmessage["from"].current,
+                                                                     kwmessage["from"].reply, kwmessage["message"],
+                                                                     kwmessage["kwmessage"])
 
         return True
 
@@ -176,26 +177,20 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse("test_stop", start=root)
 
-        self.assertEqual(process.reply, "error")
-        self.assertEqual(process.current, b)
+        self.assertEqual(process.reply, "stop")
+        self.assertEqual(process.current, c)
         self.assertEqual(r["result"], "error")
+        self.assertIn(b, r["errors"])
 
         # Now let's try to resume
         r = process.parse("test_stop_2", "continue")
 
-        self.assertEqual(process.reply, "stop")
-        self.assertEqual(process.current, c)
-        self.assertEqual(r["result"], "stopped")
-
-        # Now go unknown
-        r = process.parse("test_stop_3", "continue")
-
         self.assertEqual(process.reply, "end")
         self.assertEqual(process.current, d)
-        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(r["result"], "error")
 
         # And now go None
-        r = process.parse("test_stop_4", "continue")
+        r = process.parse("test_stop_3", start=None)
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
