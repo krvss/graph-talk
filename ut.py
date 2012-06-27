@@ -362,10 +362,9 @@ class ControllableProcess(StackedProcess):
         self._errors = {}
 
     # Command parser
-    def parse_command(self, cmd_dict, message, kwmessage):
+    def parse_commands(self, cmd_dict, message, kwmessage):
         if "error" in cmd_dict:
-            self._errors[self._current or self] = cmd_dict["error"] or "error"
-            del cmd_dict["error"]
+            self._errors[self._current or self] = cmd_dict["error"]
 
             cmd_dict["continue"] = True
             self.notify_progress("error", message, kwmessage)
@@ -376,49 +375,45 @@ class ControllableProcess(StackedProcess):
             return "stopped"
 
         if "continue" in cmd_dict:
-            kwmessage["start"] = None
+            kwmessage["start"] = None # Go pop
 
             self.notify_progress("continue", message, kwmessage)
         else:
             return "unknown"
 
     def parse(self,  *message, **kwmessage):
-        going = True
-
         if "continue" in message:
             self._reply = "continue" # Pass it to the command
 
         if "start" in kwmessage and self._errors:
             self._errors = {} # Clean errors on start
 
-        while going:
+        while True:
             r = super(ControllableProcess, self).parse(*message, **kwmessage)
 
             message = r["message"]
             kwmessage = r["kwmessage"]
             result = r["result"]
 
-            going = False # If we are here most likely we have nothing to do
-
             if result == "unknown":
+
                 if isinstance(self._reply, str):
                     cmd_dict = {self._reply: None}
-
-                # Commands where abstract is not needed
                 elif isinstance(self._reply, dict):
                     cmd_dict = self._reply
-
                 else:
                     break
 
                 # Processing commands
-                cmd_result = self.parse_command(cmd_dict, message, kwmessage)
+                cmd_result = self.parse_commands(cmd_dict, message, kwmessage)
                 if cmd_result:
                     result = cmd_result
                 else:
-                    going = True
+                    continue
 
-        r = { "message": message, "kwmessage": kwmessage}
+            break
+
+        r = {"message": message, "kwmessage": kwmessage}
 
         if self._errors:
             r.update({"result": "error", "errors": self._errors})
