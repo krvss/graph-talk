@@ -385,6 +385,9 @@ class ControllableProcess(StackedProcess):
         if "continue" in message:
             self._reply = "continue" # Pass it to the command
 
+            message = list(message) # Clean up message
+            message.remove("continue")
+
         if "start" in kwmessage and self._errors:
             self._errors = {} # Clean errors on start
 
@@ -413,12 +416,10 @@ class ControllableProcess(StackedProcess):
 
             break
 
-        r = {"message": message, "kwmessage": kwmessage}
+        r = {"result": result if not self._errors else "error", "message": message, "kwmessage": kwmessage}
 
         if self._errors:
-            r.update({"result": "error", "errors": self._errors})
-        else:
-            r.update({"result": result})
+            r.update({"errors": self._errors})
 
         return r
 

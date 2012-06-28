@@ -26,6 +26,8 @@ logger = Logger()
 def showstopper(notion, *message, **kwmessage):
     return notion.name
 
+def errorer(notion, *message, **kwmessage):
+    return {"error": "i_m_bad"}
 
 _acc = 0
 def acc(notion, message, **context):
@@ -38,6 +40,7 @@ def accF(notion, message, **context):
     _acc += 1
     return False
 
+'''
 def add_to_result(notion, message, **context):
     if not "result" in context:
         context["result"] = ""
@@ -65,7 +68,7 @@ def is_a(message, context):
     else:
         return False, 0
 
-
+'''
 class BasicTests(unittest.TestCase):
 
     def test_objects(self):
@@ -165,12 +168,16 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, a)
 
         b = FunctionNotion("error", showstopper) # First stop by error
-        c = FunctionNotion("stop", showstopper) # Stop here
-        d = FunctionNotion("end", showstopper) # And finally here
+        c = FunctionNotion("continue", showstopper) # Keep going
+        d = FunctionNotion("stop", showstopper) # Stop here
+        e = FunctionNotion("errorer", errorer) # And finally here
+        f = FunctionNotion("end", showstopper) # And finally here
 
         NextRelation(a, b)
         NextRelation(a, c)
         NextRelation(a, d)
+        NextRelation(a, e)
+        NextRelation(a, f)
 
         process = ControllableProcess()
         process.call(logger)
@@ -178,7 +185,7 @@ class BasicTests(unittest.TestCase):
         r = process.parse("test_stop", start=root)
 
         self.assertEqual(process.reply, "stop")
-        self.assertEqual(process.current, c)
+        self.assertEqual(process.current, d)
         self.assertEqual(r["result"], "error")
         self.assertIn(b, r["errors"])
 
@@ -186,8 +193,10 @@ class BasicTests(unittest.TestCase):
         r = process.parse("test_stop_2", "continue")
 
         self.assertEqual(process.reply, "end")
-        self.assertEqual(process.current, d)
+        self.assertEqual(process.current, f)
         self.assertEqual(r["result"], "error")
+        self.assertIn(e, r["errors"])
+        self.assertEqual("i_m_bad", r["errors"][e])
 
         # And now go None
         r = process.parse("test_stop_3", start=None)
