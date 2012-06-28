@@ -61,14 +61,14 @@ def if_loop(loop, context):
 
     return False
 
-
-def is_a(message, context):
-    if message.startswith("a"):
+'''
+def is_a(condition, *message, **kwmessage):
+    if message[0].startswith("a"):
         return True, 1
     else:
         return False, 0
 
-'''
+
 class BasicTests(unittest.TestCase):
 
     def test_objects(self):
@@ -94,6 +94,8 @@ class BasicTests(unittest.TestCase):
 
 
     def test_next(self):
+        #logger.logging = True
+
         # Simple next test: root -> a
         root = ComplexNotion("root")
         a = FunctionNotion("a", showstopper)
@@ -119,6 +121,8 @@ class BasicTests(unittest.TestCase):
 
     def test_stack(self):
         global _acc
+
+        #logger.logging = True
 
         # Stack test: root -> (a, d); a -> (b,c)
         root = ComplexNotion("root")
@@ -161,7 +165,7 @@ class BasicTests(unittest.TestCase):
 
 
     def test_stop(self):
-        logger.logging = True
+        #logger.logging = True
         root = ComplexNotion("root")
         a = ComplexNotion("a")
 
@@ -206,42 +210,38 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["result"], "ok")
 
 
-    '''
     def test_condition(self):
+        logger.logging = True
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
-        a = FunctionNotion("a", add_to_result)
+        a = FunctionNotion("stop", showstopper)
 
         c = ConditionalRelation(root, a, "a")
 
-        process = ParserProcess()
+        process = TextParsingProcess()
         process.call(logger)
 
-        context = {"start": root}
-        r = process.parse("a", context)
+        r = process.parse("a", start = root)
 
-        self.assertEqual(context["result"], "a")
-        self.assertTrue(r["result"])
         self.assertEqual(r["length"], 1)
+        self.assertEqual(r["result"], "stopped")
 
         # Simple negative condition test root -a-> a for "n"
-        r = process.parse("n", context)
+        r = process.parse("n", start = root)
 
-        self.assertListEqual(context["error"], [c])
-        self.assertFalse(r["result"])
-        self.assertEqual(r["length"], 0)
+        self.assertEqual(r["result"], "error")
+        self.assertIn(c, r["errors"])
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a
 
-        context = {"start": root}
-        r = process.parse("a", context)
+        r = process.parse("a", start = root)
 
-        self.assertEqual(context["result"], "a")
-        self.assertTrue(r["result"])
         self.assertEqual(r["length"], 1)
+        self.assertEqual(r["result"], "stopped")
 
 
+    '''
     def test_complex(self):
         # Complex notion test: root -> ab -> (a , b) with empty message
         root = ComplexNotion("root")

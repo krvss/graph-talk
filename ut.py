@@ -193,21 +193,22 @@ class ConditionalRelation(Relation):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
 
-    def parse(self, message, context = None):
+    def parse(self, *message, **kwmessage):
         if self.checker:
             result = None
 
             if callable(self.checker):
-                result, length = self.checker(message, context)
-            else:
-                length = len(self.checker) if message.startswith(self.checker) else 0
+                result, length = self.checker(self, *message, **kwmessage)
+            elif message:
+                length = len(self.checker) if message[0].startswith(self.checker) else 0
 
                 if length > 0:
                     result = self.checker
 
             if result:
-                if context and self.object: # May be this is something for the object
-                    context[self.object] = result
+                # TODO: think how to exchange information between objects
+                #if context and self.object: # May be this is something for the object
+                #    context[self.object] = result
 
                 return [{"move": length}, self.object]
 
@@ -348,7 +349,7 @@ class StackedProcess(Process):
 
                     break # Nowhere to go
             else:
-                self.notify_progress("stack_stop", message, kwmessage)
+                self.notify_progress("stack_unknown", message, kwmessage)
 
                 break # Do not know what to do
 
@@ -361,58 +362,42 @@ class ControllableProcess(StackedProcess):
         super(ControllableProcess, self).__init__()
         self._errors = {}
 
-    # Command parser
-    def parse_commands(self, cmd_dict, message, kwmessage):
-        if "error" in cmd_dict:
-            self._errors[self._current or self] = cmd_dict["error"]
-
-            cmd_dict["continue"] = True
-            self.notify_progress("error", message, kwmessage)
-
-        if "stop" in cmd_dict:
-            self.notify_progress("stopped", message, kwmessage)
-
-            return "stopped"
-
-        if "continue" in cmd_dict:
-            kwmessage["start"] = None # Go pop
-
-            self.notify_progress("continue", message, kwmessage)
-        else:
-            return "unknown"
-
     def parse(self,  *message, **kwmessage):
-        if "continue" in message:
-            self._reply = "continue" # Pass it to the command
-
-            message = list(message) # Clean up message
-            message.remove("continue")
-
         if "start" in kwmessage and self._errors:
             self._errors = {} # Clean errors on start
 
         while True:
             r = super(ControllableProcess, self).parse(*message, **kwmessage)
 
-            message = r["message"]
+            # Get updates
+            message = list(r["message"])
             kwmessage = r["kwmessage"]
             result = r["result"]
 
+            # Command parsing
             if result == "unknown":
+                # Error
+                if (isinstance(self._reply, dict) and "error" in self._reply) or self._reply == "error":
+                    self._errors[self._current or self] = self._reply["error"] if isinstance(self._reply, dict) else None
+                    self._reply = "continue"
 
-                if isinstance(self._reply, str):
-                    cmd_dict = {self._reply: None}
-                elif isinstance(self._reply, dict):
-                    cmd_dict = self._reply
-                else:
-                    break
+                    self.notify_progress("command_error", message, kwmessage)
 
-                # Processing commands
-                cmd_result = self.parse_commands(cmd_dict, message, kwmessage)
-                if cmd_result:
-                    result = cmd_result
-                else:
+                # Continue
+                if self._reply == "continue" or "continue" in message:
+                    kwmessage["start"] = None # Go pop
+
+                    if "continue" in message:
+                        message.remove("continue") # Clean up
+
+                    self.notify_progress("command_continue", message, kwmessage)
+
                     continue
+
+                # Stop
+                elif self._reply == "stop":
+                    result = "stopped"
+                    self.notify_progress("command_stopped", message, kwmessage)
 
             break
 
@@ -422,6 +407,47 @@ class ControllableProcess(StackedProcess):
             r.update({"errors": self._errors})
 
         return r
+
+
+# Text parsing process
+class TextParsingProcess(ControllableProcess):
+    def parse(self,  *message, **kwmessage):
+        start_length = len(message[0])
+        while True:
+            r = super(TextParsingProcess, self).parse(*message, **kwmessage)
+
+            # Get updates
+            message = list(r["message"])
+            kwmessage = r["kwmessage"]
+            result = r["result"]
+
+            # Command parsing
+            if result == "unknown":
+                # Error
+                if isinstance(self._reply, dict):
+                    if "move" in self._reply:
+                        message[0] = message[0][self._reply["move"]:]
+
+                        self._reply = "continue"
+
+                        self.notify_progress("command_move", message, kwmessage)
+
+                        continue
+
+                    if "text" in self._reply:
+                        message = self._reply["text"]
+                        self._reply = "continue"
+
+                        self.notify_progress("command_text", message, kwmessage)
+
+                        continue
+
+            break
+
+        r["message"] = message
+        r["length"] = start_length - len(message[0])
+        return r
+
 
 # Abstract state; together states represent a tree-like structure
 class State(object):
