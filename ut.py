@@ -370,20 +370,20 @@ class ControllableProcess(StackedProcess):
             r = super(ControllableProcess, self).parse(*message, **kwmessage)
 
             # Get updates
-            message = list(r["message"])
+            message = list(r["message"]) # We will modify message so need its shallow copy as a list
             kwmessage = r["kwmessage"]
             result = r["result"]
 
             # Command parsing
             if result == "unknown":
-                # Error
+                # Error command
                 if (isinstance(self._reply, dict) and "error" in self._reply) or self._reply == "error":
                     self._errors[self._current or self] = self._reply["error"] if isinstance(self._reply, dict) else None
-                    self._reply = "continue"
+                    self._reply = "continue" # Keep going
 
                     self.notify_progress("command_error", message, kwmessage)
 
-                # Continue
+                # Continue command
                 if self._reply == "continue" or "continue" in message:
                     kwmessage["start"] = None # Go pop
 
@@ -394,12 +394,12 @@ class ControllableProcess(StackedProcess):
 
                     continue
 
-                # Stop
+                # Stop command
                 elif self._reply == "stop":
                     result = "stopped"
                     self.notify_progress("command_stopped", message, kwmessage)
 
-            break
+            break # We are here either if stop or unknown or OK, so no need to repeat the loop
 
         r = {"result": result if not self._errors else "error", "message": message, "kwmessage": kwmessage}
 
@@ -412,7 +412,8 @@ class ControllableProcess(StackedProcess):
 # Text parsing process
 class TextParsingProcess(ControllableProcess):
     def parse(self,  *message, **kwmessage):
-        start_length = len(message[0])
+        start_length = len(message[0]) # Init the length
+
         while True:
             r = super(TextParsingProcess, self).parse(*message, **kwmessage)
 
@@ -423,19 +424,24 @@ class TextParsingProcess(ControllableProcess):
 
             # Command parsing
             if result == "unknown":
-                # Error
                 if isinstance(self._reply, dict):
+                    # Skip the parsed part
                     if "move" in self._reply:
                         message[0] = message[0][self._reply["move"]:]
-
                         self._reply = "continue"
 
                         self.notify_progress("command_move", message, kwmessage)
 
                         continue
 
+                    # Replace parsing text
                     if "text" in self._reply:
-                        message = self._reply["text"]
+                        if not message:
+                            message.insert(0, self._reply["text"])
+                        else:
+                            message[0] = self._reply["text"]
+
+                        start_length = len(message[0])
                         self._reply = "continue"
 
                         self.notify_progress("command_text", message, kwmessage)

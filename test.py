@@ -29,24 +29,26 @@ def showstopper(notion, *message, **kwmessage):
 def errorer(notion, *message, **kwmessage):
     return {"error": "i_m_bad"}
 
+def texter(notion, *message, **kwmessage):
+    return {"text": "new_text"}
+
 _acc = 0
-def acc(notion, message, **context):
+def acc(notion, *message, **kwmessage):
     global _acc
     _acc += 1
     return _acc
 
-def accF(notion, message, **context):
+def accF(notion, *message, **kwmessage):
     global _acc
     _acc += 1
     return False
 
 '''
 def add_to_result(notion, message, **context):
-    if not "result" in context:
-        context["result"] = ""
+    if not "result" in kwmessage:
+        kwmessage["result"] = ""
 
-    context["result"] += notion.name
-
+    kwmessage["result"] += notion.name
 
 def if_loop(loop, context):
     if not loop in context:
@@ -69,6 +71,7 @@ def is_a(condition, *message, **kwmessage):
         return False, 0
 
 
+# TODO: check test coverage
 class BasicTests(unittest.TestCase):
 
     def test_objects(self):
@@ -211,12 +214,11 @@ class BasicTests(unittest.TestCase):
 
 
     def test_condition(self):
-        logger.logging = True
+        #logger.logging = True
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
-        a = FunctionNotion("stop", showstopper)
 
-        c = ConditionalRelation(root, a, "a")
+        c = ConditionalRelation(root, None, "a")
 
         process = TextParsingProcess()
         process.call(logger)
@@ -224,7 +226,7 @@ class BasicTests(unittest.TestCase):
         r = process.parse("a", start = root)
 
         self.assertEqual(r["length"], 1)
-        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(r["result"], "ok")
 
         # Simple negative condition test root -a-> a for "n"
         r = process.parse("n", start = root)
@@ -238,11 +240,18 @@ class BasicTests(unittest.TestCase):
         r = process.parse("a", start = root)
 
         self.assertEqual(r["length"], 1)
-        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(r["result"], "ok")
 
+        c.object = FunctionNotion("text", texter)
+
+        r = process.parse("a", start = root)
+        self.assertEqual(r["result"], "ok")
+        self.assertIn("new_text", r["message"])
+        self.assertEqual(r["length"], 0)
 
     '''
     def test_complex(self):
+        logger.logging = True
         # Complex notion test: root -> ab -> (a , b) with empty message
         root = ComplexNotion("root")
         ab = ComplexNotion("ab")
@@ -254,13 +263,12 @@ class BasicTests(unittest.TestCase):
         b = FunctionNotion("b", add_to_result)
         r2 = NextRelation(ab, b)
 
-        process = ParserProcess()
+        process = TextParsingProcess()
         process.call(logger)
 
-        context = {"start": root}
-        r = process.parse("", context)
+        r = process.parse("", start=root)
 
-        self.assertEqual(context["result"], "ab")
+        self.assertEqual(r["result"], "ab")
         self.assertTrue(r["result"])
         self.assertEqual(r["length"], 0)
 
@@ -300,7 +308,6 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(r["result"])
         self.assertEqual(r["length"], 3)
         self.assertTrue(not "error" in context)
-
 
     def test_loop(self):
         # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
