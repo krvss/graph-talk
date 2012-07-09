@@ -134,9 +134,11 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, a)
 
         b = FunctionNotion("b", accF) # Just return False to keep going to C
+        b2 = ValueNotion("b2", []) # Test of empty array
         c = FunctionNotion("c", showstopper) # Stop here
 
         NextRelation(a, b)
+        NextRelation(a, b2)
         NextRelation(a, c)
 
         d = FunctionNotion("d", showstopper)

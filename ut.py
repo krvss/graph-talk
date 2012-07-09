@@ -89,6 +89,16 @@ class Relation(Abstract):
         return self.__str__()
 
 
+# Value notion is notion that returns custom value
+class ValueNotion(Notion):
+    def __init__(self, name, value):
+        super(ValueNotion, self).__init__(name)
+        self.value = value
+
+    def parse(self, *message, **kwmessage):
+        return self.value
+
+
 # Function notion is notion that can call custom function
 class FunctionNotion(Notion):
     def __init__(self, name, function):
@@ -265,7 +275,6 @@ class LoopRelation(Relation):
 
 
 # Base process class
-# TODO: Review processes
 class Process(Abstract):
     def __init__(self):
         super(Process, self).__init__()
@@ -275,7 +284,7 @@ class Process(Abstract):
     def notify_progress(self, info, message = None, kwmessage = None): # TODO: make test to connect 2 processes
         self._notify(info, **{"from": self, "message": message, "kwmessage" :kwmessage})
 
-    # Single parsing iteration
+    # Single parse iteration
     def parse_step(self, message, kwmessage):
         if "start" in kwmessage:
             self._reply = self._current = kwmessage["start"]
@@ -289,7 +298,7 @@ class Process(Abstract):
                 self._current = self._reply
                 self._reply = self._current.parse(*message, **kwmessage)
 
-                self.notify_progress("next", message, kwmessage) # Should we process reply from notify?
+                self.notify_progress("next", message, kwmessage) # TODO: Should we process reply from notify?
             else:
                 self.notify_progress("next_unknown", message, kwmessage)
 
@@ -319,31 +328,28 @@ class Process(Abstract):
 class StackedProcess(Process):
     def __init__(self):
         super(StackedProcess, self).__init__()
+
         self._stack = []
 
     def parse_step(self,  message, kwmessage):
         result = super(StackedProcess, self).parse_step(message, kwmessage)
 
         if not result:
-            return
+            return # Nothing to do here
 
         # Got sequence?
         if result == "unknown" and isinstance(self._reply, list):
             self.notify_progress("stack_list", message, kwmessage)
 
-            if len(self._reply) >= 1:
-                c = self._reply.pop(0) # First one is ready to be processed
+            c = self._reply.pop(0) # First one is ready to be processed
 
-                if self._reply: # No need to push empty list
-                    self._stack.append((self._current, self._reply))
+            if self._reply: # No need to push empty list
+                self._stack.append((self._current, self._reply))
 
-                    self.notify_progress("stack_push", message, kwmessage)
+                self.notify_progress("stack_push", message, kwmessage)
 
-                self._reply = self._current = c
-
-                result = None
-            else:
-                self._reply = None # Rollback needed
+            self._reply = self._current = c
+            return
 
         # If nothing to work with let's try to pop from stack
         if not self._reply and result == "ok":
@@ -355,8 +361,6 @@ class StackedProcess(Process):
                 self.notify_progress("stack_popped", message, kwmessage)
             else:
                 self.notify_progress("stack_empty", message, kwmessage)
-        else:
-            self.notify_progress("stack_unknown", message, kwmessage)
 
         return result
 
@@ -365,6 +369,7 @@ class StackedProcess(Process):
 class ControllableProcess(StackedProcess):
     def __init__(self):
         super(ControllableProcess, self).__init__()
+
         self._errors = {}
 
     def parse_step(self,  message, kwmessage):
@@ -415,6 +420,11 @@ class ControllableProcess(StackedProcess):
 
 # Text parsing process
 class TextParsingProcess(ControllableProcess):
+    def __init__(self):
+        super(TextParsingProcess, self).__init__()
+
+        self._start_length = 0
+
     def parse_step(self,  message, kwmessage):
         result = super(TextParsingProcess, self).parse_step(message, kwmessage)
 
@@ -440,7 +450,7 @@ class TextParsingProcess(ControllableProcess):
                     else:
                         message[0] = self._reply["text"]
 
-                    self.start_length = len(message[0])
+                    self._start_length = len(message[0])
                     self._reply = "continue"
 
                     result = None
@@ -450,11 +460,11 @@ class TextParsingProcess(ControllableProcess):
         return result
 
     def parse(self,  *message, **kwmessage):
-        self.start_length = len(message[0]) # Init the length
+        self._start_length = len(message[0]) # Init the length
 
         result = super(TextParsingProcess, self).parse(*message, **kwmessage)
 
-        result["length"] = self.start_length - len(result["message"][0])
+        result["length"] = self._start_length - len(result["message"][0])
 
         return result
 
