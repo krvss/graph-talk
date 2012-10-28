@@ -6,9 +6,11 @@ class Abstract(object):
     def __init__(self):
         self._callbacks = []
 
+    # The way to ask the abstract a message
     def parse(self, *message, **kwmessage):
         return None
 
+    # The way to listen for messages from abstract
     def call(self, callback, forget = False):
         if forget and callback in self._callbacks:
             self._callbacks.remove(callback)
@@ -16,6 +18,7 @@ class Abstract(object):
             if callback and callable(callback.parse):
                 self._callbacks.append(callback)
 
+    # Internal method to send a message to all listeners
     def _notify(self, *message, **kwmessage):
         for callee in self._callbacks:
             if callable(callee.parse):
@@ -27,9 +30,6 @@ class Notion(Abstract):
     def __init__(self, name):
         super(Abstract, self).__init__()
         self.name = name
-
-    def parse(self, *message, **kwmessage):
-        return None
 
     def __str__(self):
         if self.name:
@@ -56,7 +56,7 @@ class Relation(Abstract):
 
         # Disconnect old one
         if old_value:
-            self._notify("unrelating", **{"from": self, target: value})
+            self._notify("unrelated", **{"from": self, target: value})
             self.call(value, True)
 
         setattr(self, "_" + target, value)
@@ -64,7 +64,7 @@ class Relation(Abstract):
         # Connect new one
         if value:
             self.call(value)
-            self._notify("relating", **{"from": self, target: value})
+            self._notify("related", **{"from": self, target: value})
 
     @property
     def subject(self):
@@ -106,7 +106,7 @@ class FunctionNotion(Notion):
         self.function = function if callable(function) else None
 
     def parse(self, *message, **kwmessage):
-        return self.function(self, *message, **kwmessage) if self.function else None
+        return self.function(self, *message, **kwmessage) if callable(self.function) else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -136,12 +136,13 @@ class ComplexNotion(Notion):
 
         if not reply:
             if message:
-                if message[0] == "relating":
+                # This abstract knows only Relate and Unrelate messages
+                if message[0] == "related":
                     if kwmessage.get("subject") == self:
                         self._relate(kwmessage.get("from"))
                         return True
 
-                elif message[0] == "unrelating":
+                elif message[0] == "unrelated":
                     if kwmessage.get("subject") == self:
                         self._unrelate(kwmessage.get("from"))
                         return True
@@ -153,9 +154,6 @@ class ComplexNotion(Notion):
 
 # Next relation is just a simple sequence relation
 class NextRelation(Relation):
-    def __init__(self, subject, object):
-        super(NextRelation, self).__init__(subject, object)
-
     def parse(self, *message, **kwmessage):
         return self.object
 
@@ -273,6 +271,8 @@ class LoopRelation(Relation):
 
         return reply
 
+# ENDTODO: update for latest parse spec
+
 
 # Base process class
 class Process(Abstract):
@@ -291,14 +291,14 @@ class Process(Abstract):
 
             del kwmessage["start"]
 
-        if not self._reply:
+        if not self._reply: # TODO: ok or True?
             return "ok" # We're done
         else:
             if isinstance(self._reply, Abstract):
                 self._current = self._reply
                 self._reply = self._current.parse(*message, **kwmessage)
 
-                self.notify_progress("next", message, kwmessage) # TODO: Should we process reply from notify?
+                self.notify_progress("next", message, kwmessage)
             else:
                 self.notify_progress("next_unknown", message, kwmessage)
 
