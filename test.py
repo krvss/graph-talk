@@ -78,11 +78,20 @@ class BasicTests(unittest.TestCase):
         n1 = Notion("n1")
         n2 = Notion("n2")
 
+        self.assertEqual(n1.__str__(), '"' + n1.name + '"')
+        self.assertEqual(n1.__str__(), n1.__repr__())
+
         r1 = Relation(n1, n2)
 
         # Generic relation test
         self.assertEqual(r1.subject, n1)
         self.assertEqual(r1.object, n2)
+
+        self.assertIn(n1, r1._callbacks)
+        self.assertIn(n2, r1._callbacks)
+
+        self.assertEqual(r1.__str__(), '<"n1" - "n2">')
+        self.assertEqual(r1.__str__(), r1.__repr__())
 
         cn = ComplexNotion("cn")
         r1.subject = cn
@@ -94,6 +103,10 @@ class BasicTests(unittest.TestCase):
 
         # If there is more than 1 relation ComplexNotion should return the list
         self.assertListEqual(cn.parse(), [r1, r2])
+
+        # Connection and disconnection tests
+        r1.subject = n1
+        self.assertNotIn(cn, r1._callbacks)
 
 
     def test_next(self):

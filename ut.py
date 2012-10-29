@@ -12,8 +12,9 @@ class Abstract(object):
 
     # The way to listen for messages from abstract
     def call(self, callback, forget = False):
-        if forget and callback in self._callbacks:
-            self._callbacks.remove(callback)
+        if forget:
+            if callback in self._callbacks:
+                self._callbacks.remove(callback)
         else:
             if callback and callable(callback.parse):
                 self._callbacks.append(callback)
@@ -28,12 +29,12 @@ class Abstract(object):
 # Notion is an abstract with name
 class Notion(Abstract):
     def __init__(self, name):
-        super(Abstract, self).__init__()
+        super(Notion, self).__init__()
         self.name = name
 
     def __str__(self):
         if self.name:
-            return "'%s'" % self.name
+            return '"%s"' % self.name
 
     def __repr__(self):
         return self.__str__()
@@ -56,15 +57,15 @@ class Relation(Abstract):
 
         # Disconnect old one
         if old_value:
-            self._notify("unrelated", **{"from": self, target: value})
-            self.call(value, True)
+            self._notify('unrelated', **{'from': self, target: old_value})
+            self.call(old_value, True)
 
-        setattr(self, "_" + target, value)
+        setattr(self, '_' + target, value)
 
         # Connect new one
         if value:
             self.call(value)
-            self._notify("related", **{"from": self, target: value})
+            self._notify('related', **{'from': self, target: value})
 
     @property
     def subject(self):
@@ -72,7 +73,7 @@ class Relation(Abstract):
 
     @subject.setter
     def subject(self, value):
-        self._connect(value, "subject")
+        self._connect(value, 'subject')
 
     @property
     def object(self):
@@ -80,10 +81,10 @@ class Relation(Abstract):
 
     @object.setter
     def object(self, value):
-        self._connect(value, "object")
+        self._connect(value, 'object')
 
     def __str__(self):
-        return "<%s - %s>" % (self.subject, self.object)
+        return '<%s - %s>' % (self.subject, self.object)
 
     def __repr__(self):
         return self.__str__()
@@ -121,15 +122,9 @@ class ComplexNotion(Notion):
         if relation and (relation not in self._relations):
             self._relations.append(relation)
 
-            if relation.subject != self:
-                relation.subject = self
-
     def _unrelate(self, relation):
         if relation and (relation in self._relations):
             self._relations.remove(relation)
-
-            if relation.subject == self:
-                relation.subject = None
 
     def parse(self, *message, **kwmessage):
         reply = super(ComplexNotion, self).parse(*message, **kwmessage)
@@ -137,14 +132,14 @@ class ComplexNotion(Notion):
         if not reply:
             if message:
                 # This abstract knows only Relate and Unrelate messages
-                if message[0] == "related":
-                    if kwmessage.get("subject") == self:
-                        self._relate(kwmessage.get("from"))
+                if message[0] == 'related':
+                    if kwmessage.get('subject') == self:
+                        self._relate(kwmessage.get('from'))
                         return True
 
-                elif message[0] == "unrelated":
-                    if kwmessage.get("subject") == self:
-                        self._unrelate(kwmessage.get("from"))
+                elif message[0] == 'unrelated':
+                    if kwmessage.get('subject') == self:
+                        self._unrelate(kwmessage.get('from'))
                         return True
 
              # Returning relations by default, not using a list if there is only one
@@ -167,19 +162,19 @@ class SelectiveNotion(ComplexNotion):
     def parse(self, message, context = None):
         if context:
             if self in context:
-                if "error" in context:
+                if 'error' in context:
                     cases = context[self]
 
                     if cases:
                         case = cases.pop(0) # Try another case
 
                         # Pop and update context, then try another case and come back here
-                        return ["restore", {"update": {self: cases}}, "store", case, self]
+                        return ['restore', {'update': {self: cases}}, 'store', case, self]
                     else:
-                        return ["clear", "error"] # Nowhere to go, stop
+                        return ['clear', 'error'] # Nowhere to go, stop
 
                 else:
-                    return "clear" # Everything is ok, clear the past
+                    return 'clear' # Everything is ok, clear the past
 
         reply = super(SelectiveNotion, self).parse(message, context)
 
@@ -190,7 +185,7 @@ class SelectiveNotion(ComplexNotion):
             case = reply.pop(0)
             context[self] = reply # Store the cases
 
-            return ["store", case, self] # Try first one
+            return ['store', case, self] # Try first one
 
         return reply
 
@@ -219,9 +214,9 @@ class ConditionalRelation(Relation):
                 #if context and self.object: # May be this is something for the object
                 #    context[self.object] = result
 
-                return [{"move": length}, self.object]
+                return [{'move': length}, self.object]
 
-        return "error"
+        return 'error'
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times
@@ -239,7 +234,7 @@ class LoopRelation(Relation):
 
         elif context:
             if self in context:
-                if "error" in context:
+                if 'error' in context:
                     repeat = False
 
                     if not self.n:
@@ -259,15 +254,15 @@ class LoopRelation(Relation):
                 context[self] = 1 if self.n else True # Initializing the loop
 
         if repeat:
-            reply = ["store", self.object, self] # Self is a new next to think should we repeat or not
+            reply = ['store', self.object, self] # Self is a new next to think should we repeat or not
         else:
             if restore:
-                reply = ["restore", "clear"] # Clean up after restore needed to remove self from context
+                reply = ['restore', 'clear'] # Clean up after restore needed to remove self from context
             else:
-                reply = ["clear"] # No need to restore, just clear self
+                reply = ['clear'] # No need to restore, just clear self
 
             if error:
-                reply.append("error")
+                reply.append('error')
 
         return reply
 
@@ -281,28 +276,28 @@ class Process(Abstract):
 
         self._reply = self._current = None
 
-    def _notify_progress(self, info, message = None, kwmessage = None):
-        self._notify(info, **{"from": self, "message": message, "kwmessage" :kwmessage})
+    def _notify_progress(self, info, message = None, kwmessage = None): # TODO: think again about debugging
+        self._notify(info, **{'from': self, 'message': message, 'kwmessage' :kwmessage})
 
     # Single parse iteration
     def parse_step(self, message, kwmessage):
-        if "start" in kwmessage:
-            self._reply = self._current = kwmessage["start"]
+        if 'start' in kwmessage:
+            self._reply = self._current = kwmessage['start']
 
-            del kwmessage["start"]
+            del kwmessage['start']
 
         if not self._reply:
-            return "ok" # We're done
+            return 'ok' # We're done
         else:
             if isinstance(self._reply, Abstract):
                 self._current = self._reply
                 self._reply = self._current.parse(*message, **kwmessage)
 
-                self._notify_progress("next", message, kwmessage)
+                self._notify_progress('next', message, kwmessage)
             else:
-                self._notify_progress("next_unknown", message, kwmessage)
+                self._notify_progress('next_unknown', message, kwmessage)
 
-                return "unknown"
+                return 'unknown'
 
     def parse(self, *message, **kwmessage):
         message = list(message) # For future modifications in step
@@ -313,7 +308,7 @@ class Process(Abstract):
             if result:
                 break
 
-        return {"result": result, "message": message, "kwmessage": kwmessage}
+        return {'result': result, 'message': message, 'kwmessage': kwmessage}
 
     @property
     def current(self):
@@ -338,29 +333,29 @@ class StackedProcess(Process):
             return # Nothing to do here
 
         # Got sequence?
-        if result == "unknown" and isinstance(self._reply, list):
-            self._notify_progress("stack_list", message, kwmessage)
+        if result == 'unknown' and isinstance(self._reply, list):
+            self._notify_progress('stack_list', message, kwmessage)
 
             c = self._reply.pop(0) # First one is ready to be processed
 
             if self._reply: # No need to push empty list
                 self._stack.append((self._current, self._reply))
 
-                self._notify_progress("stack_push", message, kwmessage)
+                self._notify_progress('stack_push', message, kwmessage)
 
             self._reply = self._current = c
             return
 
         # If nothing to work with let's try to pop from stack
-        if not self._reply and result == "ok":
+        if not self._reply and result == 'ok':
             if self._stack:
                 self._current, self._reply = self._stack.pop()
 
                 result = None
 
-                self._notify_progress("stack_popped", message, kwmessage)
+                self._notify_progress('stack_popped', message, kwmessage)
             else:
-                self._notify_progress("stack_empty", message, kwmessage)
+                self._notify_progress('stack_empty', message, kwmessage)
 
         return result
 
@@ -379,41 +374,41 @@ class ControlledProcess(StackedProcess):
             return
 
         # Command parsing
-        if result == "unknown":
+        if result == 'unknown':
             # Error reply
-            if (isinstance(self._reply, dict) and "error" in self._reply) or self._reply == "error":
-                self._errors[self._current or self] = self._reply["error"] if isinstance(self._reply, dict) else self._reply
-                self._reply = "continue" # Keep going
+            if (isinstance(self._reply, dict) and 'error' in self._reply) or self._reply == 'error':
+                self._errors[self._current or self] = self._reply['error'] if isinstance(self._reply, dict) else self._reply
+                self._reply = 'continue' # Keep going
 
-                self._notify_progress("command_error", message, kwmessage)
+                self._notify_progress('command_error', message, kwmessage)
 
             # Continue command
-            if self._reply == "continue" or "continue" in message:
-                kwmessage["start"] = None # Go pop
+            if self._reply == 'continue' or 'continue' in message:
+                kwmessage['start'] = None # Go pop
 
-                if "continue" in message:
-                    message.remove("continue") # Clean up
+                if 'continue' in message:
+                    message.remove('continue') # Clean up
 
-                self._notify_progress("command_continue", message, kwmessage)
+                self._notify_progress('command_continue', message, kwmessage)
 
                 result = None # And keep going
 
             # Stop reply
-            elif self._reply == "stop":
-                result = "stopped"
+            elif self._reply == 'stop':
+                result = 'stopped'
 
-                self._notify_progress("command_stopped", message, kwmessage)
+                self._notify_progress('command_stopped', message, kwmessage)
 
         return result
 
     def parse(self, *message, **kwmessage):
-        if "start" in kwmessage and self._errors:
+        if 'start' in kwmessage and self._errors:
             self._errors = {} # Clean errors on start
 
         result = super(ControlledProcess, self).parse(*message, **kwmessage)
 
         if self._errors:
-            result.update({"result": "error", "errors": self._errors})
+            result.update({'result': 'error', 'errors': self._errors})
 
         return result
 
@@ -432,30 +427,30 @@ class TextParsingProcess(ControlledProcess):
             return
 
         # Command parsing
-        if result == "unknown":
+        if result == 'unknown':
             if isinstance(self._reply, dict):
                 # Skip the parsed part
-                if "move" in self._reply:
-                    message[0] = message[0][self._reply["move"]:]
-                    self._reply = "continue"
+                if 'move' in self._reply:
+                    message[0] = message[0][self._reply['move']:]
+                    self._reply = 'continue'
 
                     result = None
 
-                    self._notify_progress("command_move", message, kwmessage)
+                    self._notify_progress('command_move', message, kwmessage)
 
                 # Replace parsing text
-                if "text" in self._reply:
+                if 'text' in self._reply:
                     if not message:
-                        message.insert(0, self._reply["text"])
+                        message.insert(0, self._reply['text'])
                     else:
-                        message[0] = self._reply["text"]
+                        message[0] = self._reply['text']
 
                     self._start_length = len(message[0])
-                    self._reply = "continue"
+                    self._reply = 'continue'
 
                     result = None
 
-                    self._notify_progress("command_text", message, kwmessage)
+                    self._notify_progress('command_text', message, kwmessage)
 
         return result
 
@@ -464,7 +459,7 @@ class TextParsingProcess(ControlledProcess):
 
         result = super(TextParsingProcess, self).parse(*message, **kwmessage)
 
-        result["length"] = self._start_length - len(result["message"][0])
+        result['length'] = self._start_length - len(result['message'][0])
 
         return result
 
@@ -497,26 +492,26 @@ class oProcess(Abstract):
             return context[self][name]
 
     def _get_message(self, context):
-        return self._get_context_info(context, "message", None)
+        return self._get_context_info(context, 'message', None)
 
     def _set_message(self, context, message):
-        self._get_context_info(context, "message", None)
+        self._get_context_info(context, 'message', None)
 
-        context[self]["message"] = message
+        context[self]['message'] = message
 
     def _get_current(self, context):
-        return self._get_context_info(context, "current", None)
+        return self._get_context_info(context, 'current', None)
 
     def _set_current(self, context, abstract):
-        self._get_context_info(context, "current", None)
+        self._get_context_info(context, 'current', None)
 
-        context[self]["current"] = abstract
+        context[self]['current'] = abstract
 
     def _get_text(self, context):
-        return context["text"] if "text" in context else "" # TODO: should be within process context, here because of ctx copy problems
+        return context['text'] if 'text' in context else '' # TODO: should be within process context, here because of ctx copy problems
 
     def _set_text(self, context, text):
-        context["text"] = text
+        context['text'] = text
 
 
     def parse(self, message, context = None):
@@ -525,10 +520,10 @@ class oProcess(Abstract):
         #
         #    abstract = None
         #else:
-        #    abstract = context.get("start") #TODO we can use message for start
+        #    abstract = context.get('start') #TODO we can use message for start
 
         initial_length = len(message)
-        message = {"start": context.get("start"), "text": message}
+        message = {'start': context.get('start'), 'text': message}
 
         
         self._set_message(context, message)
@@ -538,7 +533,7 @@ class oProcess(Abstract):
             pass
 
         text = self._get_text(context)
-        return {"result": not "error" in context, "length": initial_length - len(text)}
+        return {'result': not 'error' in context, 'length': initial_length - len(text)}
 
 
 # Parser process
@@ -547,25 +542,25 @@ class ParserProcess(oProcess):
         super(ParserProcess, self).__init__()
 
     def _get_stack(self, context):
-        return self._get_context_info(context, "stack", [])
+        return self._get_context_info(context, 'stack', [])
 
     def _get_states(self, context):
-        return self._get_context_info(context, "states", {})
+        return self._get_context_info(context, 'states', {})
 
     def _get_error(self, context):
-        if not "error" in context:
+        if not 'error' in context:
             error = []
-            context["error"] = error
+            context['error'] = error
         else:
-            error = context["error"]
+            error = context['error']
 
         return error
 
     def _progress_notify(self, info, abstract, parsing_message = None, parsing_context = None):
-        self._notify(info, {"abstract": abstract,
-                            "message": parsing_message or "",
-                            "text": self._get_text(parsing_context) if parsing_context else "",
-                            "context": parsing_context or ""}) # TODO remove, add from instead, use message/abs from ctx
+        self._notify(info, {'abstract': abstract,
+                            'message': parsing_message or '',
+                            'text': self._get_text(parsing_context) if parsing_context else '',
+                            'context': parsing_context or ''}) # TODO remove, add from instead, use message/abs from ctx
 
     def _rollback(self, context):
         abstract = None
@@ -574,7 +569,7 @@ class ParserProcess(oProcess):
         if self._can_rollback(context):
             abstract, reply = self._get_stack(context).pop(0)
 
-            self._progress_notify("rolled_back", abstract)
+            self._progress_notify('rolled_back', abstract)
 
         return abstract, reply
 
@@ -585,7 +580,7 @@ class ParserProcess(oProcess):
         stack = self._get_stack(context)
         stack.insert(0, (abstract, reply))
 
-        self._progress_notify("added_to_stack", abstract)
+        self._progress_notify('added_to_stack', abstract)
 
     def get_next(self, context):
 
@@ -615,30 +610,30 @@ class ParserProcess(oProcess):
         # Commands where abstract is not needed
         if isinstance(message, dict):
             for name, arg in message.iteritems():
-                if name == "start":
+                if name == 'start':
                     self._set_current(context, arg)
                     
-                elif name == "stop":
+                elif name == 'stop':
                     return False # Stop at once
                 
-                elif name == "text":
+                elif name == 'text':
                     text = arg
                     self._set_text(context, arg)
 
-                elif name == "move":
+                elif name == 'move':
 
                     text = text[arg:]
                     self._set_text(context, text)
 
-                elif name == "error":
+                elif name == 'error':
                     error = arg or abstract or self
                     self._get_error(context).append(error)
 
-                    self._progress_notify("error_at", error)
+                    self._progress_notify('error_at', error)
 
                 if abstract:
                 # Commands processing with abstract
-                    if name == "restore":
+                    if name == 'restore':
                         old_context = self._get_states(context)[abstract]
 
                         context.clear() # Keeping context object intact
@@ -647,23 +642,23 @@ class ParserProcess(oProcess):
                         if abstract in self._get_states(context):
                             del self._get_states(context)[abstract]
 
-                        self._progress_notify("restored_for", abstract, text)
+                        self._progress_notify('restored_for', abstract, text)
 
-                    elif name == "update":
+                    elif name == 'update':
                         context.update(arg)
 
-                        self._progress_notify("updated_for", abstract, text)
+                        self._progress_notify('updated_for', abstract, text)
 
-                    elif name == "store":
+                    elif name == 'store':
                         self._get_states(context)[abstract] = dict(context)
 
-                        self._progress_notify("storing", abstract, text)
+                        self._progress_notify('storing', abstract, text)
 
-                    elif name == "clear":
+                    elif name == 'clear':
                         if abstract in self._get_states(context): # TODO: copy of restore part, combine or remove
                             del self._get_states(context)[abstract]
 
-                        if arg != "state":
+                        if arg != 'state':
                             if abstract in context:
                                 del context[abstract]
 
@@ -682,7 +677,7 @@ class ParserProcess(oProcess):
 
         # Asking!
         if not message and abstract:
-            self._progress_notify("abstract_current", abstract, text, context)
+            self._progress_notify('abstract_current', abstract, text, context)
 
             message = abstract.parse(text, context)
 
@@ -692,7 +687,7 @@ class ParserProcess(oProcess):
                 return True
 
         # If we are here we have no next from message and no new data, let's roll back
-        self._progress_notify("rollback", abstract)
+        self._progress_notify('rollback', abstract)
 
         if self._can_rollback(context):
             abstract, reply = self._rollback(context)
