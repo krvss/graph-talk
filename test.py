@@ -188,7 +188,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(a, e)
         NextRelation(a, f)
 
-        process = ControllableProcess()
+        process = ControlledProcess()
         process.call(logger)
 
         r = process.parse("test_stop", start=root)
@@ -235,6 +235,7 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(r["result"], "error")
         self.assertIn(c, r["errors"])
+        self.assertEqual(r["errors"][c], "error")
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a

@@ -22,7 +22,7 @@ class Abstract(object):
     def _notify(self, *message, **kwmessage):
         for callee in self._callbacks:
             if callable(callee.parse):
-                callee.parse(*message, **kwmessage)
+                callee.parse(*message, **kwmessage) # TODO: think again about dialogue
 
 
 # Notion is an abstract with name
@@ -274,14 +274,14 @@ class LoopRelation(Relation):
 # ENDTODO: update for latest parse spec
 
 
-# Base process class
+# Base process class, does parsing in step-by-step manner, moving from one abstract to another
 class Process(Abstract):
     def __init__(self):
         super(Process, self).__init__()
 
         self._reply = self._current = None
 
-    def notify_progress(self, info, message = None, kwmessage = None): # TODO: make test to connect 2 processes
+    def _notify_progress(self, info, message = None, kwmessage = None):
         self._notify(info, **{"from": self, "message": message, "kwmessage" :kwmessage})
 
     # Single parse iteration
@@ -291,21 +291,21 @@ class Process(Abstract):
 
             del kwmessage["start"]
 
-        if not self._reply: # TODO: ok or True?
+        if not self._reply:
             return "ok" # We're done
         else:
             if isinstance(self._reply, Abstract):
                 self._current = self._reply
                 self._reply = self._current.parse(*message, **kwmessage)
 
-                self.notify_progress("next", message, kwmessage)
+                self._notify_progress("next", message, kwmessage)
             else:
-                self.notify_progress("next_unknown", message, kwmessage)
+                self._notify_progress("next_unknown", message, kwmessage)
 
                 return "unknown"
 
     def parse(self, *message, **kwmessage):
-        message = list(message) # For future modification in step
+        message = list(message) # For future modifications in step
 
         while True:
             result = self.parse_step(message, kwmessage)
@@ -339,14 +339,14 @@ class StackedProcess(Process):
 
         # Got sequence?
         if result == "unknown" and isinstance(self._reply, list):
-            self.notify_progress("stack_list", message, kwmessage)
+            self._notify_progress("stack_list", message, kwmessage)
 
             c = self._reply.pop(0) # First one is ready to be processed
 
             if self._reply: # No need to push empty list
                 self._stack.append((self._current, self._reply))
 
-                self.notify_progress("stack_push", message, kwmessage)
+                self._notify_progress("stack_push", message, kwmessage)
 
             self._reply = self._current = c
             return
@@ -358,34 +358,34 @@ class StackedProcess(Process):
 
                 result = None
 
-                self.notify_progress("stack_popped", message, kwmessage)
+                self._notify_progress("stack_popped", message, kwmessage)
             else:
-                self.notify_progress("stack_empty", message, kwmessage)
+                self._notify_progress("stack_empty", message, kwmessage)
 
         return result
 
 
 # Process with support of stop, continue and error commands
-class ControllableProcess(StackedProcess):
+class ControlledProcess(StackedProcess):
     def __init__(self):
-        super(ControllableProcess, self).__init__()
+        super(ControlledProcess, self).__init__()
 
         self._errors = {}
 
     def parse_step(self,  message, kwmessage):
-        result = super(ControllableProcess, self).parse_step(message, kwmessage)
+        result = super(ControlledProcess, self).parse_step(message, kwmessage)
 
         if not result:
             return
 
         # Command parsing
         if result == "unknown":
-            # Error command
+            # Error reply
             if (isinstance(self._reply, dict) and "error" in self._reply) or self._reply == "error":
-                self._errors[self._current or self] = self._reply["error"] if isinstance(self._reply, dict) else None
+                self._errors[self._current or self] = self._reply["error"] if isinstance(self._reply, dict) else self._reply
                 self._reply = "continue" # Keep going
 
-                self.notify_progress("command_error", message, kwmessage)
+                self._notify_progress("command_error", message, kwmessage)
 
             # Continue command
             if self._reply == "continue" or "continue" in message:
@@ -394,15 +394,15 @@ class ControllableProcess(StackedProcess):
                 if "continue" in message:
                     message.remove("continue") # Clean up
 
-                self.notify_progress("command_continue", message, kwmessage)
+                self._notify_progress("command_continue", message, kwmessage)
 
-                result = None
+                result = None # And keep going
 
-            # Stop command
+            # Stop reply
             elif self._reply == "stop":
                 result = "stopped"
 
-                self.notify_progress("command_stopped", message, kwmessage)
+                self._notify_progress("command_stopped", message, kwmessage)
 
         return result
 
@@ -410,7 +410,7 @@ class ControllableProcess(StackedProcess):
         if "start" in kwmessage and self._errors:
             self._errors = {} # Clean errors on start
 
-        result = super(ControllableProcess, self).parse(*message, **kwmessage)
+        result = super(ControlledProcess, self).parse(*message, **kwmessage)
 
         if self._errors:
             result.update({"result": "error", "errors": self._errors})
@@ -419,7 +419,7 @@ class ControllableProcess(StackedProcess):
 
 
 # Text parsing process
-class TextParsingProcess(ControllableProcess):
+class TextParsingProcess(ControlledProcess):
     def __init__(self):
         super(TextParsingProcess, self).__init__()
 
@@ -441,7 +441,7 @@ class TextParsingProcess(ControllableProcess):
 
                     result = None
 
-                    self.notify_progress("command_move", message, kwmessage)
+                    self._notify_progress("command_move", message, kwmessage)
 
                 # Replace parsing text
                 if "text" in self._reply:
@@ -455,7 +455,7 @@ class TextParsingProcess(ControllableProcess):
 
                     result = None
 
-                    self.notify_progress("command_text", message, kwmessage)
+                    self._notify_progress("command_text", message, kwmessage)
 
         return result
 
