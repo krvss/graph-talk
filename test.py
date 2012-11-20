@@ -25,7 +25,14 @@ logger = Logger()
 class Debugger(Abstract):
     def parse(self, *message, **kwmessage):
         if message[0] == "next" and str(kwmessage["from"].current) == '"here"':
-            return "stop"
+            return "debug"
+
+
+class Skipper(Abstract):
+    def parse(self, *message, **kwmessage):
+        if message[0] == "next_unknown":
+            return "skip"
+
 
 def showstopper(notion, *message, **kwmessage):
     return notion.name
@@ -116,7 +123,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, a)
 
         process = Process()
-        process.watch(logger)
+        process.callback(logger)
 
         r = process.parse("test_next", start=root)
 
@@ -132,7 +139,10 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["result"], "ok")
 
 
-    def test_debugger(self):
+    def test_callback(self):
+        global _acc
+
+        # Simple debugger test: stop at "a" notion, skip the result by the command and go further
         root = ComplexNotion("here")
         a = ComplexNotion("a")
 
@@ -141,7 +151,7 @@ class BasicTests(unittest.TestCase):
         process = Process()
         debugger = Debugger()
 
-        process.watch(debugger)
+        process.callback(debugger)
         r = process.parse("debugging", start=root)
 
         self.assertEqual(r["result"], "unknown")
@@ -151,12 +161,30 @@ class BasicTests(unittest.TestCase):
         r = process.parse("skip")
 
         self.assertEqual("ok", r["result"])
+        self.assertEqual(process.current, None)
+
+        # Simple skip test: always skip unknowns
+        b = FunctionNotion("b", showstopper)
+        NextRelation(a, b)
+
+        c = FunctionNotion("c", accF)
+        NextRelation(a, c)
+
+        skipper = Skipper()
+        process.callback(skipper)
+
+        _acc = 0
+        r = process.parse("skipper", start=root)
+
+        self.assertEqual(r["result"], "ok")
+        self.assertEqual(_acc, 1)
+        self.assertEqual(process.current, None)
 
 
-    def test_stack(self):
+    def test_queue(self):
         global _acc
 
-        logger.logging = True
+        #logger.logging = True
 
         # Stack test: root -> (a, d); a -> (b,c)
         root = ComplexNotion("root")
@@ -176,11 +204,11 @@ class BasicTests(unittest.TestCase):
 
         NextRelation(root, d)
 
-        process = ListProcess()
-        process.watch(logger)
+        process = Process()
+        process.callback(logger)
 
         _acc = 0
-        r = process.parse("test_stack", start=root)
+        r = process.parse("test_queue", start=root)
 
         self.assertEqual(process.reply, "c")
         self.assertEqual(process.current, c)
@@ -223,7 +251,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(a, f)
 
         process = ControlledProcess()
-        process.watch(logger)
+        process.callback(logger)
 
         r = process.parse("test_stop", start=root)
 
@@ -260,7 +288,7 @@ class BasicTests(unittest.TestCase):
         c = ConditionalRelation(root, None, "a")
 
         process = TextParsingProcess()
-        process.watch(logger)
+        process.callback(logger)
 
         r = process.parse("a", start = root)
 
@@ -304,7 +332,7 @@ class BasicTests(unittest.TestCase):
         r2 = NextRelation(ab, b)
 
         process = TextParsingProcess()
-        process.watch(logger)
+        process.callback(logger)
 
         r = process.parse("", start=root)
 
@@ -359,7 +387,7 @@ class BasicTests(unittest.TestCase):
         c = ConditionalRelation(aa, a, "a")
 
         process = ParserProcess()
-        process.watch(logger)
+        process.callback(logger)
 
         context = {"start": root}
         r = process.parse("aaaaa", context)
@@ -440,7 +468,7 @@ class BasicTests(unittest.TestCase):
 
     def test_selective(self):
         process = ParserProcess()
-        process.watch(logger)
+        process.callback(logger)
 
         # Simple selective test: root -a-> a, -b-> b for "b"
         root = SelectiveNotion("root")

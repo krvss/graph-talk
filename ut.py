@@ -81,7 +81,7 @@ class ValueNotion(Notion):
         return self.value
 
 
-# Function notion is notion that can watch custom function
+# Function notion is notion that can callback custom function
 class FunctionNotion(Notion):
     def __init__(self, name, function):
         super(FunctionNotion, self).__init__(name)
@@ -254,30 +254,36 @@ class LoopRelation(Relation):
 class Process(Abstract):
     def __init__(self):
         super(Process, self).__init__()
+
         self._queue = []
+        self._callback = None
 
-        self._watcher = None
-
-    def watch(self, watcher):
-        if watcher and callable(watcher.parse):
-            self._watcher = watcher
+    def callback(self, abstract):
+        if abstract and callable(abstract.parse):
+            self._callback = abstract
         else:
-            self._watcher = None
+            self._callback = None
 
-    def _notify_watcher(self, info):
-        if self.current == self._watcher or not self._watcher:
-            return None
+    def _ask_callback(self, info):
+        if self.current != self._callback and self._callback:
+            reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'kwmessage' :self.kwmessage})
 
-        reply = self._watcher.parse(info, **{'from': self, 'message': self.message, 'kwmessage' :self.kwmessage})
+            if reply: # No need to store empty replies
+                self._to_que(False, current = self._callback, reply = reply)
 
-        if reply: # No need to store empty replies
-            self._to_que(self.message, self.kwmessage, self._watcher, reply)
+                return True
 
-    def _to_que(self, message, kwmessage, current, reply, update=False):
+        return False
+
+    def _to_que(self, update, **dict):
+        top = {'message': self.message, 'kwmessage': self.kwmessage,
+               'current' : self.current, 'reply': self.reply}
+        top.update(dict)
+
         if not update:
-            self._queue.append({'current' : current, 'message': message, 'kwmessage': kwmessage, 'reply': reply})
-        else :
-            self._queue[-1].update({'current' : current, 'message': message, 'kwmessage': kwmessage, 'reply': reply})
+            self._queue.append(top)
+        else:
+            self._queue[-1].update(top)
 
     def _que_top_get(self, field):
         return self._queue[-1].get(field) if self._queue else None
@@ -285,37 +291,46 @@ class Process(Abstract):
     # Single parse iteration
     def parse_step(self):
         if 'start' in self.kwmessage:
-            self._to_que(self.message, self.kwmessage, self.kwmessage['start'], self.kwmessage['start'], True)
+            self._to_que(True, current = self.kwmessage['start'], reply = self.kwmessage['start'])
             del self.kwmessage['start']
 
             del self._queue[:-1] # Clear the rest of queue - we are starting from scratch
 
-        elif 'stop' in self.message:
+        elif 'stop' in self.message or self.reply == 'stop':
             self._queue.pop()
             return 'stopped'
 
-        elif 'skip' in self.message:
+        elif 'skip' in self.message or self.reply == 'skip':
             del self._queue[-2:]
 
         if not self.reply:
             if self._queue:
                 self._queue.pop() # Let's move on
+
+                self._ask_callback('que_pop')
             else:
                 return 'ok' # We're done if nothing in the queue
         else:
             if isinstance(self.reply, Abstract):
-                self._to_que(self.message, self.kwmessage, self.reply,
-                             self.reply.parse(*self.message, **self.kwmessage), True)
+                self._to_que(True, current= self.reply,
+                             reply = self.reply.parse(*self.message, **self.kwmessage))
 
-                self._notify_watcher('next')
+                self._ask_callback('next')
+
+            elif isinstance(self.reply, list):
+                c = self.reply.pop(0) # First one is ready to be processed
+                self._to_que(False, current = c, reply = c)
+
+                self._ask_callback('que_push')
+
             else:
-                self._notify_watcher('next_unknown')
-
-                return 'unknown'
+                if not self._ask_callback('next_unknown'): # If there where a response on unknown we have to check it
+                    return 'unknown'
 
     def parse(self, *message, **kwmessage):
         if message or kwmessage:
-            self._to_que(list(message), kwmessage, None, None)
+            self._to_que(False, message = list(message), kwmessage = kwmessage,
+                         current = None, reply = None)
 
         while True:
             result = self.parse_step()
@@ -342,28 +357,8 @@ class Process(Abstract):
         return self._que_top_get('reply')
 
 
-# Process with support of list processing
-class ListProcess(Process):
-
-    def parse_step(self):
-        result = super(ListProcess, self).parse_step()
-
-        if not result:
-            return # Nothing to do here
-
-        # Got sequence?
-        if result == 'unknown' and isinstance(self.reply, list):
-            c = self.reply.pop(0) # First one is ready to be processed
-            self._to_que(self.message, self.kwmessage, c, c)
-
-            self._notify_watcher('stack_push')
-            return
-
-        return result
-
-
 # Process with support of stop, continue and error commands
-class ControlledProcess(ListProcess):
+class ControlledProcess(Process):
     def __init__(self):
         super(ControlledProcess, self).__init__()
 
@@ -382,7 +377,7 @@ class ControlledProcess(ListProcess):
                 self._errors[self._current or self] = self._reply['error'] if isinstance(self._reply, dict) else self._reply
                 self._reply = 'continue' # Keep going
 
-                self._notify_watcher('command_error', message, kwmessage)
+                self._ask_callback('command_error', message, kwmessage)
 
             # Continue command
             if self._reply == 'continue' or 'continue' in message:
@@ -391,7 +386,7 @@ class ControlledProcess(ListProcess):
                 if 'continue' in message:
                     message.remove('continue') # Clean up
 
-                self._notify_watcher('command_continue', message, kwmessage)
+                self._ask_callback('command_continue', message, kwmessage)
 
                 result = None # And keep going
 
@@ -399,7 +394,7 @@ class ControlledProcess(ListProcess):
             elif self._reply == 'stop':
                 result = 'stopped'
 
-                self._notify_watcher('command_stopped', message, kwmessage)
+                self._ask_callback('command_stopped', message, kwmessage)
 
         return result
 
@@ -438,7 +433,7 @@ class TextParsingProcess(ControlledProcess):
 
                     result = None
 
-                    self._notify_watcher('command_move', message, kwmessage)
+                    self._ask_callback('command_move', message, kwmessage)
 
                 # Replace parsing text
                 if 'text' in self._reply:
@@ -452,7 +447,7 @@ class TextParsingProcess(ControlledProcess):
 
                     result = None
 
-                    self._notify_watcher('command_text', message, kwmessage)
+                    self._ask_callback('command_text', message, kwmessage)
 
         return result
 
