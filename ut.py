@@ -4,7 +4,7 @@
 # Base class for all communicable objects
 class Abstract(object):
 
-    # The way to ask the abstract a message
+    # The way to send the abstract a message
     def parse(self, *message, **kwmessage):
         return None
 
@@ -23,7 +23,7 @@ class Notion(Abstract):
         return self.__str__()
 
 
-# Relation is a connection between one or more abstracts
+# Relation is a connection between one or more abstracts: subject -> object
 class Relation(Abstract):
     def __init__(self, subject, object):
         super(Relation, self).__init__()
@@ -40,13 +40,13 @@ class Relation(Abstract):
 
         # Disconnect old one
         if isinstance(old_value, Abstract):
-            old_value.parse('unrelated', **{'from': self, target: old_value})
+            old_value.parse('unrelate', **{'from': self, target: old_value})
 
         setattr(self, '_' + target, value)
 
         # Connect new one
         if isinstance(value, Abstract):
-            value.parse('related', **{'from': self, target: value})
+            value.parse('relate', **{'from': self, target: value})
 
     @property
     def subject(self):
@@ -113,17 +113,17 @@ class ComplexNotion(Notion):
         if not reply:
             if message:
                 # This abstract knows only Relate and Unrelate messages
-                if message[0] == 'related':
+                if message[0] == 'relate':
                     if kwmessage.get('subject') == self:
                         self._relate(kwmessage.get('from'))
                         return True
 
-                elif message[0] == 'unrelated':
+                elif message[0] == 'unrelate':
                     if kwmessage.get('subject') == self:
                         self._unrelate(kwmessage.get('from'))
                         return True
 
-             # Returning relations by default, not using a list if there is only one
+             # Returning copy of relation list by default, not using a list if there is only one
             if self._relations:
                 return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
@@ -247,7 +247,7 @@ class LoopRelation(Relation):
 
         return reply
 
-# ENDTODO: update for latest parse spec
+# TODO END: update for latest parse spec
 
 
 # Base process class, does parsing in step-by-step manner, moving from one abstract to another
@@ -265,7 +265,7 @@ class Process(Abstract):
             self._callback = None
 
     def _ask_callback(self, info):
-        if self.current != self._callback and self._callback:
+        if self.current != self._callback and self._callback: # We do not need infinite asking loops
             reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'kwmessage' :self.kwmessage})
 
             if reply: # No need to store empty replies
@@ -301,7 +301,7 @@ class Process(Abstract):
             return 'stopped'
 
         elif 'skip' in self.message or self.reply == 'skip':
-            del self._queue[-2:]
+            del self._queue[-2:] # Removing current and previous elements from queue
 
         if not self.reply:
             if self._queue:
@@ -312,14 +312,14 @@ class Process(Abstract):
                 return 'ok' # We're done if nothing in the queue
         else:
             if isinstance(self.reply, Abstract):
-                self._to_que(True, current= self.reply,
-                             reply = self.reply.parse(*self.message, **self.kwmessage))
+                self._to_que(True, current = self.reply,
+                                   reply = self.reply.parse(*self.message, **self.kwmessage))
 
                 self._ask_callback('next')
 
             elif isinstance(self.reply, list):
-                c = self.reply.pop(0) # First one is ready to be processed
-                self._to_que(False, current = c, reply = c)
+                first = self.reply.pop(0) # First one is ready to be processed
+                self._to_que(False, reply = first)
 
                 self._ask_callback('que_push')
 
@@ -330,7 +330,7 @@ class Process(Abstract):
     def parse(self, *message, **kwmessage):
         if message or kwmessage:
             self._to_que(False, message = list(message), kwmessage = kwmessage,
-                         current = None, reply = None)
+                                current = None, reply = None)
 
         while True:
             result = self.parse_step()
