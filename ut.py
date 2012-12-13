@@ -179,7 +179,7 @@ class ConditionalRelation(Relation):
 
     def parse(self, *message, **kwmessage):
         if self.checker:
-            result = None
+            length = result = None
 
             if callable(self.checker):
                 result, length = self.checker(self, *message, **kwmessage)
@@ -190,16 +190,19 @@ class ConditionalRelation(Relation):
                     result = self.checker
 
             if result:
-                # TODO: think how to exchange information between objects
-                # TODO: may be 'sendmessage' can be used to exchange information between processes
+                reply = {'move': length}
+                if self.object:
+                    reply['notify']= (self.object, {'condition': result})
+
                 #if context and self.object: # May be this is something for the object
                 #    context[self.object] = result
 
-                return [{'move': length}, self.object]
+                return [reply, self.object]
 
         return 'error'
 
 
+# TODO: update for latest parse spec
 # Loop relation is a cycle that repeats object for specified or infinite number of times
 class LoopRelation(Relation):
     def __init__(self, subject, object, n = None):
@@ -246,9 +249,6 @@ class LoopRelation(Relation):
                 reply.append('error')
 
         return reply
-
-# TODO END: update for latest parse spec
-
 
 # Base process class, does parsing in step-by-step manner, moving from one abstract to another
 class Process(Abstract):
@@ -359,36 +359,55 @@ class Process(Abstract):
         return self._que_top_get('reply')
 
 
-# Process with support of stop, continue and error commands
-class ControlledProcess(Process):
+# Process with support of notify and error commands
+class CarrierProcess(Process):
     def __init__(self):
-        super(ControlledProcess, self).__init__()
+        super(CarrierProcess, self).__init__()
 
         self._errors = {}
+        self._notify = {}
 
     def _get_command(self, command):
         if command in self.kwmessage:
             return self.kwmessage[command]
-        elif isinstance(self.reply, dict):
+        elif isinstance(self.reply, dict) and command in self.reply:
             return self.reply[command]
         elif command in self.message or command == self.reply:
             return command
 
     def parse_step(self):
-        result = super(ControlledProcess, self).parse_step()
+        if self.current in self._notify:
+            self.kwmessage.update({'notifications': self._notify[self.current]})
+
+        result = super(CarrierProcess, self).parse_step()
 
         if not result:
             return
 
         # Command parsing
         if result == 'unknown':
-            # Error reply
+            # Error
             error = self._get_command('error')
             if error:
                 self._errors[self.current or self] = error
+
                 self._queue.pop() # Keep going
 
                 self._ask_callback('command_error')
+
+                return None
+
+            # Notify reply
+            notify = self._get_command('notify')
+            if notify:  # [0] is "to", 1 is "what"
+                if notify[0] in self._notify:
+                    self._notify.update(notify[1])
+                else:
+                    self._notify[notify[0]] = notify[1]
+
+                self._queue.pop()
+
+                self._ask_callback('command_notify')
 
                 return None
 
@@ -398,7 +417,7 @@ class ControlledProcess(Process):
         if 'start' in kwmessage and self._errors:
             self._errors = {} # Clean errors on start
 
-        result = super(ControlledProcess, self).parse(*message, **kwmessage)
+        result = super(CarrierProcess, self).parse(*message, **kwmessage)
 
         if self._errors:
             result.update({'result': 'error', 'errors': self._errors})
@@ -406,55 +425,51 @@ class ControlledProcess(Process):
         return result
 
 
-# Text parsing process
-class TextParsingProcess(ControlledProcess):
-    def __init__(self):
-        super(TextParsingProcess, self).__init__()
+# Text parsing process supports move and text commands for text processing
+class TextParsingProcess(CarrierProcess):
 
-        self._start_length = 0
-
-    def parse_step(self,  message, kwmessage):
-        result = super(TextParsingProcess, self).parse_step(message, kwmessage)
+    def parse_step(self):
+        result = super(TextParsingProcess, self).parse_step()
 
         if not result:
             return
 
-        # Command parsing
         if result == 'unknown':
-            if isinstance(self._reply, dict):
+            move = self._get_command('move')
+            if move:
                 # Skip the parsed part
-                if 'move' in self._reply:
-                    message[0] = message[0][self._reply['move']:]
-                    self._reply = 'continue'
+                self.message[0] = self.message[0][move:]
+                self._parsed_length += move
 
-                    result = None
+                self._queue.pop()
 
-                    self._ask_callback('command_move', message, kwmessage)
+                self._ask_callback('command_move')
 
-                # Replace parsing text
-                if 'text' in self._reply:
-                    if not message:
-                        message.insert(0, self._reply['text'])
-                    else:
-                        message[0] = self._reply['text']
+                return None
 
-                    self._start_length = len(message[0])
-                    self._reply = 'continue'
+            # Replace parsing text
+            text = self._get_command('text')
+            if text:
+                self.message[0] = text
+                self._parsed_length = 0
 
-                    result = None
+                self._queue.pop()
 
-                    self._ask_callback('command_text', message, kwmessage)
+                self._ask_callback('command_text')
+
+                return None
 
         return result
 
     def parse(self,  *message, **kwmessage):
-        self._start_length = len(message[0]) # Init the length
+        self._parsed_length = 0 # Init the length
 
         result = super(TextParsingProcess, self).parse(*message, **kwmessage)
 
-        result['length'] = self._start_length - len(result['message'][0])
+        result['length'] = self._parsed_length
 
         return result
+
 
 # Abstract state; together states represent a tree-like structure
 class State(object):

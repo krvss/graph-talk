@@ -54,32 +54,17 @@ def accF(notion, *message, **kwmessage):
     _acc += 1
     return False
 
-'''
-def add_to_result(notion, message, **context):
-    if not "result" in kwmessage:
-        kwmessage["result"] = ""
-
-    kwmessage["result"] += notion.name
-
-def if_loop(loop, context):
-    if not loop in context:
-        context[loop] = 5
-        return True
-
-    i = context[loop] - 1
-
-    if i > 0:
-        context[loop] = i
-        return True
-
-    return False
-
-'''
 def is_a(condition, *message, **kwmessage):
     if message[0].startswith("a"):
         return True, 1
     else:
         return False, 0
+
+def has_notify(notion, *message, **kwmessage):
+    if 'notification' in kwmessage:
+       return kwmessage['notification']
+    else:
+        return False
 
 
 # TODO: ensure test coverage
@@ -245,7 +230,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(a, d)
         NextRelation(a, e)
 
-        process = ControlledProcess()
+        process = CarrierProcess()
         process.callback(logger)
 
         r = process.parse("test_stop", start=root)
@@ -274,10 +259,7 @@ class BasicTests(unittest.TestCase):
 
 
     def test_condition(self):
-        return
-
-
-        #logger.logging = True
+        logger.logging = True
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
 
@@ -297,6 +279,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["result"], "error")
         self.assertIn(c, r["errors"])
         self.assertEqual(r["errors"][c], "error")
+        self.assertEqual(r["length"], 0)
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a
@@ -306,12 +289,39 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["length"], 1)
         self.assertEqual(r["result"], "ok")
 
+        return
+
+        # TODO: check notifications
         c.object = FunctionNotion("text", texter)
 
         r = process.parse("a", start = root)
+
         self.assertEqual(r["result"], "ok")
         self.assertIn("new_text", r["message"])
         self.assertEqual(r["length"], 0)
+
+
+    '''
+    def add_to_result(notion, message, **context):
+        if not "result" in kwmessage:
+            kwmessage["result"] = ""
+
+        kwmessage["result"] += notion.name
+
+    def if_loop(loop, context):
+        if not loop in context:
+            context[loop] = 5
+            return True
+
+        i = context[loop] - 1
+
+        if i > 0:
+            context[loop] = i
+            return True
+
+        return False
+
+    '''
 
     '''
     def test_complex(self):
