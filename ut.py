@@ -288,6 +288,9 @@ class Process(Abstract):
     def _que_top_get(self, field):
         return self._queue[-1].get(field) if self._queue else None
 
+    def _has_message(self, message):
+        return message in self.message or self.reply == message
+
     # Single parse iteration
     def parse_step(self):
         if 'start' in self.kwmessage:
@@ -296,11 +299,10 @@ class Process(Abstract):
 
             del self._queue[:-1] # Clear the rest of queue - we are starting from scratch
 
-        elif 'stop' in self.message or self.reply == 'stop':
-            self._queue.pop()
-            return 'stopped'
+        elif self._has_message('stop'):
+            return 'stopped'    # Just stop at once where we are
 
-        elif 'skip' in self.message or self.reply == 'skip':
+        elif self._has_message('skip'):
             del self._queue[-2:] # Removing current and previous elements from queue
 
         if not self.reply:
@@ -364,8 +366,16 @@ class ControlledProcess(Process):
 
         self._errors = {}
 
-    def parse_step(self,  message, kwmessage):
-        result = super(ControlledProcess, self).parse_step(message, kwmessage)
+    def _get_command(self, command):
+        if command in self.kwmessage:
+            return self.kwmessage[command]
+        elif isinstance(self.reply, dict):
+            return self.reply[command]
+        elif command in self.message or command == self.reply:
+            return command
+
+    def parse_step(self):
+        result = super(ControlledProcess, self).parse_step()
 
         if not result:
             return
@@ -373,28 +383,14 @@ class ControlledProcess(Process):
         # Command parsing
         if result == 'unknown':
             # Error reply
-            if (isinstance(self._reply, dict) and 'error' in self._reply) or self._reply == 'error':
-                self._errors[self._current or self] = self._reply['error'] if isinstance(self._reply, dict) else self._reply
-                self._reply = 'continue' # Keep going
+            error = self._get_command('error')
+            if error:
+                self._errors[self.current or self] = error
+                self._queue.pop() # Keep going
 
-                self._ask_callback('command_error', message, kwmessage)
+                self._ask_callback('command_error')
 
-            # Continue command
-            if self._reply == 'continue' or 'continue' in message:
-                kwmessage['start'] = None # Go pop
-
-                if 'continue' in message:
-                    message.remove('continue') # Clean up
-
-                self._ask_callback('command_continue', message, kwmessage)
-
-                result = None # And keep going
-
-            # Stop reply
-            elif self._reply == 'stop':
-                result = 'stopped'
-
-                self._ask_callback('command_stopped', message, kwmessage)
+                return None
 
         return result
 

@@ -82,7 +82,7 @@ def is_a(condition, *message, **kwmessage):
         return False, 0
 
 
-# TODO: check test coverage
+# TODO: ensure test coverage
 class BasicTests(unittest.TestCase):
 
     def test_objects(self):
@@ -229,48 +229,44 @@ class BasicTests(unittest.TestCase):
 
 
     def test_stop(self):
-
-        return
-
-        #logger.logging = True
+        logger.logging = True
         root = ComplexNotion("root")
         a = ComplexNotion("a")
 
         NextRelation(root, a)
 
-        b = FunctionNotion("error", showstopper) # First stop by error
-        c = FunctionNotion("continue", showstopper) # Keep going
-        d = FunctionNotion("stop", showstopper) # Stop here
-        e = FunctionNotion("errorer", errorer) # And finally here
-        f = FunctionNotion("end", showstopper) # And finally here
+        b = FunctionNotion("stop", showstopper) # First stop
+        c = FunctionNotion("error", showstopper) # Error!
+        d = FunctionNotion("errorer", errorer) # Another error!
+        e = FunctionNotion("end", showstopper) # And finally here
 
         NextRelation(a, b)
         NextRelation(a, c)
         NextRelation(a, d)
         NextRelation(a, e)
-        NextRelation(a, f)
 
         process = ControlledProcess()
         process.callback(logger)
 
         r = process.parse("test_stop", start=root)
 
-        self.assertEqual(process.reply, "stop")
-        self.assertEqual(process.current, d)
-        self.assertEqual(r["result"], "error")
-        self.assertIn(b, r["errors"])
+        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(process.current, b)
 
         # Now let's try to resume
-        r = process.parse("test_stop_2", "continue")
+        r = process.parse("skip")
+
+        self.assertEqual(r["result"], "error")
+        self.assertIn(c, r["errors"])
+        self.assertIn(d, r["errors"])
 
         self.assertEqual(process.reply, "end")
-        self.assertEqual(process.current, f)
-        self.assertEqual(r["result"], "error")
-        self.assertIn(e, r["errors"])
-        self.assertEqual("i_m_bad", r["errors"][e])
+        self.assertEqual(process.current, e)
 
-        # And now go None
-        r = process.parse("test_stop_3", start=None)
+        self.assertEqual("i_m_bad", r["errors"][d])
+
+        # And now go None to check the errors cleared
+        r = process.parse("test_stop_2", start=None)
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
