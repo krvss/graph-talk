@@ -61,8 +61,8 @@ def is_a(condition, *message, **kwmessage):
         return False, 0
 
 def has_notify(notion, *message, **kwmessage):
-    if 'notification' in kwmessage:
-       return kwmessage['notification']
+    if 'notifications' in kwmessage:
+       return kwmessage['notifications']
     else:
         return False
 
@@ -263,7 +263,9 @@ class BasicTests(unittest.TestCase):
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
 
-        c = ConditionalRelation(root, None, "a")
+        d = FunctionNotion("noti", has_notify)
+
+        c = ConditionalRelation(root, d, "a")
 
         process = TextParsingProcess()
         process.callback(logger)
@@ -271,7 +273,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("a", start = root)
 
         self.assertEqual(r["length"], 1)
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(process.current, d)
 
         # Simple negative condition test root -a-> a for "n"
         r = process.parse("n", start = root)
@@ -283,6 +286,7 @@ class BasicTests(unittest.TestCase):
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a
+        c.object = None
 
         r = process.parse("a", start = root)
 
@@ -545,7 +549,8 @@ def custom_func(notion, context):
 
 def test():
     logger.logging = False
-    suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
+    #suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
+    suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_condition')
     unittest.TextTestRunner(verbosity=2).run(suite)
 
     return

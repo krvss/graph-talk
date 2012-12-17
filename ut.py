@@ -194,6 +194,7 @@ class ConditionalRelation(Relation):
                 if self.object:
                     reply['notify']= (self.object, {'condition': result})
 
+                # TODO remove
                 #if context and self.object: # May be this is something for the object
                 #    context[self.object] = result
 
@@ -300,6 +301,7 @@ class Process(Abstract):
             del self._queue[:-1] # Clear the rest of queue - we are starting from scratch
 
         elif self._has_message('stop'):
+            # TODO notify?
             return 'stopped'    # Just stop at once where we are
 
         elif self._has_message('skip'):
@@ -344,11 +346,13 @@ class Process(Abstract):
 
     @property
     def message(self):
-        return self._que_top_get('message') or []
+        m = self._que_top_get('message')
+        return m if None != m else []
 
     @property
     def kwmessage(self):
-        return self._que_top_get('kwmessage') or {}
+        kwm = self._que_top_get('kwmessage')
+        return kwm if None != kwm else {}
 
     @property
     def current(self):
@@ -367,17 +371,30 @@ class CarrierProcess(Process):
         self._errors = {}
         self._notify = {}
 
-    def _get_command(self, command):
-        if command in self.kwmessage:
-            return self.kwmessage[command]
-        elif isinstance(self.reply, dict) and command in self.reply:
-            return self.reply[command]
-        elif command in self.message or command == self.reply:
-            return command
+    def _pull_command(self, command):
+        data = None
+
+        if isinstance(self.reply, dict) and command in self.reply:
+            data = self.reply[command]
+            del self.reply[command]
+
+        elif command in self.kwmessage:
+            data = self.kwmessage[command]
+            del self.kwmessage[command]
+
+        elif command in self.message:
+            self.message.remove(command)
+            data = command
+
+        elif command == self.reply:
+            self._to_que(True, reply = None)
+            data = command
+
+        return data
 
     def parse_step(self):
-        if self.current in self._notify:
-            self.kwmessage.update({'notifications': self._notify[self.current]})
+        if isinstance(self.reply, Abstract) and self.reply in self._notify:
+            self.kwmessage.update({'notifications': self._notify[self.reply]})
 
         result = super(CarrierProcess, self).parse_step()
 
@@ -387,25 +404,25 @@ class CarrierProcess(Process):
         # Command parsing
         if result == 'unknown':
             # Error
-            error = self._get_command('error')
+            error = self._pull_command('error')
             if error:
                 self._errors[self.current or self] = error
 
-                self._queue.pop() # Keep going
+                #self._queue.pop() # Keep going
 
                 self._ask_callback('command_error')
 
                 return None
 
             # Notify reply
-            notify = self._get_command('notify')
+            notify = self._pull_command('notify')
             if notify:  # [0] is "to", 1 is "what"
                 if notify[0] in self._notify:
                     self._notify.update(notify[1])
                 else:
                     self._notify[notify[0]] = notify[1]
 
-                self._queue.pop()
+                #self._queue.pop()
 
                 self._ask_callback('command_notify')
 
@@ -435,25 +452,21 @@ class TextParsingProcess(CarrierProcess):
             return
 
         if result == 'unknown':
-            move = self._get_command('move')
+            move = self._pull_command('move')
             if move:
                 # Skip the parsed part
                 self.message[0] = self.message[0][move:]
                 self._parsed_length += move
-
-                self._queue.pop()
 
                 self._ask_callback('command_move')
 
                 return None
 
             # Replace parsing text
-            text = self._get_command('text')
+            text = self._pull_command('text')
             if text:
                 self.message[0] = text
                 self._parsed_length = 0
-
-                self._queue.pop()
 
                 self._ask_callback('command_text')
 
