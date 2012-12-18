@@ -43,6 +43,15 @@ def errorer(notion, *message, **kwmessage):
 def texter(notion, *message, **kwmessage):
     return {"text": "new_text"}
 
+def contexter(notion, *message, **kwmessage):
+    return {"add":{"context": True}}
+
+def has_context(notion, *message, **kwmessage):
+    if 'context' in kwmessage:
+        return kwmessage['context']
+    else:
+        return False
+
 _acc = 0
 def acc(notion, *message, **kwmessage):
     global _acc
@@ -214,7 +223,7 @@ class BasicTests(unittest.TestCase):
 
 
     def test_stop(self):
-        logger.logging = True
+        #logger.logging = True
         root = ComplexNotion("root")
         a = ComplexNotion("a")
 
@@ -258,8 +267,26 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["result"], "ok")
 
 
+    def test_context(self):
+        #logger.logging = True
+
+        root = ComplexNotion("root")
+        a = FunctionNotion("context", contexter)
+        b = FunctionNotion("check_context", has_context)
+
+        NextRelation(root, a)
+        NextRelation(root, b)
+
+        process = ContextProcess()
+        process.callback(logger)
+
+        r = process.parse("test_stop", start=root)
+        self.assertEqual(r["result"], "unknown")
+        self.assertIn("context", process.kwmessage)
+
+
     def test_condition(self):
-        logger.logging = True
+        #logger.logging = True
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
 
@@ -549,8 +576,8 @@ def custom_func(notion, context):
 
 def test():
     logger.logging = False
-    #suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
-    suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_condition')
+    suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
+    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_context')
     unittest.TextTestRunner(verbosity=2).run(suite)
 
     return

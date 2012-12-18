@@ -289,8 +289,26 @@ class Process(Abstract):
     def _que_top_get(self, field):
         return self._queue[-1].get(field) if self._queue else None
 
-    def _has_message(self, message):
-        return message in self.message or self.reply == message
+    def _pull_command(self, command):
+        data = None
+
+        if isinstance(self.reply, dict) and command in self.reply:
+            data = self.reply[command]
+            del self.reply[command]
+
+        elif command in self.kwmessage:
+            data = self.kwmessage[command]
+            del self.kwmessage[command]
+
+        elif command in self.message:
+            self.message.remove(command)
+            data = command
+
+        elif command == self.reply:
+            self._to_que(True, reply = None)
+            data = command
+
+        return data
 
     # Single parse iteration
     def parse_step(self):
@@ -300,11 +318,11 @@ class Process(Abstract):
 
             del self._queue[:-1] # Clear the rest of queue - we are starting from scratch
 
-        elif self._has_message('stop'):
+        elif self._pull_command('stop'):
             # TODO notify?
             return 'stopped'    # Just stop at once where we are
 
-        elif self._has_message('skip'):
+        elif self._pull_command('skip'):
             del self._queue[-2:] # Removing current and previous elements from queue
 
         if not self.reply:
@@ -363,6 +381,31 @@ class Process(Abstract):
         return self._que_top_get('reply')
 
 
+class ContextProcess(Process):
+
+    def parse_step(self):
+
+        result = super(ContextProcess, self).parse_step()
+
+        if not result:
+            return
+
+        if result == 'unknown':
+            command = self._pull_command('add')
+            if command:
+                if isinstance(command, dict):
+                    for k, w in command.items():
+                        if not k in self.kwmessage:
+                            self.kwmessage[k] = w
+
+                else:
+                    self.message.append(command)
+
+                return None
+
+        return result
+
+
 # Process with support of notify and error commands
 class CarrierProcess(Process):
     def __init__(self):
@@ -370,27 +413,6 @@ class CarrierProcess(Process):
 
         self._errors = {}
         self._notify = {}
-
-    def _pull_command(self, command):
-        data = None
-
-        if isinstance(self.reply, dict) and command in self.reply:
-            data = self.reply[command]
-            del self.reply[command]
-
-        elif command in self.kwmessage:
-            data = self.kwmessage[command]
-            del self.kwmessage[command]
-
-        elif command in self.message:
-            self.message.remove(command)
-            data = command
-
-        elif command == self.reply:
-            self._to_que(True, reply = None)
-            data = command
-
-        return data
 
     def parse_step(self):
         if isinstance(self.reply, Abstract) and self.reply in self._notify:
