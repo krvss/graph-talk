@@ -171,7 +171,7 @@ class SelectiveNotion(ComplexNotion):
         return reply
 
 
-# Conditional relation is a condition to go further if message starts with sequence
+# Conditional relation is a condition to go further if text starts with sequence
 class ConditionalRelation(Relation):
     def __init__(self, subject, object, checker):
         super(ConditionalRelation, self).__init__(subject, object)
@@ -183,8 +183,8 @@ class ConditionalRelation(Relation):
 
             if callable(self.checker):
                 result, length = self.checker(self, *message, **context)
-            elif message:
-                length = len(self.checker) if message[0].startswith(self.checker) else 0
+            elif 'text' in context:
+                length = len(self.checker) if context['text'].startswith(self.checker) else 0
 
                 if length > 0:
                     result = self.checker
@@ -193,10 +193,6 @@ class ConditionalRelation(Relation):
                 reply = {'move': length}
                 if self.object:
                     reply['add_context'] = {'condition': result}
-
-                # TODO remove
-                #if context and self.object: # May be this is something for the object
-                #    context[self.object] = result
 
                 return [reply, self.object]
 
@@ -425,66 +421,12 @@ class ContextProcess(Process):
         return result
 
 
-# Process with support of notify and error commands
-class CarrierProcess(Process):
+# Text parsing process supports error and move commands for text processing
+class TextParsingProcess(ContextProcess):
     def __init__(self):
-        super(CarrierProcess, self).__init__()
-
-        self._errors = {}
-        self._notify = {}
-
-    def parse_step(self):
-        if isinstance(self.reply, Abstract) and self.reply in self._notify:
-            self.kwmessage.update({'notifications': self._notify[self.reply]})
-
-        result = super(CarrierProcess, self).parse_step()
-
-        if not result:
-            return
-
-        # Command parsing
-        if result == 'unknown':
-            # Error
-            error = self._pull_command('error')
-            if error:
-                self._errors[self.current or self] = error
-
-                #self._queue.pop() # Keep going
-
-                self._ask_callback('command_error')
-
-                return None
-
-            # Notify reply
-            notify = self._pull_command('notify')
-            if notify:  # [0] is "to", 1 is "what"
-                if notify[0] in self._notify:
-                    self._notify.update(notify[1])
-                else:
-                    self._notify[notify[0]] = notify[1]
-
-                #self._queue.pop()
-
-                self._ask_callback('command_notify')
-
-                return None
-
-        return result
-
-    def parse(self, *message, **kwmessage):
-        if 'start' in kwmessage and self._errors:
-            self._errors = {} # Clean errors on start
-
-        result = super(CarrierProcess, self).parse(*message, **kwmessage)
-
-        if self._errors:
-            result.update({'result': 'error', 'errors': self._errors})
-
-        return result
-
-
-# Text parsing process supports move and text commands for text processing
-class TextParsingProcess(CarrierProcess):
+        super(TextParsingProcess, self).__init__()
+        self._parsed_length = 0 # Init the length
+        self.errors = {}
 
     def parse_step(self):
         result = super(TextParsingProcess, self).parse_step()
@@ -493,34 +435,42 @@ class TextParsingProcess(CarrierProcess):
             return
 
         if result == 'unknown':
+            # Add errors to context
+            error = self._pull_command('error')
+            if error:
+                self.errors[self.current or self] = error
+
+                self._ask_callback('command_error')
+                return None
+
+            # Skip the parsed part of text in context
             move = self._pull_command('move')
-            if move:
-                # Skip the parsed part
-                self.message[0] = self.message[0][move:]
+            if move and 'text' in self.context:
+                self.context['text'] = self.context['text'][move:]
                 self._parsed_length += move
 
                 self._ask_callback('command_move')
-
-                return None
-
-            # Replace parsing text
-            text = self._pull_command('text')
-            if text:
-                self.message[0] = text
-                self._parsed_length = 0
-
-                self._ask_callback('command_text')
-
                 return None
 
         return result
 
-    def parse(self,  *message, **kwmessage):
-        self._parsed_length = 0 # Init the length
+    def parse(self,  *message, **context):
+        if 'errors' in context:
+            self.errors = context['errors']
+        else:
+            context['errors'] = self.errors
 
-        result = super(TextParsingProcess, self).parse(*message, **kwmessage)
+        if 'new' in message:
+            if self.errors:
+                self.errors.clear() # Clean errors on start
+            self._parsed_length = 0
+
+        result = super(TextParsingProcess, self).parse(*message, **context)
 
         result['length'] = self._parsed_length
+
+        if self.errors:
+            result['result'] = 'error'
 
         return result
 

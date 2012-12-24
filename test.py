@@ -41,7 +41,7 @@ def errorer(notion, *message, **context):
     return {"error": "i_m_bad"}
 
 def texter(notion, *message, **context):
-    return {"text": "new_text"}
+    return {"update_context": {"text": "new_text"}}
 
 def context_add(notion, *message, **context):
     return {"add_context":{"context": True}}
@@ -73,14 +73,14 @@ def accF(notion, *message, **context):
     return False
 
 def is_a(condition, *message, **context):
-    if message[0].startswith("a"):
+    if "text" in context and context["text"].startswith("a"):
         return True, 1
     else:
         return False, 0
 
-def has_notify(notion, *message, **context):
-    if 'notifications' in context:
-       return context['notifications']
+def has_condition(notion, *message, **context):
+    if 'condition' in context:
+       return context['condition']
     else:
         return False
 
@@ -278,8 +278,7 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn("more", process.context)
 
 
-    def test_stop(self):
-        return
+    def test_errors(self):
         #logger.logging = True
         root = ComplexNotion("root")
         a = ComplexNotion("a")
@@ -296,10 +295,10 @@ class BasicTests(unittest.TestCase):
         NextRelation(a, d)
         NextRelation(a, e)
 
-        process = CarrierProcess()
+        process = TextParsingProcess()
         process.callback(logger)
 
-        r = process.parse(root, test="test_stop")
+        r = process.parse(root, test="test_errors")
 
         self.assertEqual(r["result"], "stopped")
         self.assertEqual(process.current, b)
@@ -308,16 +307,16 @@ class BasicTests(unittest.TestCase):
         r = process.parse("skip")
 
         self.assertEqual(r["result"], "error")
-        self.assertIn(c, r["errors"])
-        self.assertIn(d, r["errors"])
+        self.assertIn(c, process.errors)
+        self.assertIn(d, process.errors)
 
         self.assertEqual(process.reply, "end")
         self.assertEqual(process.current, e)
 
-        self.assertEqual("i_m_bad", r["errors"][d])
+        self.assertEqual("i_m_bad", process.errors[d])
 
         # And now go None to check the errors cleared
-        r = process.parse(test="test_stop_2")
+        r = process.parse("new", test="test_stop_2")
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
@@ -325,51 +324,45 @@ class BasicTests(unittest.TestCase):
 
 
     def test_condition(self):
-        return
-
         #logger.logging = True
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
 
-        d = FunctionNotion("noti", has_notify)
+        d = FunctionNotion("noti", has_condition)
 
         c = ConditionalRelation(root, d, "a")
 
         process = TextParsingProcess()
         process.callback(logger)
 
-        r = process.parse("a", start = root)
+        r = process.parse(root, text="a")
 
         self.assertEqual(r["length"], 1)
         self.assertEqual(r["result"], "unknown")
         self.assertEqual(process.current, d)
 
         # Simple negative condition test root -a-> a for "n"
-        r = process.parse("n", start = root)
+        r = process.parse("new", root, text="n")
 
         self.assertEqual(r["result"], "error")
-        self.assertIn(c, r["errors"])
-        self.assertEqual(r["errors"][c], "error")
+        self.assertIn(c, process.errors)
+        self.assertEqual(process.errors[c], "error")
         self.assertEqual(r["length"], 0)
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a
         c.object = None
 
-        r = process.parse("a", start = root)
+        r = process.parse("new", root, text="a")
 
         self.assertEqual(r["length"], 1)
         self.assertEqual(r["result"], "ok")
 
-        return
-
-        # TODO: check notifications
         c.object = FunctionNotion("text", texter)
 
-        r = process.parse("a", start = root)
+        r = process.parse("new", root, "a")
 
-        self.assertEqual(r["result"], "ok")
-        self.assertIn("new_text", r["message"])
+        self.assertEqual(r["result"], "error")
         self.assertEqual(r["length"], 0)
 
 
