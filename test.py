@@ -7,71 +7,80 @@ class Logger(Abstract):
     filter = None
     logging = True
 
-    def parse(self, *message, **kwmessage):
+    def parse(self, *message, **context):
         if not self.logging:
             return None
 
         if Logger.filter and not Logger.filter in message:
             return False
 
-        print "%s: at: %s, reply: %s, message: %s, kwmessage: %s" % (message[0], kwmessage["from"].current,
-                                                                     kwmessage["from"].reply, kwmessage["message"],
-                                                                     kwmessage["kwmessage"])
+        print "%s: at: %s, reply: %s, message: %s, context: %s" % (message[0], context["from"].current,
+                                                                     context["from"].reply, context["message"],
+                                                                     context["context"])
 
         return None
 
 logger = Logger()
 
 class Debugger(Abstract):
-    def parse(self, *message, **kwmessage):
-        if message[0] == "next" and str(kwmessage["from"].current) == '"here"':
+    def parse(self, *message, **context):
+        if message[0] == "next" and str(context["from"].current) == '"here"':
             return "debug"
 
 
 class Skipper(Abstract):
-    def parse(self, *message, **kwmessage):
+    def parse(self, *message, **context):
         if message[0] == "next_unknown":
             return "skip"
 
 
-def showstopper(notion, *message, **kwmessage):
+def showstopper(notion, *message, **context):
     return notion.name
 
-def errorer(notion, *message, **kwmessage):
+def errorer(notion, *message, **context):
     return {"error": "i_m_bad"}
 
-def texter(notion, *message, **kwmessage):
+def texter(notion, *message, **context):
     return {"text": "new_text"}
 
-def contexter(notion, *message, **kwmessage):
-    return {"add":{"context": True}}
+def context_add(notion, *message, **context):
+    return {"add_context":{"context": True}}
 
-def has_context(notion, *message, **kwmessage):
-    if 'context' in kwmessage:
-        return kwmessage['context']
+def context_update(notion, *message, **context):
+    return {"update_context":{"context": "new"}}
+
+def context_del(notion, *message, **context):
+    return {"delete_context":"context"}
+
+def context_del2(notion, *message, **context):
+    return {"delete_context":["context", "more", "more2"]}
+
+def has_context(notion, *message, **context):
+    if 'context' in context:
+        return 'stop'
     else:
         return False
 
 _acc = 0
-def acc(notion, *message, **kwmessage):
+def acc(notion, *message, **context):
     global _acc
     _acc += 1
     return _acc
 
-def accF(notion, *message, **kwmessage):
+def accF(notion, *message, **context):
     global _acc
     _acc += 1
     return False
 
-def is_a(condition, *message, **kwmessage):
+def is_a(condition, *message, **context):
     if message[0].startswith("a"):
         return True, 1
     else:
         return False, 0
 
-def has_notify(notion, *message, **kwmessage):
-    if 'notifications' in kwmessage:
-       return kwmessage['notifications']
+def has_notify(notion, *message, **context):
+    if 'notifications' in context:
+       return context['notifications']
     else:
         return False
 
@@ -119,14 +128,15 @@ class BasicTests(unittest.TestCase):
         process = Process()
         process.callback(logger)
 
-        r = process.parse("test_next", start=root)
+        r = process.parse(root, test="next")
 
         self.assertEqual(process.reply, "a")
         self.assertEqual(process.current, a)
         self.assertEqual(r["result"], "unknown")
 
+        # Now function will not confuse process
         a.function = None
-        r = process.parse("test_next_2", start=root)
+        r = process.parse("new", root, test="test_next_2")
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
@@ -146,12 +156,13 @@ class BasicTests(unittest.TestCase):
         debugger = Debugger()
 
         process.callback(debugger)
-        r = process.parse("debugging", start=root)
+        r = process.parse(root, test="debugging")
 
         self.assertEqual(r["result"], "unknown")
         self.assertEqual(process.current, debugger)
-        self.assertIn("debugging", process.message)
+        self.assertEqual(process.reply, "debug")
 
+        # Skipping unknown
         r = process.parse("skip")
 
         self.assertEqual("ok", r["result"])
@@ -168,7 +179,7 @@ class BasicTests(unittest.TestCase):
         process.callback(skipper)
 
         _acc = 0
-        r = process.parse("skipper", start=root)
+        r = process.parse("new", root, test="skipper")
 
         self.assertEqual(r["result"], "ok")
         self.assertEqual(_acc, 1)
@@ -202,7 +213,7 @@ class BasicTests(unittest.TestCase):
         process.callback(logger)
 
         _acc = 0
-        r = process.parse("test_queue", start=root)
+        r = process.parse(root, test="test_queue")
 
         self.assertEqual(process.reply, "c")
         self.assertEqual(process.current, c)
@@ -221,8 +232,54 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.current, None)
         self.assertEqual(r["result"], "ok")
 
+    def test_context(self):
+        #logger.logging = True
+
+        # Verify correctness of adding
+        root = ComplexNotion("root")
+        a = FunctionNotion("context", context_add)
+        b = FunctionNotion("check_context", has_context)
+
+        NextRelation(root, a)
+        NextRelation(root, b)
+
+        process = ContextProcess()
+        process.callback(logger)
+
+        r = process.parse(root, test = "context_add")
+        self.assertEqual(r["result"], "stopped")
+        self.assertIn("context", process.context)
+
+        process.context["context"] = False
+
+        r = process.parse("new", root, test = "context_add_2", context = "1")
+        self.assertEqual(r["result"], "stopped")
+        self.assertEqual("1", process.context["context"])
+
+        # Verify updating
+        a.function = context_update
+
+        r = process.parse("new", root, test = "context_update", context = "2")
+        self.assertEqual(r["result"], "stopped")
+        self.assertEqual("new", process.context["context"])
+
+        # Verify deleting & mass deleting
+        a.function = context_del
+
+        r = process.parse("new", root, test = "context_del", context = "3")
+        self.assertEqual(r["result"], "ok")
+        self.assertNotIn("context", process.context)
+
+        a.function = context_del2
+
+        r = process.parse("new", root, test = "context_del", context = "4", more = False)
+        self.assertEqual(r["result"], "ok")
+        self.assertNotIn("context", process.context)
+        self.assertNotIn("more", process.context)
+
 
     def test_stop(self):
+        return
         #logger.logging = True
         root = ComplexNotion("root")
         a = ComplexNotion("a")
@@ -242,7 +299,7 @@ class BasicTests(unittest.TestCase):
         process = CarrierProcess()
         process.callback(logger)
 
-        r = process.parse("test_stop", start=root)
+        r = process.parse(root, test="test_stop")
 
         self.assertEqual(r["result"], "stopped")
         self.assertEqual(process.current, b)
@@ -260,32 +317,16 @@ class BasicTests(unittest.TestCase):
         self.assertEqual("i_m_bad", r["errors"][d])
 
         # And now go None to check the errors cleared
-        r = process.parse("test_stop_2", start=None)
+        r = process.parse(test="test_stop_2")
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
         self.assertEqual(r["result"], "ok")
 
 
-    def test_context(self):
-        #logger.logging = True
-
-        root = ComplexNotion("root")
-        a = FunctionNotion("context", contexter)
-        b = FunctionNotion("check_context", has_context)
-
-        NextRelation(root, a)
-        NextRelation(root, b)
-
-        process = ContextProcess()
-        process.callback(logger)
-
-        r = process.parse("test_stop", start=root)
-        self.assertEqual(r["result"], "unknown")
-        self.assertIn("context", process.kwmessage)
-
-
     def test_condition(self):
+        return
+
         #logger.logging = True
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")

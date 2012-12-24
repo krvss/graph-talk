@@ -5,7 +5,7 @@
 class Abstract(object):
 
     # The way to send the abstract a message
-    def parse(self, *message, **kwmessage):
+    def parse(self, *message, **context):
         return None
 
 
@@ -77,7 +77,7 @@ class ValueNotion(Notion):
         super(ValueNotion, self).__init__(name)
         self.value = value
 
-    def parse(self, *message, **kwmessage):
+    def parse(self, *message, **context):
         return self.value
 
 
@@ -87,8 +87,8 @@ class FunctionNotion(Notion):
         super(FunctionNotion, self).__init__(name)
         self.function = function if callable(function) else None
 
-    def parse(self, *message, **kwmessage):
-        return self.function(self, *message, **kwmessage) if callable(self.function) else None
+    def parse(self, *message, **context):
+        return self.function(self, *message, **context) if callable(self.function) else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -107,20 +107,20 @@ class ComplexNotion(Notion):
         if relation and (relation in self._relations):
             self._relations.remove(relation)
 
-    def parse(self, *message, **kwmessage):
-        reply = super(ComplexNotion, self).parse(*message, **kwmessage)
+    def parse(self, *message, **context):
+        reply = super(ComplexNotion, self).parse(*message, **context)
 
         if not reply:
             if message:
                 # This abstract knows only Relate and Unrelate messages
                 if message[0] == 'relate':
-                    if kwmessage.get('subject') == self:
-                        self._relate(kwmessage.get('from'))
+                    if context.get('subject') == self:
+                        self._relate(context.get('from'))
                         return True
 
                 elif message[0] == 'unrelate':
-                    if kwmessage.get('subject') == self:
-                        self._unrelate(kwmessage.get('from'))
+                    if context.get('subject') == self:
+                        self._unrelate(context.get('from'))
                         return True
 
              # Returning copy of relation list by default, not using a list if there is only one
@@ -130,7 +130,7 @@ class ComplexNotion(Notion):
 
 # Next relation is just a simple sequence relation
 class NextRelation(Relation):
-    def parse(self, *message, **kwmessage):
+    def parse(self, *message, **context):
         return self.object
 
 
@@ -177,12 +177,12 @@ class ConditionalRelation(Relation):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
 
-    def parse(self, *message, **kwmessage):
+    def parse(self, *message, **context):
         if self.checker:
             length = result = None
 
             if callable(self.checker):
-                result, length = self.checker(self, *message, **kwmessage)
+                result, length = self.checker(self, *message, **context)
             elif message:
                 length = len(self.checker) if message[0].startswith(self.checker) else 0
 
@@ -192,7 +192,7 @@ class ConditionalRelation(Relation):
             if result:
                 reply = {'move': length}
                 if self.object:
-                    reply['notify']= (self.object, {'condition': result})
+                    reply['add_context'] = {'condition': result}
 
                 # TODO remove
                 #if context and self.object: # May be this is something for the object
@@ -267,7 +267,7 @@ class Process(Abstract):
 
     def _ask_callback(self, info):
         if self.current != self._callback and self._callback: # We do not need infinite asking loops
-            reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'kwmessage' :self.kwmessage})
+            reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'context' :self.context})
 
             if reply: # No need to store empty replies
                 self._to_que(False, current = self._callback, reply = reply)
@@ -277,7 +277,7 @@ class Process(Abstract):
         return False
 
     def _to_que(self, update, **dict):
-        top = {'message': self.message, 'kwmessage': self.kwmessage,
+        top = {'message': self.message, 'context': self.context,
                'current' : self.current, 'reply': self.reply}
         top.update(dict)
 
@@ -296,35 +296,36 @@ class Process(Abstract):
             data = self.reply[command]
             del self.reply[command]
 
-        elif command in self.kwmessage:
-            data = self.kwmessage[command]
-            del self.kwmessage[command]
+        elif command == self.reply:
+            self._to_que(True, reply = None)
+            data = command
 
         elif command in self.message:
             self.message.remove(command)
-            data = command
-
-        elif command == self.reply:
-            self._to_que(True, reply = None)
             data = command
 
         return data
 
     # Single parse iteration
     def parse_step(self):
-        if 'start' in self.kwmessage:
-            self._to_que(True, current = self.kwmessage['start'], reply = self.kwmessage['start'])
-            del self.kwmessage['start']
+        if self._pull_command('new'):
+            if not self._ask_callback('new'):
+                del self._queue[:-1] # Removing previous elements from queue
 
-            del self._queue[:-1] # Clear the rest of queue - we are starting from scratch
+        # Start from message if no replies left
+        if not self.reply and self.message and isinstance(self.message[0], Abstract):
+            self._to_que(True, current = self.message[0], reply = self.message[0])
+            del self.message[0]
 
         elif self._pull_command('stop'):
-            # TODO notify?
-            return 'stopped'    # Just stop at once where we are
+            if not self._ask_callback('stop'):
+                return 'stopped'    # Just stop at once where we are if callback does not care
 
         elif self._pull_command('skip'):
-            del self._queue[-2:] # Removing current and previous elements from queue
+            if not self._ask_callback('skip'):
+                del self._queue[-2:] # Removing current and previous elements from queue
 
+        # Done with message, now work with replies
         if not self.reply:
             if self._queue:
                 self._queue.pop() # Let's move on
@@ -335,7 +336,7 @@ class Process(Abstract):
         else:
             if isinstance(self.reply, Abstract):
                 self._to_que(True, current = self.reply,
-                                   reply = self.reply.parse(*self.message, **self.kwmessage))
+                                   reply = self.reply.parse(*self.message, **self.context))
 
                 self._ask_callback('next')
 
@@ -349,9 +350,9 @@ class Process(Abstract):
                 if not self._ask_callback('next_unknown'): # If there where a response on unknown we have to check it
                     return 'unknown'
 
-    def parse(self, *message, **kwmessage):
-        if message or kwmessage:
-            self._to_que(False, message = list(message), kwmessage = kwmessage,
+    def parse(self, *message, **context):
+        if message or context:
+            self._to_que(False, message = list(message), context = context,
                                 current = None, reply = None)
 
         while True:
@@ -368,9 +369,9 @@ class Process(Abstract):
         return m if None != m else []
 
     @property
-    def kwmessage(self):
-        kwm = self._que_top_get('kwmessage')
-        return kwm if None != kwm else {}
+    def context(self):
+        ctx = self._que_top_get('context')
+        return ctx if None != ctx else {}
 
     @property
     def current(self):
@@ -384,23 +385,41 @@ class Process(Abstract):
 class ContextProcess(Process):
 
     def parse_step(self):
-
         result = super(ContextProcess, self).parse_step()
 
         if not result:
             return
 
         if result == 'unknown':
-            command = self._pull_command('add')
+            # Adding
+            command = self._pull_command('add_context')
+            if command and isinstance(command, dict):
+                for k, w in command.items():
+                    if not k in self.context:
+                        self.context[k] = w
+
+                self._ask_callback('added_context')
+                return None
+
+            # Updating
+            command = self._pull_command('update_context')
+            if command and isinstance(command, dict):
+                self.context.update(command)
+
+                self._ask_callback('updated_context')
+                return None
+
+            # Deleting
+            command = self._pull_command('delete_context')
             if command:
-                if isinstance(command, dict):
-                    for k, w in command.items():
-                        if not k in self.kwmessage:
-                            self.kwmessage[k] = w
+                if isinstance(command, list):
+                    for k in command:
+                        if k in self.context:
+                            del self.context[k]
+                elif command in self.context:
+                    del self.context[command]
 
-                else:
-                    self.message.append(command)
-
+                self._ask_callback('updated_context')
                 return None
 
         return result
