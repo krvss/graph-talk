@@ -261,7 +261,7 @@ class Process(Abstract):
         else:
             self._callback = None
 
-    def _ask_callback(self, info):
+    def event_call(self, info):
         if self.current != self._callback and self._callback: # We do not need infinite asking loops
             reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'context' :self.context})
 
@@ -305,7 +305,7 @@ class Process(Abstract):
     # Single parse iteration
     def parse_step(self):
         if self._pull_command('new'):
-            if not self._ask_callback('new'):
+            if not self.event_call('new'):
                 del self._queue[:-1] # Removing previous elements from queue
 
         # Start from message if no replies left
@@ -314,19 +314,19 @@ class Process(Abstract):
             del self.message[0]
 
         elif self._pull_command('stop'):
-            if not self._ask_callback('stop'):
+            if not self.event_call('stop'):
                 return 'stopped'    # Just stop at once where we are if callback does not care
 
         elif self._pull_command('skip'):
-            if not self._ask_callback('skip'):
+            if not self.event_call('skip'):
                 del self._queue[-2:] # Removing current and previous elements from queue
 
         # Done with message, now work with replies
         if not self.reply:
-            if self._queue:
+            if self._queue and len(self._queue) > 1:
                 self._queue.pop() # Let's move on
 
-                self._ask_callback('que_pop')
+                self.event_call('que_pop')
             else:
                 return 'ok' # We're done if nothing in the queue
         else:
@@ -334,21 +334,22 @@ class Process(Abstract):
                 self._to_que(True, current = self.reply,
                                    reply = self.reply.parse(*self.message, **self.context))
 
-                self._ask_callback('next')
+                self.event_call('next')
 
             elif isinstance(self.reply, list):
                 first = self.reply.pop(0) # First one is ready to be processed
                 self._to_que(False, reply = first)
 
-                self._ask_callback('que_push')
+                self.event_call('que_push')
 
             else:
-                if not self._ask_callback('next_unknown'): # If there where a response on unknown we have to check it
+                if not self.event_call('next_unknown'): # If there where a response on unknown we have to check it
                     return 'unknown'
 
     def parse(self, *message, **context):
         if message or context:
-            self._to_que(False, message = list(message), context = context,
+            update = len(self._queue) == 1 and not self.message and not self.reply
+            self._to_que(update, message = list(message), context = context,
                                 current = None, reply = None)
 
         while True:
@@ -386,6 +387,7 @@ class ContextProcess(Process):
         if not result:
             return
 
+        # TODO: invalid command arguments test
         if result == 'unknown':
             # Adding
             command = self._pull_command('add_context')
@@ -394,7 +396,7 @@ class ContextProcess(Process):
                     if not k in self.context:
                         self.context[k] = w
 
-                self._ask_callback('added_context')
+                self.event_call('added_context')
                 return None
 
             # Updating
@@ -402,7 +404,7 @@ class ContextProcess(Process):
             if command and isinstance(command, dict):
                 self.context.update(command)
 
-                self._ask_callback('updated_context')
+                self.event_call('updated_context')
                 return None
 
             # Deleting
@@ -415,7 +417,7 @@ class ContextProcess(Process):
                 elif command in self.context:
                     del self.context[command]
 
-                self._ask_callback('updated_context')
+                self.event_call('updated_context')
                 return None
 
         return result
@@ -426,7 +428,6 @@ class TextParsingProcess(ContextProcess):
     def __init__(self):
         super(TextParsingProcess, self).__init__()
         self._parsed_length = 0 # Init the length
-        self.errors = {}
 
     def parse_step(self):
         result = super(TextParsingProcess, self).parse_step()
@@ -440,7 +441,7 @@ class TextParsingProcess(ContextProcess):
             if error:
                 self.errors[self.current or self] = error
 
-                self._ask_callback('command_error')
+                self.event_call('command_error')
                 return None
 
             # Skip the parsed part of text in context
@@ -449,17 +450,12 @@ class TextParsingProcess(ContextProcess):
                 self.context['text'] = self.context['text'][move:]
                 self._parsed_length += move
 
-                self._ask_callback('command_move')
+                self.event_call('command_move')
                 return None
 
         return result
 
     def parse(self,  *message, **context):
-        if 'errors' in context:
-            self.errors = context['errors']
-        else:
-            context['errors'] = self.errors
-
         if 'new' in message:
             if self.errors:
                 self.errors.clear() # Clean errors on start
@@ -473,6 +469,12 @@ class TextParsingProcess(ContextProcess):
             result['result'] = 'error'
 
         return result
+
+    @property
+    def errors(self):
+        if not 'errors' in self.context:
+            self.context['errors'] = {}
+        return self.context['errors']
 
 
 # Abstract state; together states represent a tree-like structure

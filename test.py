@@ -84,6 +84,12 @@ def has_condition(notion, *message, **context):
     else:
         return False
 
+def add_to_result(notion, *message, **context):
+    add = notion.name
+    if "result" in context:
+        add = context["result"] + add
+
+    return {"update_context":{"result": add}}
 
 # TODO: ensure test coverage
 class BasicTests(unittest.TestCase):
@@ -139,7 +145,7 @@ class BasicTests(unittest.TestCase):
         r = process.parse("new", root, test="test_next_2")
 
         self.assertEqual(process.reply, None)
-        self.assertEqual(process.current, None)
+        self.assertEqual(process.current, a)
         self.assertEqual(r["result"], "ok")
 
 
@@ -166,7 +172,7 @@ class BasicTests(unittest.TestCase):
         r = process.parse("skip")
 
         self.assertEqual("ok", r["result"])
-        self.assertEqual(process.current, None)
+        self.assertEqual(process.current, a)
 
         # Simple skip test: always skip unknowns
         b = FunctionNotion("b", showstopper)
@@ -183,7 +189,7 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(r["result"], "ok")
         self.assertEqual(_acc, 1)
-        self.assertEqual(process.current, None)
+        self.assertEqual(process.current, a)
 
 
     def test_queue(self):
@@ -220,17 +226,23 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r["result"], "unknown")
         self.assertEqual(_acc, 1)
 
-        r = process.parse("skip") # Make process pop from stack
+        r = process.parse("skip", test="test_skip") # Make process pop from stack
 
         self.assertEqual(process.reply, "d")
         self.assertEqual(process.current, d)
         self.assertEqual(r["result"], "unknown")
 
-        r = process.parse("skip") # Trying empty stack
+        r = process.parse("skip", test="test_skip_2") # Trying empty stack
 
-        self.assertEqual(process.reply, None)
-        self.assertEqual(process.current, None)
+        self.assertEqual(process.reply, [])
+        self.assertEqual(process.current, root) # Root is because it was ComplexNotion
         self.assertEqual(r["result"], "ok")
+
+        # Trying list message
+        _acc = 0
+        process.parse(b, b, b)
+        self.assertEqual(_acc, 3)
+
 
     def test_context(self):
         #logger.logging = True
@@ -315,8 +327,20 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual("i_m_bad", process.errors[d])
 
+        # Check that if there is no problems if there is nothing new
+        r = process.parse(test="test_stop_2")
+
+        self.assertEqual(r["result"], "error")
+        self.assertIn(c, process.errors)
+        self.assertIn(d, process.errors)
+
+        self.assertEqual(process.reply, "end")
+        self.assertEqual(process.current, e)
+
+        self.assertEqual("i_m_bad", process.errors[d])
+
         # And now go None to check the errors cleared
-        r = process.parse("new", test="test_stop_2")
+        r = process.parse("new", test="test_stop_3")
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
@@ -367,12 +391,6 @@ class BasicTests(unittest.TestCase):
 
 
     '''
-    def add_to_result(notion, message, **context):
-        if not "result" in kwmessage:
-            kwmessage["result"] = ""
-
-        kwmessage["result"] += notion.name
-
     def if_loop(loop, context):
         if not loop in context:
             context[loop] = 5
@@ -388,9 +406,8 @@ class BasicTests(unittest.TestCase):
 
     '''
 
-    '''
     def test_complex(self):
-        logger.logging = True
+        #logger.logging = True
         # Complex notion test: root -> ab -> (a , b) with empty message
         root = ComplexNotion("root")
         ab = ComplexNotion("ab")
@@ -405,11 +422,12 @@ class BasicTests(unittest.TestCase):
         process = TextParsingProcess()
         process.callback(logger)
 
-        r = process.parse("", start=root)
+        r = process.parse(root, test="test_complex_1")
 
-        self.assertEqual(r["result"], "ab")
+        self.assertEqual(process.context["result"], "ab")
         self.assertTrue(r["result"])
         self.assertEqual(r["length"], 0)
+        self.assertEqual(process.current, ab) # Because root has 1 child only, so no lists
 
         # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for "a"
 
@@ -419,13 +437,13 @@ class BasicTests(unittest.TestCase):
         ConditionalRelation(ab, a, "a")
         r2 = ConditionalRelation(ab, b, "b")
 
-        context = {"start": root}
-        r = process.parse("a", context)
+        r = process.parse(root, text="a", test="test_complex_2")
 
-        self.assertEqual(context["result"], "a")
-        self.assertFalse(r["result"])
+        self.assertEqual(process.context["result"], "a")
+        self.assertEqual(r["result"], "error")
         self.assertEqual(r["length"], 1)
-        self.assertListEqual(context["error"], [r2])
+        self.assertIn(r2, process.errors)
+        self.assertEqual(process.current, ab) # Nowhere to go
 
         # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
         c = ComplexNotion("c")
@@ -440,14 +458,15 @@ class BasicTests(unittest.TestCase):
         f = FunctionNotion("f", add_to_result)
         ConditionalRelation(ab, f, "f")
 
-        context = {"start": root}
-        r = process.parse("abf", context)
+        r = process.parse("new", root, text="abf", test="test_complex_3")
 
-        self.assertEqual(context["result"], "abdef")
-        self.assertTrue(r["result"])
+        self.assertEqual(process.context["result"], "abdef")
+        self.assertEqual(r["result"],  "ok")
         self.assertEqual(r["length"], 3)
-        self.assertTrue(not "error" in context)
+        self.assertTrue(not process.errors)
+        self.assertEqual(process.current, ab) # Last complex notion with list
 
+    '''
     def test_loop(self):
         # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
         root = ComplexNotion("root")
@@ -611,7 +630,7 @@ def custom_func(notion, context):
 def test():
     logger.logging = False
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
-    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_context')
+    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_queue')
     unittest.TextTestRunner(verbosity=2).run(suite)
 
     return
