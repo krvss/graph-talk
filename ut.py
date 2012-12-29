@@ -314,8 +314,7 @@ class Process(Abstract):
             del self.message[0]
 
         elif self._pull_command('stop'):
-            if not self.event_call('stop'):
-                return 'stopped'    # Just stop at once where we are if callback does not care
+            return 'stop'    # Just stop at once where we are if callback does not care
 
         elif self._pull_command('skip'):
             if not self.event_call('skip'):
@@ -334,7 +333,7 @@ class Process(Abstract):
                 self._to_que(True, current = self.reply,
                                    reply = self.reply.parse(*self.message, **self.context))
 
-                self.event_call('next')
+                self.event_call('next') # TODO: pre-action and post-action events
 
             elif isinstance(self.reply, list):
                 first = self.reply.pop(0) # First one is ready to be processed
@@ -343,8 +342,7 @@ class Process(Abstract):
                 self.event_call('que_push')
 
             else:
-                if not self.event_call('next_unknown'): # If there where a response on unknown we have to check it
-                    return 'unknown'
+                return 'unknown'
 
     def parse(self, *message, **context):
         if message or context:
@@ -355,7 +353,11 @@ class Process(Abstract):
         while True:
             result = self.parse_step()
 
+            # If there a string reply we need to ask callback before stopping
             if result:
+                if isinstance(result, str) and self.event_call(result):
+                    continue
+
                 break
 
         return {'result': result}

@@ -30,7 +30,7 @@ class Debugger(Abstract):
 
 class Skipper(Abstract):
     def parse(self, *message, **context):
-        if message[0] == "next_unknown":
+        if message[0] == "unknown":
             return "skip"
 
 
@@ -259,20 +259,20 @@ class BasicTests(unittest.TestCase):
         process.callback(logger)
 
         r = process.parse(root, test = "context_add")
-        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(r["result"], "stop")
         self.assertIn("context", process.context)
 
         process.context["context"] = False
 
         r = process.parse("new", root, test = "context_add_2", context = "1")
-        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(r["result"], "stop")
         self.assertEqual("1", process.context["context"])
 
         # Verify updating
         a.function = context_update
 
         r = process.parse("new", root, test = "context_update", context = "2")
-        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(r["result"], "stop")
         self.assertEqual("new", process.context["context"])
 
         # Verify deleting & mass deleting
@@ -312,7 +312,7 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root, test="test_errors")
 
-        self.assertEqual(r["result"], "stopped")
+        self.assertEqual(r["result"], "stop")
         self.assertEqual(process.current, b)
 
         # Now let's try to resume
