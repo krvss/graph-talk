@@ -24,7 +24,7 @@ logger = Logger()
 
 class Debugger(Abstract):
     def parse(self, *message, **context):
-        if message[0] == "next" and str(context["from"].current) == '"here"':
+        if message[0] == "next_post" and str(context["from"].current) == '"here"':
             return "debug"
 
 
@@ -630,7 +630,7 @@ def custom_func(notion, context):
 def test():
     logger.logging = False
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
-    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_queue')
+    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_complex')
     unittest.TextTestRunner(verbosity=2).run(suite)
 
     return
