@@ -251,6 +251,8 @@ class Process(Abstract):
     def __init__(self):
         super(Process, self).__init__()
 
+        self.result = None
+
         self._queue = []
         self._callback = None
 
@@ -281,7 +283,7 @@ class Process(Abstract):
                 result = event[2]()
 
                 # Now we do a post-event call
-                self.callback_event(event[0] + '_post')
+                self.callback_event(event[0] + '_post') # TODO process result
 
         return can_run, result
 
@@ -360,6 +362,9 @@ class Process(Abstract):
     def event_unknown(self):
         return 'unknown'
 
+    def event_result(self):
+        return self.result
+
     def _to_que(self, update, **dict):
         top = {'message': self.message, 'context': self.context,
                'current' : self.current, 'reply': self.reply}
@@ -421,16 +426,11 @@ class Process(Abstract):
                                 current = None, reply = None)
 
         while True:
-            result = self.parse_step()
+            self.result = self.parse_step()
 
             # If there a string reply we need to ask callback before stopping
-            if result:
-                if isinstance(result, str) and self.callback_event(result): # TODO done event
-                    continue
-
-                break
-
-        return {'result': result}
+            if self.result and self.run_event(('result', None, self.event_result))[1]:
+                return self.result
 
     @property
     def message(self):
@@ -497,7 +497,7 @@ class ContextProcess(Process):
 class TextParsingProcess(ContextProcess):
     def __init__(self):
         super(TextParsingProcess, self).__init__()
-        self._parsed_length = 0 # Init the length
+        self.parsed_length = 0 # Init the length
 
     def get_events(self):
         return super(TextParsingProcess, self).get_events() + \
@@ -519,7 +519,14 @@ class TextParsingProcess(ContextProcess):
         if self.errors:
             self.errors.clear()
 
-        self._parsed_length = 0
+        self.parsed_length = 0
+
+    def event_result(self):
+        # If there are errors - result is always error
+        if self.errors:
+            self.result = 'error'
+
+        return super(TextParsingProcess, self).event_result()
 
     def event_error(self):
         error = self.get_command('error', True)
@@ -528,18 +535,7 @@ class TextParsingProcess(ContextProcess):
     def event_move(self):
         move = self.get_command('move', True)
         self.context['text'] = self.context['text'][move:]
-        self._parsed_length += move
-
-    def parse(self,  *message, **context):
-        result = super(TextParsingProcess, self).parse(*message, **context)
-
-        # TODO result event?
-        result['length'] = self._parsed_length
-
-        if self.errors:
-            result['result'] = 'error'
-
-        return result
+        self.parsed_length += move
 
     @property
     def errors(self):
@@ -593,7 +589,7 @@ class oProcess(Abstract):
         context[self]['current'] = abstract
 
     def _get_text(self, context):
-        return context['text'] if 'text' in context else '' # TODO: should be within process context, here because of ctx copy problems
+        return context['text'] if 'text' in context else '' # OLD_TODO: should be within process context, here because of ctx copy problems
 
     def _set_text(self, context, text):
         context['text'] = text
@@ -645,7 +641,7 @@ class ParserProcess(oProcess):
         self._notify(info, {'abstract': abstract,
                             'message': parsing_message or '',
                             'text': self._get_text(parsing_context) if parsing_context else '',
-                            'context': parsing_context or ''}) # TODO remove, add from instead, use message/abs from ctx
+                            'context': parsing_context or ''}) # OLD_TODO remove, add from instead, use message/abs from ctx
 
     def _rollback(self, context):
         abstract = None
@@ -740,7 +736,7 @@ class ParserProcess(oProcess):
                         self._progress_notify('storing', abstract, text)
 
                     elif name == 'clear':
-                        if abstract in self._get_states(context): # TODO: copy of restore part, combine or remove
+                        if abstract in self._get_states(context): # OLD_TODO: copy of restore part, combine or remove
                             del self._get_states(context)[abstract]
 
                         if arg != 'state':

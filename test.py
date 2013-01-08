@@ -30,7 +30,7 @@ class Debugger(Abstract):
 
 class Skipper(Abstract):
     def parse(self, *message, **context):
-        if message[0] == "unknown":
+        if message[0] == "unknown_pre":
             return "skip"
 
 
@@ -138,7 +138,7 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(process.reply, "a")
         self.assertEqual(process.current, a)
-        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(r, "unknown")
 
         # Now function will not confuse process
         a.function = None
@@ -146,7 +146,7 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, a)
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r, "ok")
 
 
     def test_callback(self):
@@ -164,14 +164,14 @@ class BasicTests(unittest.TestCase):
         process.callback(debugger)
         r = process.parse(root, test="debugging")
 
-        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(r, "unknown")
         self.assertEqual(process.current, debugger)
         self.assertEqual(process.reply, "debug")
 
         # Skipping unknown
         r = process.parse("skip")
 
-        self.assertEqual("ok", r["result"])
+        self.assertEqual("ok", r)
         self.assertEqual(process.current, a)
 
         # Simple skip test: always skip unknowns
@@ -187,7 +187,7 @@ class BasicTests(unittest.TestCase):
         _acc = 0
         r = process.parse("new", root, test="skipper")
 
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r, "ok")
         self.assertEqual(_acc, 1)
         self.assertEqual(process.current, a)
 
@@ -223,20 +223,20 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(process.reply, "c")
         self.assertEqual(process.current, c)
-        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(r, "unknown")
         self.assertEqual(_acc, 1)
 
         r = process.parse("skip", test="test_skip") # Make process pop from stack
 
         self.assertEqual(process.reply, "d")
         self.assertEqual(process.current, d)
-        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(r, "unknown")
 
         r = process.parse("skip", test="test_skip_2") # Trying empty stack
 
         self.assertEqual(process.reply, [])
         self.assertEqual(process.current, root) # Root is because it was ComplexNotion
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r, "ok")
 
         # Trying list message
         _acc = 0
@@ -259,33 +259,33 @@ class BasicTests(unittest.TestCase):
         process.callback(logger)
 
         r = process.parse(root, test = "context_add")
-        self.assertEqual(r["result"], "stop")
+        self.assertEqual(r, "stop")
         self.assertIn("context", process.context)
 
         process.context["context"] = False
 
         r = process.parse("new", root, test = "context_add_2", context = "1")
-        self.assertEqual(r["result"], "stop")
+        self.assertEqual(r, "stop")
         self.assertEqual("1", process.context["context"])
 
         # Verify updating
         a.function = context_update
 
         r = process.parse("new", root, test = "context_update", context = "2")
-        self.assertEqual(r["result"], "stop")
+        self.assertEqual(r, "stop")
         self.assertEqual("new", process.context["context"])
 
         # Verify deleting & mass deleting
         a.function = context_del
 
         r = process.parse("new", root, test = "context_del", context = "3")
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r, "ok")
         self.assertNotIn("context", process.context)
 
         a.function = context_del2
 
         r = process.parse("new", root, test = "context_del", context = "4", more = False)
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r, "ok")
         self.assertNotIn("context", process.context)
         self.assertNotIn("more", process.context)
 
@@ -312,13 +312,13 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root, test="test_errors")
 
-        self.assertEqual(r["result"], "stop")
+        self.assertEqual(r, "stop")
         self.assertEqual(process.current, b)
 
         # Now let's try to resume
         r = process.parse("skip")
 
-        self.assertEqual(r["result"], "error")
+        self.assertEqual(r, "error")
         self.assertIn(c, process.errors)
         self.assertIn(d, process.errors)
 
@@ -330,7 +330,7 @@ class BasicTests(unittest.TestCase):
         # Check that if there is no problems if there is nothing new
         r = process.parse(test="test_stop_2")
 
-        self.assertEqual(r["result"], "error")
+        self.assertEqual(r, "error")
         self.assertIn(c, process.errors)
         self.assertIn(d, process.errors)
 
@@ -344,7 +344,7 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, None)
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(r, "ok")
 
 
     def test_condition(self):
@@ -361,17 +361,17 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root, text="a")
 
-        self.assertEqual(r["length"], 1)
-        self.assertEqual(r["result"], "unknown")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(r, "unknown")
         self.assertEqual(process.current, d)
 
         # Simple negative condition test root -a-> a for "n"
         r = process.parse("new", root, text="n")
 
-        self.assertEqual(r["result"], "error")
+        self.assertEqual(r, "error")
         self.assertIn(c, process.errors)
         self.assertEqual(process.errors[c], "error")
-        self.assertEqual(r["length"], 0)
+        self.assertEqual(process.parsed_length, 0)
 
         # Simple positive condition test root -function-> a for "a"
         c.checker = is_a
@@ -379,15 +379,15 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse("new", root, text="a")
 
-        self.assertEqual(r["length"], 1)
-        self.assertEqual(r["result"], "ok")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(r, "ok")
 
         c.object = FunctionNotion("text", texter)
 
         r = process.parse("new", root, "a")
 
-        self.assertEqual(r["result"], "error")
-        self.assertEqual(r["length"], 0)
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 0)
 
 
     '''
@@ -425,8 +425,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse(root, test="test_complex_1")
 
         self.assertEqual(process.context["result"], "ab")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 0)
+        self.assertTrue(r)
+        self.assertEqual(process.parsed_length, 0)
         self.assertEqual(process.current, ab) # Because root has 1 child only, so no lists
 
         # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for "a"
@@ -440,8 +440,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse(root, text="a", test="test_complex_2")
 
         self.assertEqual(process.context["result"], "a")
-        self.assertEqual(r["result"], "error")
-        self.assertEqual(r["length"], 1)
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 1)
         self.assertIn(r2, process.errors)
         self.assertEqual(process.current, ab) # Nowhere to go
 
@@ -461,8 +461,8 @@ class BasicTests(unittest.TestCase):
         r = process.parse("new", root, text="abf", test="test_complex_3")
 
         self.assertEqual(process.context["result"], "abdef")
-        self.assertEqual(r["result"],  "ok")
-        self.assertEqual(r["length"], 3)
+        self.assertEqual(r,  "ok")
+        self.assertEqual(process.parsed_length, 3)
         self.assertTrue(not process.errors)
         self.assertEqual(process.current, ab) # Last complex notion with list
 
