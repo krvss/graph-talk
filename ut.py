@@ -40,13 +40,13 @@ class Relation(Abstract):
 
         # Disconnect old one
         if isinstance(old_value, Abstract):
-            old_value.parse('un_relate', **{'from': self, target: old_value})
+            old_value.parse('un_relate', **{'from': self})
 
         setattr(self, '_' + target, value)
 
         # Connect new one
         if isinstance(value, Abstract):
-            value.parse('relate', **{'from': self, target: value})
+            value.parse('relate', **{'from': self})
 
     @property
     def subject(self):
@@ -100,19 +100,19 @@ class ComplexNotion(Notion):
         self.relate(relation)
 
     def relate(self, relation):
-        # TODO relation subject check?
-        if relation and (relation not in self._relations):
+        if isinstance(relation, Relation) and relation.subject == self \
+           and (relation not in self._relations):
             self._relations.append(relation)
 
     def un_relate(self, relation):
-        if relation and (relation in self._relations):
+        if relation in self._relations:
             self._relations.remove(relation)
 
     def parse(self, *message, **context):
         reply = super(ComplexNotion, self).parse(*message, **context)
 
         if not reply:
-            if message and context.get('subject') == self:
+            if message:
                 # This abstract knows only Relate and Unrelate messages
                 if message[0] == 'relate':
                     self.relate(context.get('from'))
@@ -252,7 +252,7 @@ class Process(Abstract):
         super(Process, self).__init__()
 
         self._queue = []
-        self._callback = None # TODO many of them?
+        self._callback = None
 
     def callback(self, abstract):
         if abstract and callable(abstract.parse):
@@ -260,7 +260,7 @@ class Process(Abstract):
         else:
             self._callback = None
 
-    def event_callback(self, info): # TODO rename
+    def callback_event(self, info):
         if self.current != self._callback and self._callback: # We do not need infinite asking loops
             reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'context' :self.context})
 
@@ -271,25 +271,26 @@ class Process(Abstract):
 
         return False
 
-    # Events
     def run_event(self, event):
         can_run = event[1](self) if event[1] else True
         result = None
 
-        if can_run: # TODO: return True only if there was a condition satisfied?
+        if can_run:
             # We need to check can we call event or not
-            if not self.event_callback(event[0] + '_pre'):
+            if not self.callback_event(event[0] + '_pre'):
                 result = event[2]()
 
                 # Now we do a post-event call
-                self.event_callback(event[0] + '_post')
+                self.callback_event(event[0] + '_post')
 
         return can_run, result
 
+    # Events
     def get_events(self):
-        return [(
+        return [
+                (
                     'new',
-                    lambda self: self.get_command('new'),
+                    lambda self: self.get_command('new', True),
                     self.event_new
                 ),
                 (
@@ -299,12 +300,12 @@ class Process(Abstract):
                 ),
                 (
                     'stop',
-                    lambda self: self.get_command('stop'),
+                    lambda self: self.get_command('stop', True),
                     self.event_stop
                 ),
                 (
                     'skip',
-                    lambda self: self.get_command('skip'),
+                    lambda self: self.get_command('skip', True),
                     self.event_skip
                 ),
                 (
@@ -372,7 +373,7 @@ class Process(Abstract):
     def _que_top_get(self, field):
         return self._queue[-1].get(field) if self._queue else None
 
-    def get_command(self, command, pull = True): # TODO: pull = False by default
+    def get_command(self, command, pull = False):
         data = None
 
         if isinstance(self.reply, dict) and command in self.reply:
@@ -424,7 +425,7 @@ class Process(Abstract):
 
             # If there a string reply we need to ask callback before stopping
             if result:
-                if isinstance(result, str) and self.event_callback(result): # TODO done event
+                if isinstance(result, str) and self.callback_event(result): # TODO done event
                     continue
 
                 break
@@ -456,32 +457,32 @@ class ContextProcess(Process):
         return super(ContextProcess, self).get_events() + \
             [(
                 'add_context',
-                lambda self: isinstance(self.get_command('add_context', False), dict),
+                lambda self: isinstance(self.get_command('add_context'), dict),
                 self.event_add_context
             ),
             (
                 'update_context',
-                lambda self: isinstance(self.get_command('update_context', False), dict),
+                lambda self: isinstance(self.get_command('update_context'), dict),
                 self.event_update_context
             ),
             (
                 'delete_context',
-                lambda self: self.get_command('delete_context', False),
+                lambda self: self.get_command('delete_context'),
                 self.event_delete_context
             )]
 
     def event_add_context(self):
-        command = self.get_command('add_context')
+        command = self.get_command('add_context', True)
         for k, w in command.items():
             if not k in self.context:
                 self.context[k] = w
 
     def event_update_context(self):
-        command = self.get_command('update_context')
+        command = self.get_command('update_context', True)
         self.context.update(command)
 
     def event_delete_context(self):
-        command = self.get_command('delete_context')
+        command = self.get_command('delete_context', True)
 
         if isinstance(command, list):
             for k in command:
@@ -502,12 +503,12 @@ class TextParsingProcess(ContextProcess):
         return super(TextParsingProcess, self).get_events() + \
         [(
             'error',
-            lambda self: self.get_command('error', False),
+            lambda self: self.get_command('error'),
             self.event_error
          ),
          (
              'move',
-             lambda self: self.get_command('move', False) and 'text' in self.context,
+             lambda self: self.get_command('move') and 'text' in self.context,
              self.event_move
          )]
 
@@ -521,11 +522,11 @@ class TextParsingProcess(ContextProcess):
         self._parsed_length = 0
 
     def event_error(self):
-        error = self.get_command('error')
+        error = self.get_command('error', True)
         self.errors[self.current or self] = error
 
     def event_move(self):
-        move = self.get_command('move')
+        move = self.get_command('move', True)
         self.context['text'] = self.context['text'][move:]
         self._parsed_length += move
 
