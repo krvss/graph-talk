@@ -289,6 +289,12 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn("context", process.context)
         self.assertNotIn("more", process.context)
 
+        # See what's happening if command argument is incorrect
+        a.function = lambda notion, *message, **context: {"update_context"}
+
+        r = process.parse("new", root, test = "context_bad")
+        self.assertEqual(r, "unknown")
+
 
     def test_errors(self):
         #logger.logging = True

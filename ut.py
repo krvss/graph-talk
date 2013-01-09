@@ -39,13 +39,13 @@ class Relation(Abstract):
             return
 
         # Disconnect old one
-        if isinstance(old_value, Abstract):
+        if old_value:
             old_value.parse('un_relate', **{'from': self})
 
         setattr(self, '_' + target, value)
 
         # Connect new one
-        if isinstance(value, Abstract):
+        if value:
             value.parse('relate', **{'from': self})
 
     @property
@@ -191,7 +191,7 @@ class ConditionalRelation(Relation):
             if result:
                 reply = {'move': length}
                 if self.object:
-                    reply['add_context'] = {'condition': result}
+                    reply['add_context'] = {'condition': result} # TODO Notification
 
                 return [reply, self.object]
 
@@ -246,7 +246,7 @@ class LoopRelation(Relation):
 
         return reply
 
-# Base process class, does parsing in step-by-step manner, moving from one abstract to another
+# Base process class, does parsing using list of event-condition-action items, moving from one abstract to another
 class Process(Abstract):
     def __init__(self):
         super(Process, self).__init__()
@@ -283,7 +283,7 @@ class Process(Abstract):
                 result = event[2]()
 
                 # Now we do a post-event call
-                self.callback_event(event[0] + '_post') # TODO process result
+                self.callback_event(event[0] + '_post')
 
         return can_run, result
 
@@ -378,6 +378,7 @@ class Process(Abstract):
     def _que_top_get(self, field):
         return self._queue[-1].get(field) if self._queue else None
 
+    # Gets command string from reply or message
     def get_command(self, command, pull = False):
         data = None
 
@@ -401,36 +402,37 @@ class Process(Abstract):
 
         return data
 
-    # Single parse iteration
-    def parse_step(self):
-        events = self.get_events() # TODO cache, remove step?
-        event_found = False
-
-        for event in events:
-            result = self.run_event(event)
-            if result[0]:
-                event_found = True
-
-                if result[1]:
-                    return result[1]
-
-        # If we are here we've entered an uncharted territory
-        if not event_found:
-            return self.run_event(('unknown', None, self.event_unknown))[1]
-
     def parse(self, *message, **context):
-        if message or context: # TODO init event?
+        if message or context:
             # If there is only a last fake item in queue we can just update it
             update = len(self._queue) == 1 and not self.message and not self.reply
             self._to_que(update, message = list(message), context = context,
-                                current = None, reply = None)
+                current = None, reply = None)
+
+        events = self.get_events()
+        self.result = None
 
         while True:
-            self.result = self.parse_step()
+            event_found = False
+
+            for event in events:
+                result = self.run_event(event)
+                if result[0]:
+                    event_found = True
+
+                    if result[1]:
+                        self.result = result[1]
+                        break
+
+            # If we are here we've entered an uncharted territory
+            if not event_found:
+                self.result = self.run_event(('unknown', None, self.event_unknown))[1]
 
             # If there a string reply we need to ask callback before stopping
             if self.result and self.run_event(('result', None, self.event_result))[1]:
-                return self.result
+                break
+
+        return self.result
 
     @property
     def message(self):
@@ -451,8 +453,8 @@ class Process(Abstract):
         return self._que_top_get('reply')
 
 
+# Context process supports context modification commands
 class ContextProcess(Process):
-    # TODO: invalid command arguments test
     def get_events(self):
         return super(ContextProcess, self).get_events() + \
             [(
@@ -497,7 +499,7 @@ class ContextProcess(Process):
 class TextParsingProcess(ContextProcess):
     def __init__(self):
         super(TextParsingProcess, self).__init__()
-        self.parsed_length = 0 # Init the length
+        self.parsed_length = 0
 
     def get_events(self):
         return super(TextParsingProcess, self).get_events() + \
