@@ -297,7 +297,8 @@ class Process(Abstract):
                 ),
                 (
                     'pull_message',
-                    lambda self: not self.reply and self.message and isinstance(self.message[0], Abstract),
+                    lambda self: not self.reply and self.message and
+                                 isinstance(self.message[0], Abstract),
                     self.event_pull_message
                 ),
                 (
@@ -365,10 +366,12 @@ class Process(Abstract):
     def event_result(self):
         return self.result
 
-    def _to_que(self, update, **dict):
-        top = {'message': self.message, 'context': self.context,
-               'current' : self.current, 'reply': self.reply}
-        top.update(dict)
+    def _que_properties(self):
+        return ['message', 'context', 'current', 'reply']
+
+    def _to_que(self, update, **update_dict):
+        top = dict([ (p, getattr(self, p)) for p in self._que_properties()])
+        top.update(update_dict)
 
         if not update:
             self._queue.append(top)
@@ -493,6 +496,67 @@ class ContextProcess(Process):
 
         elif command in self.context:
             del self.context[command]
+
+
+# Process with support of abstract states and notifications between them
+class StatefulProcess(ContextProcess):
+    def get_events(self):
+        return super(StatefulProcess, self).get_events() + \
+        [(
+            'set_state',
+            lambda self: isinstance(self.get_command('set_state'), dict) and self.current,
+            self.event_set_state
+        ),
+        (
+            'clear_state',
+            lambda self: self.get_command('clear_state', True) and self.current,
+            self.event_clear_state
+        ),
+        (
+            'notify',
+            lambda self: isinstance(self.get_command('notify'), dict) and
+                         isinstance(self.get_command('notify').get('to'), Abstract),
+            self.event_notify
+        )]
+
+    def _que_properties(self):
+        return super(StatefulProcess, self)._que_properties() + ['states']
+
+    def event_next(self):
+        # Self.reply is a new next, this is how the Process made
+        self.context['state'] = self.states.get(self.reply) if self.reply in self.states else {}
+
+        super(StatefulProcess, self).event_next()
+
+        del self.context['state']
+
+    def _set_state(self, abstract, state):
+        if abstract in self.states:
+            self.states[abstract].update(state)
+        else:
+            self.states[abstract] = state
+
+    def event_set_state(self):
+        self._set_state(self.current, self.get_command('set_state', True))
+
+    def event_clear_state(self):
+        if self.current in self.states:
+            del self.states[self.current]
+
+
+    def event_notify(self):
+        # TODO finish it and use in conditions
+        data = self.get_command('notify', True)
+
+        recipient = data['to']
+
+        caller = self or self.current
+        self._set_state(recipient, {'notify'})
+
+    @property
+    def states(self):
+        s = self._que_top_get('states')
+        return s if None != s else {}
 
 
 # Text parsing process supports error and move commands for text processing

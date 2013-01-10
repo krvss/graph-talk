@@ -14,9 +14,12 @@ class Logger(Abstract):
         if Logger.filter and not Logger.filter in message:
             return False
 
-        print "%s: at: %s, reply: %s, message: %s, context: %s" % (message[0], context["from"].current,
-                                                                     context["from"].reply, context["message"],
-                                                                     context["context"])
+        process = context['from']
+
+        log_str = '%s:' % message[0]
+        properties = ', '.join([ ('%s: %s' % (p, getattr(process, p))) for p in process._que_properties() ])
+
+        print log_str + properties
 
         return None
 
@@ -34,32 +37,20 @@ class Skipper(Abstract):
             return "skip"
 
 
-def showstopper(notion, *message, **context):
-    return notion.name
+def showstopper(abstract, *message, **context):
+    return abstract.name
 
-def errorer(notion, *message, **context):
-    return {"error": "i_m_bad"}
-
-def texter(notion, *message, **context):
-    return {"update_context": {"text": "new_text"}}
-
-def context_add(notion, *message, **context):
-    return {"add_context":{"context": True}}
-
-def context_update(notion, *message, **context):
-    return {"update_context":{"context": "new"}}
-
-def context_del(notion, *message, **context):
-    return {"delete_context":"context"}
-
-def context_del2(notion, *message, **context):
-    return {"delete_context":["context", "more", "more2"]}
-
-def has_context(notion, *message, **context):
-    if 'context' in context:
-        return 'stop'
+def state_stater(notion, *message, **context):
+    if "state" in context and "v" in context["state"]:
+        return {"set_state" : {"v": context["state"]["v"] + 1}}
     else:
-        return False
+        return {"set_state" : {"v":1}}
+
+def state_checker(notion, *message, **context):
+    if "state" in context and "v" in context["state"]:
+        return "error"
+    else:
+        return None
 
 _acc = 0
 def acc(notion, *message, **context):
@@ -249,8 +240,8 @@ class BasicTests(unittest.TestCase):
 
         # Verify correctness of adding
         root = ComplexNotion("root")
-        a = FunctionNotion("context", context_add)
-        b = FunctionNotion("check_context", has_context)
+        a = FunctionNotion("context", lambda notion, *message, **context:{"add_context":{"context": True}})
+        b = FunctionNotion("check_context", lambda notion, *message, **context: 'stop' if 'context' in context else False)
 
         NextRelation(root, a)
         NextRelation(root, b)
@@ -269,20 +260,20 @@ class BasicTests(unittest.TestCase):
         self.assertEqual("1", process.context["context"])
 
         # Verify updating
-        a.function = context_update
+        a.function = lambda notion, *message, **context: {"update_context":{"context": "new"}}
 
         r = process.parse("new", root, test = "context_update", context = "2")
         self.assertEqual(r, "stop")
         self.assertEqual("new", process.context["context"])
 
         # Verify deleting & mass deleting
-        a.function = context_del
+        a.function = lambda notion, *message, **context: {"delete_context":"context"}
 
         r = process.parse("new", root, test = "context_del", context = "3")
         self.assertEqual(r, "ok")
         self.assertNotIn("context", process.context)
 
-        a.function = context_del2
+        a.function = lambda notion, *message, **context: {"delete_context":["context", "more", "more2"]}
 
         r = process.parse("new", root, test = "context_del", context = "4", more = False)
         self.assertEqual(r, "ok")
@@ -305,7 +296,7 @@ class BasicTests(unittest.TestCase):
 
         b = FunctionNotion("stop", showstopper) # First stop
         c = FunctionNotion("error", showstopper) # Error!
-        d = FunctionNotion("errorer", errorer) # Another error!
+        d = FunctionNotion("errorer", lambda notion, *message, **context: {"error": "i_m_bad"}) # Another error!
         e = FunctionNotion("end", showstopper) # And finally here
 
         NextRelation(a, b)
@@ -388,29 +379,13 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 1)
         self.assertEqual(r, "ok")
 
-        c.object = FunctionNotion("text", texter)
+        c.object = FunctionNotion("text", lambda notion, *message, **context: {"update_context": {"text": "new_text"}})
 
         r = process.parse("new", root, "a")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 0)
 
-
-    '''
-    def if_loop(loop, context):
-        if not loop in context:
-            context[loop] = 5
-            return True
-
-        i = context[loop] - 1
-
-        if i > 0:
-            context[loop] = i
-            return True
-
-        return False
-
-    '''
 
     def test_complex(self):
         #logger.logging = True
@@ -472,7 +447,49 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(not process.errors)
         self.assertEqual(process.current, ab) # Last complex notion with list
 
-    '''
+
+    def test_states(self):
+        #logger.logging = True
+        root = ComplexNotion("root")
+
+        inc = FunctionNotion("1", state_stater)
+        NextRelation(root, inc)
+        NextRelation(root, inc)
+        NextRelation(root, FunctionNotion("stop", showstopper))
+        NextRelation(root, FunctionNotion("state_check", state_checker))
+        NextRelation(root, inc)
+
+        process = StatefulProcess()
+        process.callback(logger)
+
+        r = process.parse(root, test="test_states_1")
+
+        self.assertEqual(r,  "stop")
+        self.assertEqual(process.states[inc]["v"], 2)
+
+        inc.function = lambda n, *m, **c: "clear_state"
+
+        r = process.parse(test="test_states_2")
+
+        self.assertEqual(r,  "ok")
+        self.assertNotIn(inc, process.states)
+
+
+'''
+    def if_loop(loop, context):
+        if not loop in context:
+            context[loop] = 5
+            return True
+
+        i = context[loop] - 1
+
+        if i > 0:
+            context[loop] = i
+            return True
+
+        return False
+
+
     def test_loop(self):
         # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
         root = ComplexNotion("root")
