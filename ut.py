@@ -191,7 +191,7 @@ class ConditionalRelation(Relation):
             if result:
                 reply = {'move': length}
                 if self.object:
-                    reply['add_context'] = {'condition': result} # TODO Notification
+                    reply['notify'] = {'to': self.object, 'data': {'condition': result}}
 
                 return [reply, self.object]
 
@@ -515,7 +515,8 @@ class StatefulProcess(ContextProcess):
         (
             'notify',
             lambda self: isinstance(self.get_command('notify'), dict) and
-                         isinstance(self.get_command('notify').get('to'), Abstract),
+                         isinstance(self.get_command('notify').get('to'), Abstract) and
+                         'data' in self.get_command('notify'),
             self.event_notify
         )]
 
@@ -543,15 +544,17 @@ class StatefulProcess(ContextProcess):
         if self.current in self.states:
             del self.states[self.current]
 
-
     def event_notify(self):
-        # TODO finish it and use in conditions
         data = self.get_command('notify', True)
-
         recipient = data['to']
 
-        caller = self or self.current
-        self._set_state(recipient, {'notify'})
+        if not recipient in self.states:
+            self._set_state(recipient, {})
+
+        if not 'notifications' in self.states[recipient]:
+            self.states[recipient]['notifications'] = {}
+
+        self.states[recipient]['notifications'].update(data['data'])
 
     @property
     def states(self):
@@ -560,7 +563,7 @@ class StatefulProcess(ContextProcess):
 
 
 # Text parsing process supports error and move commands for text processing
-class TextParsingProcess(ContextProcess):
+class TextParsingProcess(StatefulProcess):
     def __init__(self):
         super(TextParsingProcess, self).__init__()
         self.parsed_length = 0

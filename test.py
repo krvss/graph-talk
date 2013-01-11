@@ -70,8 +70,8 @@ def is_a(condition, *message, **context):
         return False, 0
 
 def has_condition(notion, *message, **context):
-    if 'condition' in context:
-       return context['condition']
+    if 'state' in context and 'notifications' in context['state']:
+       return context['state']['notifications']['condition']
     else:
         return False
 
