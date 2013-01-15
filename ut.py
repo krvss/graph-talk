@@ -273,24 +273,67 @@ class Process(Abstract):
 
         return False
 
+    def _run_event_func(self, event):
+        # We need to check should we pass self to event trigger or not, no need to do if for lambdas
+        return event(self) if not hasattr(event, '__self__') else event()
+
     def run_event(self, event):
-        can_run = event[1](self) if event[1] else True
+        can_run = self._run_event_func(event[1]) if event[1] else True
         result = None
 
         if can_run:
             # We need to check can we call event or not
             if not self.callback_event(event[0] + '_pre'):
-                result = event[2]()
+                result = self._run_event_func(event[2])
 
                 # Now we do a post-event call
                 self.callback_event(event[0] + '_post')
 
         return can_run, result
 
+    # Queue processing
+    def _que_properties(self):
+            return ['message', 'context', 'current', 'reply']
+
+    def _to_que(self, update, **update_dict):
+        top = dict([ (p, getattr(self, p)) for p in self._que_properties()])
+        top.update(update_dict)
+
+        if not update:
+            self._queue.append(top)
+        else:
+            self._queue[-1].update(top)
+
+    def _que_top_get(self, field):
+        return self._queue[-1].get(field) if self._queue else None
+
+    # Gets command string from reply or message
+    def get_command(self, command, pull = False):
+        data = None
+
+        if isinstance(self.reply, dict) and command in self.reply:
+            data = self.reply[command]
+
+            if pull:
+                del self.reply[command]
+
+        elif command == self.reply:
+            data = command
+
+            if pull:
+                self._to_que(True, reply = None)
+
+        elif command in self.message:
+            data = command
+
+            if pull:
+                self.message.remove(command)
+
+        return data
+
     # Events
     def get_events(self):
-        return [
-                (
+        return [(
                     'new',
                     lambda self: self.get_command('new', True),
                     self.event_new
@@ -330,8 +373,7 @@ class Process(Abstract):
                     'queue_push',
                     lambda self: isinstance(self.reply, list) and len(self.reply) > 0,
                     self.event_push
-                )
-        ]
+                )]
 
     def event_new(self):
         del self._queue[:-1] # Removing previous elements from queue
@@ -366,45 +408,6 @@ class Process(Abstract):
     def event_result(self):
         return self.result
 
-    def _que_properties(self):
-        return ['message', 'context', 'current', 'reply']
-
-    def _to_que(self, update, **update_dict):
-        top = dict([ (p, getattr(self, p)) for p in self._que_properties()])
-        top.update(update_dict)
-
-        if not update:
-            self._queue.append(top)
-        else:
-            self._queue[-1].update(top)
-
-    def _que_top_get(self, field):
-        return self._queue[-1].get(field) if self._queue else None
-
-    # Gets command string from reply or message
-    def get_command(self, command, pull = False):
-        data = None
-
-        if isinstance(self.reply, dict) and command in self.reply:
-            data = self.reply[command]
-
-            if pull:
-                del self.reply[command]
-
-        elif command == self.reply:
-            data = command
-
-            if pull:
-                self._to_que(True, reply = None)
-
-        elif command in self.message:
-            data = command
-
-            if pull:
-                self.message.remove(command)
-
-        return data
-
     def parse(self, *message, **context):
         if message or context:
             # If there is only a last fake item in queue we can just update it
@@ -431,7 +434,7 @@ class Process(Abstract):
             if not event_found:
                 self.result = self.run_event(('unknown', None, self.event_unknown))[1]
 
-            # If there a string reply we need to ask callback before stopping
+            # If there was a reply we need to ask callback before stopping
             if self.result and self.run_event(('result', None, self.event_result))[1]:
                 break
 
@@ -500,6 +503,9 @@ class ContextProcess(Process):
 
 # Process with support of abstract states and notifications between them
 class StatefulProcess(ContextProcess):
+    def _que_properties(self):
+        return super(StatefulProcess, self)._que_properties() + ['states']
+
     def get_events(self):
         return super(StatefulProcess, self).get_events() + \
         [(
@@ -519,9 +525,6 @@ class StatefulProcess(ContextProcess):
                          'data' in self.get_command('notify'),
             self.event_notify
         )]
-
-    def _que_properties(self):
-        return super(StatefulProcess, self)._que_properties() + ['states']
 
     def event_next(self):
         # Self.reply is a new next, this is how the Process made
@@ -613,19 +616,7 @@ class TextParsingProcess(StatefulProcess):
         return self.context['errors']
 
 
-# Abstract state; together states represent a tree-like structure
-class State(object):
-    def __init__(self, abstract, data, previous):
-        self.abstract = abstract
-        self.data = data
-        self.previous = previous
-        self.next = []
-
-    def clear_next(self):
-        del self.next[:]
-
-
-# Base process class
+# Old base process class
 class oProcess(Abstract):
 
     def get_next(self, context):
