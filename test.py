@@ -17,7 +17,7 @@ class Logger(Abstract):
         process = context['from']
 
         log_str = '%s:' % message[0]
-        properties = ', '.join([ ('%s: %s' % (p, getattr(process, p))) for p in process._que_properties() ])
+        properties = ', '.join([ ('%s: %s' % (p, getattr(process, p))) for p in process._queueing_properties() ])
 
         print log_str + properties
 
@@ -123,7 +123,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, a)
 
         process = Process()
-        process.callback(logger)
+        process.callback = logger
 
         r = process.parse(root, test="next")
 
@@ -152,7 +152,7 @@ class BasicTests(unittest.TestCase):
         process = Process()
         debugger = Debugger()
 
-        process.callback(debugger)
+        process.callback = debugger
         r = process.parse(root, test="debugging")
 
         self.assertEqual(r, "unknown")
@@ -173,7 +173,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(a, c)
 
         skipper = Skipper()
-        process.callback(skipper)
+        process.callback = skipper
 
         _acc = 0
         r = process.parse("new", root, test="skipper")
@@ -207,7 +207,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, d)
 
         process = Process()
-        process.callback(logger)
+        process.callback = logger
 
         _acc = 0
         r = process.parse(root, test="test_queue")
@@ -247,7 +247,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, b)
 
         process = ContextProcess()
-        process.callback(logger)
+        process.callback = logger
 
         r = process.parse(root, test = "context_add")
         self.assertEqual(r, "stop")
@@ -305,7 +305,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(a, e)
 
         process = TextParsingProcess()
-        process.callback(logger)
+        process.callback = logger
 
         r = process.parse(root, test="test_errors")
 
@@ -354,7 +354,7 @@ class BasicTests(unittest.TestCase):
         c = ConditionalRelation(root, d, "a")
 
         process = TextParsingProcess()
-        process.callback(logger)
+        process.callback = logger
 
         r = process.parse(root, text="a")
 
@@ -401,7 +401,7 @@ class BasicTests(unittest.TestCase):
         r2 = NextRelation(ab, b)
 
         process = TextParsingProcess()
-        process.callback(logger)
+        process.callback = logger
 
         r = process.parse(root, test="test_complex_1")
 
@@ -460,7 +460,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, inc)
 
         process = StatefulProcess()
-        process.callback(logger)
+        process.callback = logger
 
         r = process.parse(root, test="test_states_1")
 
@@ -500,7 +500,7 @@ class BasicTests(unittest.TestCase):
         c = ConditionalRelation(aa, a, "a")
 
         process = ParserProcess()
-        process.callback(logger)
+        process.callback = logger
 
         context = {"start": root}
         r = process.parse("aaaaa", context)
@@ -581,7 +581,7 @@ class BasicTests(unittest.TestCase):
 
     def test_selective(self):
         process = ParserProcess()
-        process.callback(logger)
+        process.callback = logger
 
         # Simple selective test: root -a-> a, -b-> b for "b"
         root = SelectiveNotion("root")

@@ -256,18 +256,12 @@ class Process(Abstract):
         self._queue = []
         self._callback = None
 
-    def callback(self, abstract):
-        if abstract and callable(abstract.parse):
-            self._callback = abstract
-        else:
-            self._callback = None
-
     def callback_event(self, info):
         if self.current != self._callback and self._callback: # We do not need infinite asking loops
             reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'context' :self.context})
 
             if reply: # No need to store empty replies
-                self._to_que(False, current = self._callback, reply = reply)
+                self._to_queue(False, current = self._callback, reply = reply)
 
                 return True
 
@@ -292,11 +286,11 @@ class Process(Abstract):
         return can_run, result
 
     # Queue processing
-    def _que_properties(self):
-            return ['message', 'context', 'current', 'reply']
+    def _queueing_properties(self):
+        return ['message', 'context', 'current', 'reply']
 
-    def _to_que(self, update, **update_dict):
-        top = dict([ (p, getattr(self, p)) for p in self._que_properties()])
+    def _to_queue(self, update, **update_dict):
+        top = dict([ (p, getattr(self, p)) for p in self._queueing_properties()])
         top.update(update_dict)
 
         if not update:
@@ -304,7 +298,7 @@ class Process(Abstract):
         else:
             self._queue[-1].update(top)
 
-    def _que_top_get(self, field):
+    def _queue_top_get(self, field):
         return self._queue[-1].get(field) if self._queue else None
 
     # Gets command string from reply or message
@@ -321,7 +315,7 @@ class Process(Abstract):
             data = command
 
             if pull:
-                self._to_que(True, reply = None)
+                self._to_queue(True, reply = None)
 
         elif command in self.message:
             data = command
@@ -379,7 +373,7 @@ class Process(Abstract):
         del self._queue[:-1] # Removing previous elements from queue
 
     def event_pull_message(self):
-        self._to_que(True, current = self.message[0], reply = self.message[0])
+        self._to_queue(True, current = self.message[0], reply = self.message[0])
         del self.message[0]
 
     def event_stop(self):
@@ -393,13 +387,13 @@ class Process(Abstract):
 
     def event_push(self):
         first = self.reply.pop(0) # First one is ready to be processed
-        self._to_que(False, reply = first)
+        self._to_queue(False, reply = first)
 
     def event_ok(self):
         return 'ok' # We're done if nothing in the queue
 
     def event_next(self):
-        self._to_que(True, current = self.reply,
+        self._to_queue(True, current = self.reply,
             reply = self.reply.parse(*self.message, **self.context))
 
     def event_unknown(self):
@@ -412,7 +406,7 @@ class Process(Abstract):
         if message or context:
             # If there is only a last fake item in queue we can just update it
             update = len(self._queue) == 1 and not self.message and not self.reply
-            self._to_que(update, message = list(message), context = context,
+            self._to_queue(update, message = list(message), context = context,
                 current = None, reply = None)
 
         events = self.get_events()
@@ -441,22 +435,31 @@ class Process(Abstract):
         return self.result
 
     @property
+    def callback(self):
+        return self._callback
+
+    @callback.setter
+    def callback(self, value):
+        if not value or (value and callable(value.parse)) and self._callback != value:
+            self._callback = value
+
+    @property
     def message(self):
-        m = self._que_top_get('message')
+        m = self._queue_top_get('message')
         return m if None != m else []
 
     @property
     def context(self):
-        ctx = self._que_top_get('context')
+        ctx = self._queue_top_get('context')
         return ctx if None != ctx else {}
 
     @property
     def current(self):
-        return self._que_top_get('current')
+        return self._queue_top_get('current')
 
     @property
     def reply(self):
-        return self._que_top_get('reply')
+        return self._queue_top_get('reply')
 
 
 # Context process supports context modification commands
@@ -503,8 +506,8 @@ class ContextProcess(Process):
 
 # Process with support of abstract states and notifications between them
 class StatefulProcess(ContextProcess):
-    def _que_properties(self):
-        return super(StatefulProcess, self)._que_properties() + ['states']
+    def _queueing_properties(self):
+        return super(StatefulProcess, self)._queueing_properties() + ['states']
 
     def get_events(self):
         return super(StatefulProcess, self).get_events() + \
@@ -561,7 +564,7 @@ class StatefulProcess(ContextProcess):
 
     @property
     def states(self):
-        s = self._que_top_get('states')
+        s = self._queue_top_get('states')
         return s if None != s else {}
 
 
