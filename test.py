@@ -108,6 +108,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(cn.parse(), r1)
 
         r2 = Relation(cn, n1)
+        r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
         self.assertListEqual(cn.parse(), [r1, r2])
@@ -153,6 +154,8 @@ class BasicTests(unittest.TestCase):
         debugger = Debugger()
 
         process.callback = debugger
+        self.assertEqual(process.callback, debugger)
+
         r = process.parse(root, test="debugging")
 
         self.assertEqual(r, "unknown")
@@ -255,9 +258,18 @@ class BasicTests(unittest.TestCase):
 
         process.context["context"] = False
 
-        r = process.parse("new", root, test = "context_add_2", context = "1")
+        r = process.parse("new", root, {"add_context": {"from": "message"}}, test = "context_add_2", context = "1")
         self.assertEqual(r, "stop")
         self.assertEqual("1", process.context["context"])
+        self.assertEqual("message", process.context["from"])
+
+        # Checking that context is the same if there is no new command
+        r = process.parse(root)
+        self.assertEqual("message", process.context["from"])
+
+        # Checking that context is NOT the same if there is new command
+        r = process.parse("new", root)
+        self.assertNotIn("from", process.context)
 
         # Verify updating
         a.function = lambda notion, *message, **context: {"update_context":{"context": "new"}}
@@ -339,7 +351,7 @@ class BasicTests(unittest.TestCase):
         # And now go None to check the errors cleared
         r = process.parse("new", test="test_stop_3")
 
-        self.assertEqual(process.reply, None)
+        self.assertFalse(process.reply)
         self.assertEqual(process.current, None)
         self.assertEqual(r, "ok")
 
@@ -442,7 +454,7 @@ class BasicTests(unittest.TestCase):
         r = process.parse("new", root, text="abf", test="test_complex_3")
 
         self.assertEqual(process.context["result"], "abdef")
-        self.assertEqual(r,  "ok")
+        self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 3)
         self.assertTrue(not process.errors)
         self.assertEqual(process.current, ab) # Last complex notion with list
@@ -453,6 +465,7 @@ class BasicTests(unittest.TestCase):
         root = ComplexNotion("root")
 
         inc = FunctionNotion("1", state_stater)
+
         NextRelation(root, inc)
         NextRelation(root, inc)
         NextRelation(root, FunctionNotion("stop", showstopper))
@@ -464,16 +477,21 @@ class BasicTests(unittest.TestCase):
 
         r = process.parse(root, test="test_states_1")
 
-        self.assertEqual(r,  "stop")
+        self.assertEqual(r, "stop")
         self.assertEqual(process.states[inc]["v"], 2)
 
+        # Checking clearing of states when new
+        r = process.parse("new", root, test="test_states_1")
+        self.assertEqual(r, "stop")
+        self.assertEqual(process.states[inc]["v"], 2)
+
+        # Manual clearing of states
         inc.function = lambda n, *m, **c: "clear_state"
 
-        r = process.parse(test="test_states_2")
+        r = process.parse(test="test_states_3")
 
-        self.assertEqual(r,  "ok")
+        self.assertEqual(r, "ok")
         self.assertNotIn(inc, process.states)
-
 
 '''
     def if_loop(loop, context):

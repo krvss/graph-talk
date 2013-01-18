@@ -298,8 +298,8 @@ class Process(Abstract):
         else:
             self._queue[-1].update(top)
 
-    def _queue_top_get(self, field):
-        return self._queue[-1].get(field) if self._queue else None
+    def _queue_top_get(self, field, offset = -1):
+        return self._queue[offset].get(field) if self._queue else None
 
     # Gets command string from reply or message
     def get_command(self, command, pull = False):
@@ -322,6 +322,12 @@ class Process(Abstract):
 
             if pull:
                 self.message.remove(command)
+
+        elif self.message and isinstance(self.message[0], dict) and command in self.message[0]:
+            data = self.message[0][command]
+
+            if pull:
+                del self.message[0][command]
 
         return data
 
@@ -369,7 +375,13 @@ class Process(Abstract):
                     self.event_push
                 )]
 
+    def event_start(self):
+        return None
+
     def event_new(self):
+        if len(self._queue) > 1:
+            self._queue_top_get('context', -2).clear() # Old context should be gone
+
         del self._queue[:-1] # Removing previous elements from queue
 
     def event_pull_message(self):
@@ -406,11 +418,13 @@ class Process(Abstract):
         if message or context:
             # If there is only a last fake item in queue we can just update it
             update = len(self._queue) == 1 and not self.message and not self.reply
-            self._to_queue(update, message = list(message), context = context,
-                current = None, reply = None)
+            self._to_queue(update,
+                           message = list(message) if message else self.message,
+                           context = context or self.context,
+                           current = None, reply = None)
 
         events = self.get_events()
-        self.result = None
+        self.result = self.run_event(('start', None, self.event_start))[1]
 
         while True:
             event_found = False
@@ -529,6 +543,12 @@ class StatefulProcess(ContextProcess):
             self.event_notify
         )]
 
+    def event_new(self):
+        super(StatefulProcess, self).event_new()
+
+        if self.states:
+            self._to_queue(True, states = {}) # Clearing states
+
     def event_next(self):
         # Self.reply is a new next, this is how the Process made
         self.context['state'] = self.states.get(self.reply) if self.reply in self.states else {}
@@ -587,12 +607,14 @@ class TextParsingProcess(StatefulProcess):
              self.event_move
          )]
 
+    def event_start(self):
+        super(TextParsingProcess, self).event_start()
+
+        if not 'errors' in self.context: # Add errors if they are not in context
+            self._to_queue(True, reply = {'add_context' : {'errors': {}} })
+
     def event_new(self):
         super(TextParsingProcess, self).event_new()
-
-        # Clean errors on new parse
-        if self.errors:
-            self.errors.clear()
 
         self.parsed_length = 0
 
@@ -609,14 +631,13 @@ class TextParsingProcess(StatefulProcess):
 
     def event_move(self):
         move = self.get_command('move', True)
-        self.context['text'] = self.context['text'][move:]
+        self._to_queue(False, reply={'update_context': {'text': self.context['text'][move:]} })
+
         self.parsed_length += move
 
     @property
     def errors(self):
-        if not 'errors' in self.context:
-            self.context['errors'] = {}
-        return self.context['errors']
+        return self.context['errors'] if 'errors' in self.context else {}
 
 
 # Old base process class
