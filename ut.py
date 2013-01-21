@@ -1,6 +1,8 @@
 # Universal Translator base classes
 # (c) krvss 2011-2013
 
+from utils import *
+
 # Base class for all communicable objects
 class Abstract(object):
 
@@ -496,15 +498,25 @@ class ContextProcess(Process):
                 self.event_delete_context
             )]
 
+    def _context_add(self, key, value):
+        self.context[key] = value
+
     def event_add_context(self):
         command = self.get_command('add_context', True)
-        for k, w in command.items():
+        for k, v in command.items():
             if not k in self.context:
-                self.context[k] = w
+                self._context_add(k, v)
+
+    def _context_set(self, key, value):
+        self.context[key] = value
 
     def event_update_context(self):
         command = self.get_command('update_context', True)
-        self.context.update(command)
+        for k, v in command.items():
+                self._context_set(k, v)
+
+    def _context_delete(self, key):
+        del self.context[key]
 
     def event_delete_context(self):
         command = self.get_command('delete_context', True)
@@ -512,10 +524,70 @@ class ContextProcess(Process):
         if isinstance(command, list):
             for k in command:
                 if k in self.context:
-                    del self.context[k]
+                    self._context_delete(k)
 
         elif command in self.context:
-            del self.context[command]
+            self._context_delete(command)
+
+
+# Process that can save and restore context
+# Useful for cases when process needs to try various routes in the graph
+class StackingContextProcess(ContextProcess):
+    def _queueing_properties(self):
+        return super(ContextProcess, self)._queueing_properties() + ['context_stack']
+
+    def get_events(self):
+        return super(StackingContextProcess, self).get_events() +\
+           [(
+                'push_context',
+                lambda self: self.get_command('push_context', True),
+                self.event_push_context
+                ),
+            (
+                'pop_context',
+                lambda self: self.get_command('pop_context', True) and self.is_tracking(),
+                self.event_pop_context
+                ),
+            (
+                'forget_context',
+                lambda self: self.get_command('forget_context', True) and self.is_tracking(),
+                self.event_forget_context
+            )]
+
+    def is_tracking(self):
+        return self.context_stack
+
+    def _context_add(self, key, value):
+        if not self.is_tracking():
+            super(StackingContextProcess, self)._context_add(key, value)
+        else:
+            DictChangeOperation(DictChangeOperation.ADD, key, value).store(self.context_stack[-1], self.context)
+
+    def _context_set(self, key, value):
+        if not self.is_tracking():
+            super(StackingContextProcess, self)._context_set(key, value)
+        else:
+            DictChangeOperation(DictChangeOperation.SET, key, value).store(self.context_stack[-1], self.context)
+
+    def _context_delete(self, key):
+        if not self.is_tracking():
+            super(StackingContextProcess, self)._context_delete(key)
+        else:
+            DictChangeOperation(DictChangeOperation.DELETE, key).store(self.context_stack[-1], self.context)
+
+    def event_push_context(self):
+        self.context_stack.append({})
+
+    def event_pop_context(self):
+        DictChangeOperation.undo_all(self.context_stack[-1], self.context)
+
+    def event_forget_context(self):
+        self.context_stack.pop()
+
+    @property
+    def context_stack(self):
+        s = self._queue_top_get('context_stack')
+        return s if None != s else []
 
 
 # Process with support of abstract states and notifications between them

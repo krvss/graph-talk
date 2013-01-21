@@ -1,4 +1,5 @@
 from ut import *
+from utils import *
 
 import unittest
 
@@ -492,6 +493,100 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertNotIn(inc, process.states)
+
+
+    def test_dict_tracking(self):
+        d = {"a": 1, "c": 12}
+        ops = {}
+
+        a1 = DictChangeOperation(DictChangeOperation.ADD, 'b', 2)
+        a1.store(ops)
+
+        a2 = DictChangeOperation(DictChangeOperation.ADD, 'b', 3)
+        a2.store(ops)
+
+        s1 = DictChangeOperation(DictChangeOperation.SET, 'a', 0)
+        s1.store(ops)
+        DictChangeOperation(DictChangeOperation.DELETE, 'c').store(ops)
+
+        DictChangeOperation.do_all(ops, d)
+
+        self.assertEqual(d["b"], 3)
+        self.assertEqual(d["a"] , 0)
+        self.assertNotIn("c", d)
+
+        self.assertEqual(a1.__hash__(), a2.__hash__())
+        self.assertEqual(ops[a1.__hash__()], a2)
+
+        DictChangeOperation.undo_all(ops, d)
+
+        self.assertEqual(d["a"], 1)
+        self.assertEqual(d["c"] , 12)
+        self.assertNotIn("b", d)
+
+        self.assertEqual(len(ops), 3)
+        self.assertEqual(len(d), 2)
+
+        self.assertEqual(str(a1), "%s %s=%s" % (DictChangeOperation.ADD,  a1._key, a1._value))
+        self.assertEqual(repr(s1), "%s %s=%s<-%s" % (DictChangeOperation.SET,  s1._key, s1._value, s1._old_value))
+
+        with self.assertRaises(ValueError):
+            DictChangeOperation("fail", 1, 2 )
+
+
+    def test_stacking_context(self):
+        #logger.logging = True
+        # Testing without tracking
+        root = ComplexNotion("root")
+
+        NextRelation(root, FunctionNotion("change_context",
+                                          lambda n, *m, **c: {"add_context": {"inject": "ninja"}}))
+
+        NextRelation(root, FunctionNotion("change_context2",
+                                          lambda n, *m, **c: {"update_context": {"inject": "revenge of ninja"}}))
+
+        NextRelation(root, FunctionNotion("del_context", lambda n, *m, **c: {"delete_context": "inject"}))
+
+        NextRelation(root, FunctionNotion("pop_context", lambda n, *m, **c: "pop_context"))
+
+        process = StackingContextProcess()
+        process.callback = logger
+
+        r = process.parse(root, test="stacking_test")
+
+        self.assertEqual(r, "ok")
+        self.assertNotIn("inject", process.context)
+
+        # Now tracking is on!
+        root = ComplexNotion("root")
+
+        push_l = lambda n, *m, **c: "push_context"
+
+        NextRelation(root, FunctionNotion("push", push_l))
+
+        NextRelation(root, FunctionNotion("change_context", lambda n, *m, **c: {"add_context": {"terminator": "2"}}))
+
+        NextRelation(root, FunctionNotion("delete_context", lambda n, *m, **c: {"delete_context": "terminator"}))
+
+        NextRelation(root, FunctionNotion("change_context2", lambda n, *m, **c: {"update_context": {"alien": "omnomnom"}}))
+
+        NextRelation(root, FunctionNotion("check_context", lambda n, *m, **c: False if "alien" in c else "error"))
+
+        NextRelation(root, FunctionNotion("push", push_l))
+
+        NextRelation(root, FunctionNotion("change_context3", lambda n, *m, **c: {"update_context": {"test": "predator"}}))
+
+        NextRelation(root, FunctionNotion("forget", lambda n, *m, **c: "forget_context"))
+
+        NextRelation(root, FunctionNotion("pop", lambda n, *m, **c: "pop_context"))
+
+        r = process.parse(root, test="stacking_test2")
+
+        self.assertEqual(r, "ok")
+        self.assertNotIn("alien", process.context)
+        self.assertNotIn("terminator", process.context)
+        self.assertEqual("predator", process.context["test"])
+
 
 '''
     def if_loop(loop, context):
