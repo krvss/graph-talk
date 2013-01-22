@@ -588,7 +588,6 @@ class BasicTests(unittest.TestCase):
         self.assertEqual("predator", process.context["test"])
 
 
-'''
     def if_loop(loop, context):
         if not loop in context:
             context[loop] = 5
@@ -604,6 +603,7 @@ class BasicTests(unittest.TestCase):
 
 
     def test_loop(self):
+        #logger.logging = True
         # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
         root = ComplexNotion("root")
         aa = ComplexNotion("a's")
@@ -612,40 +612,38 @@ class BasicTests(unittest.TestCase):
         a = FunctionNotion("a", add_to_result)
         c = ConditionalRelation(aa, a, "a")
 
-        process = ParserProcess()
+        process = TextParsingProcess()
         process.callback = logger
 
-        context = {"start": root}
-        r = process.parse("aaaaa", context)
+        r = process.parse(root, text = "aaaaa", test="test_loop1")
 
-        self.assertEqual(context["result"], "aaaaa")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 5)
-        self.assertTrue(not l in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(process.context["result"], "aaaaa")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 5)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
 
         # Negative loop test: root -5!-> a's -a-> a for "aaaa"
-        context = {"start": root}
-        r = process.parse("aaaa", context)
+        r = process.parse("new", root, text = "aaaa", test="test_loop2")
 
-        self.assertEqual(context["result"], "aaaa")
-        self.assertFalse(r["result"])
-        self.assertEqual(r["length"], 4)
-        self.assertListEqual(context["error"], [c, l])
-        self.assertTrue(not l in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertIn(c, process.errors)
+        self.assertIn(l, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
 
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = None
 
-        context = {"start": root}
-        r = process.parse("aaaa", context)
+        r = process.parse("new", root, text = "aaaa", test="test_loop3")
 
-        self.assertEqual(context["result"], "aaaa")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 4)
-        self.assertTrue(not l in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
 
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
@@ -691,7 +689,7 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(not l2 in context)
         self.assertFalse(context[process]["states"])
 
-
+'''
     def test_selective(self):
         process = ParserProcess()
         process.callback = logger

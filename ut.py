@@ -207,7 +207,54 @@ class LoopRelation(Relation):
         super(LoopRelation, self).__init__(subject, object)
         self.n = n
 
-    def parse(self, message, context = None):
+    def parse(self, *message, **context):
+        repeat = True
+        error = restore = False
+
+        reply = []
+
+        if self.n and callable(self.n):
+            context['from'] = self
+            repeat = self.n(self, *message, **context)
+
+        elif context['state']:
+            if context.get('errors'):
+                repeat = False
+
+                if not self.n:
+                    restore = True # Number of iterations is arbitrary if no restriction, we need to restore last good context
+                else:
+                    error = True # Number is fixed so we have an error
+            else:
+                if self.n:
+                    i = context['state']['n']
+
+                    if i < self.n:
+                        reply.append({'set_state': {'n': i + 1}})
+                    else:
+                        repeat = False # No more iterations
+
+                else:
+                    reply += ['forget_context', 'push_context'] # Prepare for the new iteration
+
+        else:
+            reply += [{'set_state': {'n': 1 if self.n else True}}, 'push_context'] # Initializing the loop
+
+        if repeat:
+            reply += [self.object, self] # Self is a new next to think should we repeat or not
+        else:
+            if restore:
+                reply += ['pop_context', 'clear_state'] # Clean up after restore needed to remove self from context
+            else:
+                reply += ['forget_context', 'clear_state'] # No need to restore, just clear self
+
+            if error:
+                reply.append('error')
+
+        return reply
+
+
+    def parseo(self, message, context = None):
         repeat = True
         error = restore = False
 
@@ -289,7 +336,7 @@ class Process(Abstract):
 
     # Queue processing
     def _queueing_properties(self):
-        return ['message', 'context', 'current', 'reply']
+        return ['message', 'context', 'current', 'reply'] # TODO: add defaults?
 
     def _to_queue(self, update, **update_dict):
         top = dict([ (p, getattr(self, p)) for p in self._queueing_properties()])
@@ -591,7 +638,7 @@ class StackingContextProcess(ContextProcess):
 
 
 # Process with support of abstract states and notifications between them
-class StatefulProcess(ContextProcess):
+class StatefulProcess(StackingContextProcess):
     def _queueing_properties(self):
         return super(StatefulProcess, self)._queueing_properties() + ['states']
 
@@ -703,7 +750,7 @@ class TextParsingProcess(StatefulProcess):
 
     def event_move(self):
         move = self.get_command('move', True)
-        self._to_queue(False, reply={'update_context': {'text': self.context['text'][move:]} })
+        self._to_queue(False, reply={'update_context': {'text': self.context['text'][move:]} }) # TODO: use __context_set
 
         self.parsed_length += move
 
