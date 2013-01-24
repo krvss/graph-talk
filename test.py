@@ -497,34 +497,37 @@ class BasicTests(unittest.TestCase):
 
     def test_dict_tracking(self):
         d = {"a": 1, "c": 12}
-        ops = {}
+        ops = DictChangeGroup()
 
-        a1 = DictChangeOperation(DictChangeOperation.ADD, 'b', 2)
-        a1.store(ops)
+        d2 = {"a": 1}
 
-        a2 = DictChangeOperation(DictChangeOperation.ADD, 'b', 3)
-        a2.store(ops)
+        a1 = DictChangeOperation(d, DictChangeOperation.ADD, 'b', 2)
+        ops.add(a1, False)
 
-        s1 = DictChangeOperation(DictChangeOperation.SET, 'a', 0)
-        s1.store(ops)
-        DictChangeOperation(DictChangeOperation.DELETE, 'c').store(ops)
+        a2 = DictChangeOperation(d, DictChangeOperation.SET, 'b', 3)
+        ops.add(a2, False)
 
-        DictChangeOperation.do_all(ops, d)
+        a3 = DictChangeOperation(d2, DictChangeOperation.ADD, 'b', 3)
+        ops.add(a3, False)
+
+        s1 = DictChangeOperation(d, DictChangeOperation.SET, 'a', 0)
+        ops.add(s1, False)
+
+        ops.add(DictChangeOperation(d, DictChangeOperation.DELETE, 'c'), False)
+
+        ops.do()
 
         self.assertEqual(d["b"], 3)
+        self.assertEqual(d2["b"], 3)
         self.assertEqual(d["a"] , 0)
         self.assertNotIn("c", d)
 
-        self.assertEqual(a1.__hash__(), a2.__hash__())
-        self.assertEqual(ops[a1.__hash__()], a2)
-
-        DictChangeOperation.undo_all(ops, d)
+        ops.undo()
 
         self.assertEqual(d["a"], 1)
         self.assertEqual(d["c"] , 12)
         self.assertNotIn("b", d)
 
-        self.assertEqual(len(ops), 3)
         self.assertEqual(len(d), 2)
 
         self.assertEqual(str(a1), "%s %s=%s" % (DictChangeOperation.ADD,  a1._key, a1._value))
@@ -633,6 +636,8 @@ class BasicTests(unittest.TestCase):
         self.assertIn(l, process.errors)
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
+
+        return
 
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = None

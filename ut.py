@@ -608,25 +608,25 @@ class StackingContextProcess(ContextProcess):
         if not self.is_tracking():
             super(StackingContextProcess, self)._context_add(key, value)
         else:
-            DictChangeOperation(DictChangeOperation.ADD, key, value).store(self.context_stack[-1], self.context)
+            self.context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.ADD, key, value))
 
     def _context_set(self, key, value):
         if not self.is_tracking():
             super(StackingContextProcess, self)._context_set(key, value)
         else:
-            DictChangeOperation(DictChangeOperation.SET, key, value).store(self.context_stack[-1], self.context)
+            self.context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.SET, key, value))
 
     def _context_delete(self, key):
         if not self.is_tracking():
             super(StackingContextProcess, self)._context_delete(key)
         else:
-            DictChangeOperation(DictChangeOperation.DELETE, key).store(self.context_stack[-1], self.context)
+            self.context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.DELETE, key))
 
     def event_push_context(self):
-        self.context_stack.append({})
+        self.context_stack.append(DictChangeGroup())
 
     def event_pop_context(self):
-        DictChangeOperation.undo_all(self.context_stack[-1], self.context)
+        self.context_stack[-1].undo()
 
     def event_forget_context(self):
         self.context_stack.pop()
