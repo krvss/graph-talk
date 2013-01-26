@@ -221,7 +221,8 @@ class LoopRelation(Relation):
                 repeat = False
 
                 if not self.n:
-                    restore = True # Number of iterations is arbitrary if no restriction, we need to restore last good context
+                    restore = True # Number of iterations is arbitrary if no restriction, we need to restore
+                                   # last good context
                 else:
                     error = True # Number is fixed so we have an error
             else:
@@ -235,17 +236,18 @@ class LoopRelation(Relation):
 
                 else:
                     reply += ['forget_context', 'push_context'] # Prepare for the new iteration
-
+                                                                # apply last changes and start new tracking
         else:
-            reply += [{'set_state': {'n': 1 if self.n else True}}, 'push_context'] # Initializing the loop
+            # A very first iteration - init the variable and store the context
+            reply += [{'set_state': {'n': 1 if self.n else True}}, 'push_context']
 
         if repeat:
-            reply += [self.object, self] # Self is a new next to think should we repeat or not
+            reply += [self.object, self] # We need to come back after object to think should we repeat or not
         else:
             if restore:
-                reply += ['pop_context', 'forget_context', 'clear_state'] # Clean up after restore needed to remove self from context
-            else:
-                reply += ['forget_context', 'clear_state'] # No need to restore, just clear self
+                reply.append('pop_context') # If we need to restore we need to repair context
+
+            reply += ['forget_context', 'clear_state'] # No more repeats, clearing
 
             if error:
                 reply.append('error')
@@ -537,7 +539,7 @@ class SharedContextProcess(Process):
 
 # Process that can save and restore context
 # Useful for cases when process needs to try various routes in the graph
-class StackingContextProcess(SharedContextProcess): # TODO: check new command clears stack
+class StackingContextProcess(SharedContextProcess):
     def _queueing_properties(self):
         return super(SharedContextProcess, self)._queueing_properties() + ['context_stack']
 
@@ -558,6 +560,12 @@ class StackingContextProcess(SharedContextProcess): # TODO: check new command cl
                 lambda self: self.get_command('forget_context', True) and self.is_tracking(),
                 self.event_forget_context
             )]
+
+    def event_new(self):
+        super(StackingContextProcess, self).event_new()
+
+        if self.context_stack:
+            self._to_queue(True, context_stack = {}) # Clearing stack
 
     def is_tracking(self):
         return self.context_stack

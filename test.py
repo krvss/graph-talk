@@ -594,7 +594,8 @@ class BasicTests(unittest.TestCase):
 
         NextRelation(root, FunctionNotion("forget", lambda n, *m, **c: "forget_context"))
 
-        NextRelation(root, FunctionNotion("pop", lambda n, *m, **c: "pop_context"))
+        pop = FunctionNotion("pop", lambda n, *m, **c: "pop_context")
+        NextRelation(root, pop)
 
         r = process.parse(root, test="stacking_test2")
 
@@ -602,6 +603,11 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn("alien", process.context)
         self.assertNotIn("terminator", process.context)
         self.assertEqual("predator", process.context["test"])
+
+        r = process.parse("new", pop, test="stacking_test3")
+
+        self.assertEqual(r, "ok")
+        self.assertFalse(process.context_stack)
 
 
     def test_loop(self):
