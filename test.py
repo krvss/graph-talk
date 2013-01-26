@@ -1,5 +1,4 @@
 from ut import *
-from utils import *
 
 import unittest
 
@@ -82,6 +81,20 @@ def add_to_result(notion, *message, **context):
         add = context["result"] + add
 
     return {"update_context":{"result": add}}
+
+_loop = 5
+def if_loop(*message, **context):
+    global _loop
+
+    _loop -= 1
+
+    if _loop >= 0:
+        return True
+
+    _loop = 5
+
+    return False
+
 
 # TODO: ensure test coverage
 class BasicTests(unittest.TestCase):
@@ -250,7 +263,7 @@ class BasicTests(unittest.TestCase):
         NextRelation(root, a)
         NextRelation(root, b)
 
-        process = ContextProcess()
+        process = SharedContextProcess()
         process.callback = logger
 
         r = process.parse(root, test = "context_add")
@@ -591,20 +604,6 @@ class BasicTests(unittest.TestCase):
         self.assertEqual("predator", process.context["test"])
 
 
-    def if_loop(loop, context):
-        if not loop in context:
-            context[loop] = 5
-            return True
-
-        i = context[loop] - 1
-
-        if i > 0:
-            context[loop] = i
-            return True
-
-        return False
-
-
     def test_loop(self):
         #logger.logging = True
         # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
@@ -637,8 +636,6 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
 
-        return
-
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = None
 
@@ -653,15 +650,12 @@ class BasicTests(unittest.TestCase):
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
 
-        context = {"start": root}
-        r = process.parse("aaaaa", context)
+        r = process.parse("new", root, text="aaaaa", test="test_loop4")
 
-        self.assertEqual(context["result"], "aaaaa")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 5)
-        self.assertTrue(not "error" in context)
-        self.assertTrue(not l in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 5)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
 
         # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
         l.n = 2
@@ -672,27 +666,27 @@ class BasicTests(unittest.TestCase):
         l2 = LoopRelation(root, aaa, 2)
 
         context = {"start": root}
-        r = process.parse("aaaaa", context)
+        r = process.parse("new", root, text="aaaaa", test="test_loop5")
 
-        self.assertEqual(context["result"], "aaaa")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 4)
-        self.assertTrue(not "error" in context)
-        self.assertTrue(not l in context)
-        self.assertTrue(not l2 in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertNotIn(l2, process.states)
+        self.assertFalse(process.context_stack)
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
-        context = {"start": root}
-        r = process.parse("aaab", context)
+        r = process.parse("new", root, text="aaab", test="test_loop5")
 
-        self.assertEqual(context["result"], "aaa")
-        self.assertFalse(r["result"])
-        self.assertEqual(r["length"], 3)
-        self.assertListEqual(context["error"], [c, l, l2])
-        self.assertTrue(not l in context)
-        self.assertTrue(not l2 in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(process.context["result"], "aaa")
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 3)
+        self.assertIn(l, process.errors)
+        self.assertIn(l2, process.errors)
+        self.assertIn(c, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertNotIn(l2, process.states)
+        self.assertFalse(process.context_stack)
 
 '''
     def test_selective(self):

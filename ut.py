@@ -200,7 +200,6 @@ class ConditionalRelation(Relation):
         return 'error'
 
 
-# TODO: update for latest parse spec
 # Loop relation is a cycle that repeats object for specified or infinite number of times
 class LoopRelation(Relation):
     def __init__(self, subject, object, n = None):
@@ -244,7 +243,7 @@ class LoopRelation(Relation):
             reply += [self.object, self] # Self is a new next to think should we repeat or not
         else:
             if restore:
-                reply += ['pop_context', 'clear_state'] # Clean up after restore needed to remove self from context
+                reply += ['pop_context', 'forget_context', 'clear_state'] # Clean up after restore needed to remove self from context
             else:
                 reply += ['forget_context', 'clear_state'] # No need to restore, just clear self
 
@@ -253,47 +252,6 @@ class LoopRelation(Relation):
 
         return reply
 
-
-    def parseo(self, message, context = None):
-        repeat = True
-        error = restore = False
-
-        if self.n and callable(self.n):
-            repeat = self.n(self, context)
-
-        elif context:
-            if self in context:
-                if 'error' in context:
-                    repeat = False
-
-                    if not self.n:
-                        restore = True # Number of iterations is arbitrary if no restriction, we need to restore last good context
-                    else:
-                        error = True # Number is fixed so we have an error
-                else:
-                    if self.n:
-                        i = context[self]
-
-                        if i < self.n:
-                            context[self] = i + 1
-                        else:
-                            repeat = False # No more iterations
-
-            else:
-                context[self] = 1 if self.n else True # Initializing the loop
-
-        if repeat:
-            reply = ['store', self.object, self] # Self is a new next to think should we repeat or not
-        else:
-            if restore:
-                reply = ['restore', 'clear'] # Clean up after restore needed to remove self from context
-            else:
-                reply = ['clear'] # No need to restore, just clear self
-
-            if error:
-                reply.append('error')
-
-        return reply
 
 # Base process class, does parsing using list of event-condition-action items, moving from one abstract to another
 class Process(Abstract):
@@ -526,9 +484,9 @@ class Process(Abstract):
 
 
 # Context process supports context modification commands
-class ContextProcess(Process):
+class SharedContextProcess(Process):
     def get_events(self):
-        return super(ContextProcess, self).get_events() + \
+        return super(SharedContextProcess, self).get_events() + \
             [(
                 'add_context',
                 lambda self: isinstance(self.get_command('add_context'), dict),
@@ -560,7 +518,7 @@ class ContextProcess(Process):
     def event_update_context(self):
         command = self.get_command('update_context', True)
         for k, v in command.items():
-                self._context_set(k, v)
+            self._context_set(k, v)
 
     def _context_delete(self, key):
         del self.context[key]
@@ -579,9 +537,9 @@ class ContextProcess(Process):
 
 # Process that can save and restore context
 # Useful for cases when process needs to try various routes in the graph
-class StackingContextProcess(ContextProcess):
+class StackingContextProcess(SharedContextProcess): # TODO: check new command clears stack
     def _queueing_properties(self):
-        return super(ContextProcess, self)._queueing_properties() + ['context_stack']
+        return super(SharedContextProcess, self)._queueing_properties() + ['context_stack']
 
     def get_events(self):
         return super(StackingContextProcess, self).get_events() +\
@@ -709,10 +667,6 @@ class StatefulProcess(StackingContextProcess):
 
 # Text parsing process supports error and move commands for text processing
 class TextParsingProcess(StatefulProcess):
-    def __init__(self):
-        super(TextParsingProcess, self).__init__()
-        self.parsed_length = 0
-
     def get_events(self):
         return super(TextParsingProcess, self).get_events() + \
         [(
@@ -730,12 +684,15 @@ class TextParsingProcess(StatefulProcess):
         super(TextParsingProcess, self).event_start()
 
         if not 'errors' in self.context: # Add errors if they are not in context
-            self._to_queue(True, reply = {'add_context' : {'errors': {}} })
+            self._context_add('errors', {})
+
+        if not 'parsed_length' in self.context:
+            self._context_add('parsed_length', 0)
 
     def event_new(self):
         super(TextParsingProcess, self).event_new()
 
-        self.parsed_length = 0
+        self._context_set('parsed_length', 0)
 
     def event_result(self):
         # If there are errors - result is always error
@@ -746,17 +703,26 @@ class TextParsingProcess(StatefulProcess):
 
     def event_error(self):
         error = self.get_command('error', True)
-        self.errors[self.current or self] = error
+        key = self.current or self
+
+        if not self.is_tracking():
+            self.errors[key] = error
+        else:
+            self.context_stack[-1].add(DictChangeOperation(self.errors, DictChangeOperation.SET, key, error))
 
     def event_move(self):
         move = self.get_command('move', True)
-        self._to_queue(False, reply={'update_context': {'text': self.context['text'][move:]} }) # TODO: use __context_set
 
-        self.parsed_length += move
+        self._context_set('text', self.context['text'][move:])
+        self._context_set('parsed_length', self.parsed_length + move)
 
     @property
     def errors(self):
         return self.context['errors'] if 'errors' in self.context else {}
+
+    @property
+    def parsed_length(self):
+        return self.context['parsed_length'] if 'parsed_length' in self.context else 0
 
 
 # Old base process class
