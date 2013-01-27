@@ -33,6 +33,13 @@ class DictChangeOperation(object):
         else:
             self._dict[self._key] = self._old_value
 
+    def merge(self, other):
+        if other._dict == self._dict and other._type == self._type == self.SET and other._key == self._key:
+            self._value = other._value
+            return True
+
+        return False
+
     def __str__(self):
         s = '%s %s' % (self._type, self._key)
         if self._type == self.ADD or self._type == self.SET:
@@ -53,7 +60,8 @@ class DictChangeGroup(object):
         self._stack = []
 
     def add(self, change, do = True):
-        self._stack.append(change)
+        if not self._stack or not self._stack[-1].merge(change):
+            self._stack.append(change)
 
         if do:
             change.do()

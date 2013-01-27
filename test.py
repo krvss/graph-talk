@@ -517,6 +517,8 @@ class BasicTests(unittest.TestCase):
         a1 = DictChangeOperation(d, DictChangeOperation.ADD, 'b', 2)
         ops.add(a1, False)
 
+        ops.add(DictChangeOperation(d, DictChangeOperation.SET, 'b', 4), False)
+
         a2 = DictChangeOperation(d, DictChangeOperation.SET, 'b', 3)
         ops.add(a2, False)
 
