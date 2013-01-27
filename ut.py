@@ -296,10 +296,10 @@ class Process(Abstract):
 
     # Queue processing
     def _queueing_properties(self):
-        return ['message', 'context', 'current', 'reply'] # TODO: add defaults?
+        return {'message': [], 'context': {}, 'current': None, 'reply': None}
 
     def _to_queue(self, update, **update_dict):
-        top = dict([ (p, getattr(self, p)) for p in self._queueing_properties()])
+        top = dict([ (p, getattr(self, p)) for p in self._queueing_properties().keys()])
         top.update(update_dict)
 
         if not update:
@@ -308,7 +308,10 @@ class Process(Abstract):
             self._queue[-1].update(top)
 
     def _queue_top_get(self, field, offset = -1):
-        return self._queue[offset].get(field) if self._queue else None
+        if self._queue and field in self._queue[offset]:
+            return self._queue[offset].get(field)
+
+        return self._queueing_properties().get(field)
 
     # Gets command string from reply or message
     def get_command(self, command, pull = False):
@@ -468,13 +471,11 @@ class Process(Abstract):
 
     @property
     def message(self):
-        m = self._queue_top_get('message')
-        return m if None != m else []
+        return self._queue_top_get('message')
 
     @property
     def context(self):
-        ctx = self._queue_top_get('context')
-        return ctx if None != ctx else {}
+        return self._queue_top_get('context')
 
     @property
     def current(self):
@@ -541,7 +542,10 @@ class SharedContextProcess(Process):
 # Useful for cases when process needs to try various routes in the graph
 class StackingContextProcess(SharedContextProcess):
     def _queueing_properties(self):
-        return super(SharedContextProcess, self)._queueing_properties() + ['context_stack']
+        p = super(StackingContextProcess, self)._queueing_properties()
+        p.update({'context_stack': []})
+
+        return p
 
     def get_events(self):
         return super(StackingContextProcess, self).get_events() +\
@@ -565,7 +569,7 @@ class StackingContextProcess(SharedContextProcess):
         super(StackingContextProcess, self).event_new()
 
         if self.context_stack:
-            self._to_queue(True, context_stack = {}) # Clearing stack
+            self._to_queue(True, context_stack=self._queueing_properties()['context_stack']) # Clearing stack
 
     def is_tracking(self):
         return self.context_stack
@@ -599,14 +603,16 @@ class StackingContextProcess(SharedContextProcess):
 
     @property
     def context_stack(self):
-        s = self._queue_top_get('context_stack')
-        return s if None != s else []
+        return self._queue_top_get('context_stack')
 
 
 # Process with support of abstract states and notifications between them
 class StatefulProcess(StackingContextProcess):
     def _queueing_properties(self):
-        return super(StatefulProcess, self)._queueing_properties() + ['states']
+        p = super(StatefulProcess, self)._queueing_properties()
+        p.update({'states': {}})
+
+        return p
 
     def get_events(self):
         return super(StatefulProcess, self).get_events() + \
@@ -632,7 +638,7 @@ class StatefulProcess(StackingContextProcess):
         super(StatefulProcess, self).event_new()
 
         if self.states:
-            self._to_queue(True, states = {}) # Clearing states
+            self._to_queue(True,  states=self._queueing_properties()['states']) # Clearing states
 
     def event_next(self):
         # Self.reply is a new next, this is how the Process made
@@ -669,8 +675,7 @@ class StatefulProcess(StackingContextProcess):
 
     @property
     def states(self):
-        s = self._queue_top_get('states')
-        return s if None != s else {}
+        return self._queue_top_get('states')
 
 
 # Text parsing process supports error and move commands for text processing
