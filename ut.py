@@ -135,41 +135,32 @@ class NextRelation(Relation):
         return self.object
 
 
-# TODO: update for latest parse spec
 # Selective notion: complex notion that can consist of one of its objects
 class SelectiveNotion(ComplexNotion):
-    def __init__(self, name, relation = None):
-        super(SelectiveNotion, self).__init__(name, relation)
+    def parse(self, *message, **context):
+        if context.get('state'):
+            if context.get('errors'):
+                cases = context['state']['cases']
 
-    def parse(self, message, context = None):
-        if context:
-            if self in context:
-                if 'error' in context:
-                    cases = context[self]
+                if cases:
+                    case = cases.pop(0) # Try another case
 
-                    if cases:
-                        case = cases.pop(0) # Try another case
-
-                        # Pop and update context, then try another case and come back here
-                        return ['restore', {'update': {self: cases}}, 'store', case, self]
-                    else:
-                        return ['clear', 'error'] # Nowhere to go, stop
-
+                    # Pop context and update state, then try another case and come back here
+                    return ['pop_context', 'forget_context', {'set_state': {'cases': cases}},
+                            'push_context', case, self]
                 else:
-                    return 'clear' # Everything is ok, clear the past
+                    return ['forget_context', 'clear_state', 'error']
+            else:
+                return ['forget_context', 'clear_state'] # Everything is ok, forget the past
 
-        reply = super(SelectiveNotion, self).parse(message, context)
+        reply = super(SelectiveNotion, self).parse(*message, **context)
 
-        if not reply or (reply and not type(reply) is types.ListType):
+        if not isinstance(reply, list):
             return reply
 
-        elif context:
-            case = reply.pop(0)
-            context[self] = reply # Store the cases
-
-            return ['store', case, self] # Try first one
-
-        return reply
+        case = reply.pop(0)
+        return ['push_context', {'set_state': {'cases': reply}},
+                case, self] # Try first one
 
 
 # Conditional relation is a condition to go further if text starts with sequence
@@ -736,228 +727,4 @@ class TextParsingProcess(StatefulProcess):
     @property
     def parsed_length(self):
         return self.context['parsed_length'] if 'parsed_length' in self.context else 0
-
-
-# Old base process class
-class oProcess(Abstract):
-
-    def get_next(self, context):
-        raise NotImplementedError()
-
-    def _get_context_info(self, context, name, default):
-        if not self in context:
-            context[self] = {}
-
-        if not name in context[self]:
-            context[self][name] = default
-            return default
-        else:
-            return context[self][name]
-
-    def _get_message(self, context):
-        return self._get_context_info(context, 'message', None)
-
-    def _set_message(self, context, message):
-        self._get_context_info(context, 'message', None)
-
-        context[self]['message'] = message
-
-    def _get_current(self, context):
-        return self._get_context_info(context, 'current', None)
-
-    def _set_current(self, context, abstract):
-        self._get_context_info(context, 'current', None)
-
-        context[self]['current'] = abstract
-
-    def _get_text(self, context):
-        return context['text'] if 'text' in context else '' # OLD_TODO: should be within process context, here because of ctx copy problems
-
-    def _set_text(self, context, text):
-        context['text'] = text
-
-
-    def parse(self, message, context = None):
-        if not context:
-            context = {}
-        #
-        #    abstract = None
-        #else:
-        #    abstract = context.get('start')
-
-        initial_length = len(message)
-        message = {'start': context.get('start'), 'text': message}
-
-        
-        self._set_message(context, message)
-        #self._set_current(context, abstract)
-
-        while self.get_next(context):
-            pass
-
-        text = self._get_text(context)
-        return {'result': not 'error' in context, 'length': initial_length - len(text)}
-
-
-# Parser process
-class ParserProcess(oProcess):
-    def __init__(self):
-        super(ParserProcess, self).__init__()
-
-    def _get_stack(self, context):
-        return self._get_context_info(context, 'stack', [])
-
-    def _get_states(self, context):
-        return self._get_context_info(context, 'states', {})
-
-    def _get_error(self, context):
-        if not 'error' in context:
-            error = []
-            context['error'] = error
-        else:
-            error = context['error']
-
-        return error
-
-    def _progress_notify(self, info, abstract, parsing_message = None, parsing_context = None):
-        self._notify(info, {'abstract': abstract,
-                            'message': parsing_message or '',
-                            'text': self._get_text(parsing_context) if parsing_context else '',
-                            'context': parsing_context or ''}) # OLD_TODO remove, add from instead, use message/abs from ctx
-
-    def _rollback(self, context):
-        abstract = None
-        reply = None
-
-        if self._can_rollback(context):
-            abstract, reply = self._get_stack(context).pop(0)
-
-            self._progress_notify('rolled_back', abstract)
-
-        return abstract, reply
-
-    def _can_rollback(self, context):
-        return len(self._get_stack(context)) > 0
-
-    def _add_to_stack(self, context, abstract, reply):
-        stack = self._get_stack(context)
-        stack.insert(0, (abstract, reply))
-
-        self._progress_notify('added_to_stack', abstract)
-
-    def get_next(self, context):
-
-        message = self._get_message(context)
-        text = self._get_text(context)
-        abstract = self._get_current(context)
-
-        # Got sequence?
-        if type(message) is types.ListType:
-            if len(message) >= 1:
-                m = message.pop(0) # First one is ready to be processed
-
-                if message: # No need to push empty list
-                    self._add_to_stack(context, abstract, message)
-
-                message = m
-            else:
-                self._set_current(context, None)
-                self._set_message(context, None)
-
-                return True # Let's try to roll back
-
-        # Got command?
-        if isinstance(message, str):
-            message = {message: None}
-
-        # Commands where abstract is not needed
-        if isinstance(message, dict):
-            for name, arg in message.iteritems():
-                if name == 'start':
-                    self._set_current(context, arg)
-                    
-                elif name == 'stop':
-                    return False # Stop at once
-                
-                elif name == 'text':
-                    text = arg
-                    self._set_text(context, arg)
-
-                elif name == 'move':
-
-                    text = text[arg:]
-                    self._set_text(context, text)
-
-                elif name == 'error':
-                    error = arg or abstract or self
-                    self._get_error(context).append(error)
-
-                    self._progress_notify('error_at', error)
-
-                if abstract:
-                # Commands processing with abstract
-                    if name == 'restore':
-                        old_context = self._get_states(context)[abstract]
-
-                        context.clear() # Keeping context object intact
-                        context.update(old_context)
-
-                        if abstract in self._get_states(context):
-                            del self._get_states(context)[abstract]
-
-                        self._progress_notify('restored_for', abstract, text)
-
-                    elif name == 'update':
-                        context.update(arg)
-
-                        self._progress_notify('updated_for', abstract, text)
-
-                    elif name == 'store':
-                        self._get_states(context)[abstract] = dict(context)
-
-                        self._progress_notify('storing', abstract, text)
-
-                    elif name == 'clear':
-                        if abstract in self._get_states(context): # OLD_TODO: copy of restore part, combine or remove
-                            del self._get_states(context)[abstract]
-
-                        if arg != 'state':
-                            if abstract in context:
-                                del context[abstract]
-
-            # Message processing finished
-            self._set_message(context, None)
-            if abstract == self._get_current(context): # Abstract was not changed => rollback
-                self._set_current(context, None)
-            return True
-
-        # We have a new next maybe?
-        if isinstance(message, Abstract):
-            self._set_current(context, message)
-            self._set_message(context, None)
-
-            return True
-
-        # Asking!
-        if not message and abstract:
-            self._progress_notify('abstract_current', abstract, text, context)
-
-            message = abstract.parse(text, context)
-
-            self._set_message(context, message)
-
-            if message:
-                return True
-
-        # If we are here we have no next from message and no new data, let's roll back
-        self._progress_notify('rollback', abstract)
-
-        if self._can_rollback(context):
-            abstract, reply = self._rollback(context)
-            self._set_message(context, reply)
-            self._set_current(context, abstract)
-
-            return True
-        else:
-            return False # Stopping
 

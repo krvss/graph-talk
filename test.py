@@ -696,9 +696,10 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn(l2, process.states)
         self.assertFalse(process.context_stack)
 
-'''
+
     def test_selective(self):
-        process = ParserProcess()
+        #logger.logging = True
+        process = TextParsingProcess()
         process.callback = logger
 
         # Simple selective test: root -a-> a, -b-> b for "b"
@@ -710,25 +711,25 @@ class BasicTests(unittest.TestCase):
         b = FunctionNotion("b", add_to_result)
         c2 = ConditionalRelation(root, b, "b")
 
-        context = {"start": root}
-        r = process.parse("b", context)
+        r = process.parse(root, text="b", test="test_selective_1")
 
-        self.assertEqual(context["result"], "b")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 1)
-        self.assertTrue(not "error" in context)
-        self.assertTrue(not root in context)
-        self.assertFalse(context[process]["states"])
+        self.assertEqual(process.context["result"], "b")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertFalse(process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
 
         # Alternative negative test: same tree, message "xx"
-        context = {"start": root}
-        r = process.parse("xx", context)
+        r = process.parse("new", root, text="xx", test="test_selective_2")
 
-        self.assertFalse("result" in context)
-        self.assertFalse(r["result"])
-        self.assertEqual(r["length"], 0)
-        self.assertListEqual(context["error"], [c2, root])
-        self.assertFalse(context[process]["states"])
+        self.assertNotIn("result", process.context)
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertIn(c2, process.errors)
+        self.assertIn(root, process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
 
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa, -bb->bb) ) ) for "aa"
         c1.subject = None
@@ -752,57 +753,57 @@ class BasicTests(unittest.TestCase):
         bb = FunctionNotion("bb", add_to_result)
         NextRelation(root, bb)
 
-        context = {"start": root}
-        r = process.parse("aa", context)
+        r = process.parse("new", root, text="aa", test="test_selective_2")
 
-        self.assertEqual(context["result"], "aa")
-        self.assertTrue(r["result"])
-        self.assertEqual(r["length"], 2)
-        self.assertTrue(not "error" in context)
-        self.assertTrue(not root in context)
-        self.assertFalse(context[process]["states"])
-        '''
+        self.assertEqual(process.context["result"], "aa")
+        self.assertTrue(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertFalse(process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
 
-# Custom processing function
-def custom_func(notion, context):
-    print notion
-    return True
+
+    def test_special(self):
+        #logger.logging = True
+        # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
+        root = ComplexNotion("root")
+        sequence = ComplexNotion("sequence")
+
+        LoopRelation(root, sequence, 6)
+
+        a_seq = ComplexNotion("a's")
+        LoopRelation(sequence, a_seq)
+        a = FunctionNotion("a", add_to_result)
+
+        ConditionalRelation(a_seq, a, "a")
+
+        b_seq = ComplexNotion("b's")
+        LoopRelation(sequence, b_seq)
+        b = FunctionNotion("b", add_to_result)
+
+        ConditionalRelation(b_seq, b, "b")
+
+        test_string = "bbaabb"
+
+        process = TextParsingProcess()
+        process.callback = logger
+
+        r = process.parse(root, text=test_string, test="special_test_1")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.context["result"], test_string)
+        self.assertEqual(process.parsed_length, 6)
+        self.assertFalse(process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+
 
 def test():
     logger.logging = False
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
-    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_complex')
+    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_special')
     unittest.TextTestRunner(verbosity=2).run(suite)
 
     return
-
-
-    # Complex loop test
-    root = ComplexNotion("root")
-    sequence = ComplexNotion("sequence")
-
-    LoopRelation(root, sequence)
-
-    a_seq = ComplexNotion("a's")
-    LoopRelation(sequence, a_seq)
-    a = FunctionNotion("a", custom_func)
-
-    ConditionalRelation(a_seq, a, "a")
-
-    b_seq = ComplexNotion("b's")
-    LoopRelation(sequence, b_seq)
-    b = FunctionNotion("b", custom_func)
-
-    ConditionalRelation(b_seq, b, "b")
-
-    test_string = "bbaabb"
-
-    #test_string = "aaaaaab"
-
-    process = ParserProcess()
-    context = {"start": root}
-    process.parse(test_string, context)
-
-    print context
 
 
