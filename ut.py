@@ -165,9 +165,10 @@ class SelectiveNotion(ComplexNotion):
 
 # Conditional relation is a condition to go further if text starts with sequence
 class ConditionalRelation(Relation):
-    def __init__(self, subject, object, checker):
+    def __init__(self, subject, object, checker, optional = False):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
+        self.optional = optional
 
     def parse(self, *message, **context):
         if self.checker:
@@ -188,7 +189,8 @@ class ConditionalRelation(Relation):
 
                 return [reply, self.object]
 
-        return 'error'
+        if not self.optional:
+            return 'error'
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times

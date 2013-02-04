@@ -127,7 +127,8 @@ def custom_func(notion, context):
     return True
 
 # Testing functions
-test()
+from brainfuck import load
+print(load('++--'))
 
 exit()
 

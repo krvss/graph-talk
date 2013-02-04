@@ -24,6 +24,7 @@ class Logger(Abstract):
         return None
 
 logger = Logger()
+logger.logging = False
 
 class Debugger(Abstract):
     def parse(self, *message, **context):
@@ -405,11 +406,17 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 1)
         self.assertEqual(r, "ok")
 
-        c.object = FunctionNotion("text", lambda notion, *message, **context: {"update_context": {"text": "new_text"}})
-
-        r = process.parse("new", root, "a")
+        r = process.parse("new", root, text="b")
 
         self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+
+        # Optional check
+        c.optional = True
+
+        r = process.parse("new", root, text="b")
+
+        self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
 
 
@@ -797,13 +804,8 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
 
-
 def test():
-    logger.logging = False
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
     #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_special')
     unittest.TextTestRunner(verbosity=2).run(suite)
-
-    return
-
 
