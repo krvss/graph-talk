@@ -127,9 +127,7 @@ def custom_func(notion, context):
     return True
 
 # Testing functions
-from brainfuck import load
-print(load('++--'))
-
+test()
 exit()
 
 symbol = ComplexNotion("Symbol")
