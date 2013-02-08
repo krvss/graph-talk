@@ -34,6 +34,7 @@ def getch():
     except Exception:
         return sys.stdin.read(1)
 
+
 #  Brainfuck language description
 class Language:
     INC = '+'
@@ -42,6 +43,9 @@ class Language:
     PREV = '<'
     OUT = '.'
     IN = ','
+
+    WHILE = '['
+    END_WHILE = ']'
 
     @staticmethod
     def increment(memory, position):
@@ -63,7 +67,9 @@ class Language:
 
     @staticmethod
     def output(memory, position):
-        sys.stdout.write(chr(memory[position]))
+        cell = memory[position]
+        out = '\'%s\'' % cell if cell < 10 else chr(cell)
+        sys.stdout.write(out)
 
     @staticmethod
     def input(memory, position):
@@ -94,32 +100,90 @@ class Language:
         elif id == Language.IN:
             return Language.input
 
-class CommandNotion(FunctionNotion):
-    def __init__(self):
-        super(CommandNotion, self).__init__('Command', self.run)
+
+class BasicCommand(FunctionNotion):
+    def __init__(self, command):
+        super(BasicCommand, self).__init__('BasicCommand', self.run)
+        self.command = command
 
     def run(self, *message, **context):
-        if not 'state' in context:
+        if not 'memory' in context:
             return
 
-        command = Language.get_command(context['state']['notifications']['condition'])
-        new_pos = command(context['memory'], context['position'])
+        new_pos = self.command(context['memory'], context['position'])
 
         if new_pos is not None:
             return {'update_context': {'position' : new_pos}}
 
+
+class LoopCommandRelation(LoopRelation):
+    def __init__(self, subject, object):
+        super(LoopCommandRelation, self).__init__(subject, object, self.check)
+
+    def check(self, *message, **context):
+        return context['memory'][context['position']] != 0
+
+
+class CommandNotion(FunctionNotion):
+    def __init__(self, name = 'CommandNotion'):
+        super(CommandNotion, self).__init__(name, self.make)
+
+    def get_top(self, context):
+        return context['loops'][len(context['loops']) - 1][0] if context['loops'] else context['root']
+
+    def make(self, *message, **context):
+        if not 'state' in context:
+            return
+
+        lang_cmd = Language.get_command(context['state']['notifications']['condition'])
+
+        NextRelation(self.get_top(context), BasicCommand(lang_cmd))
+
+
+class LoopStartNotion(CommandNotion):
+    def __init__(self, name = 'LoopStartNotion'):
+        super(LoopStartNotion, self).__init__(name)
+
+    def make(self, *message, **context):
+        if not 'root' in context:
+            return
+
+        top = self.get_top(context)
+        new_top = ComplexNotion('Loop')
+
+        LoopCommandRelation(top, new_top)
+        context['loops'].append((new_top, context['parsed_length'] - 1))
+
+
+class LoopEndNotion(CommandNotion):
+    def __init__(self, name = 'LoopEndNotion'):
+        super(LoopEndNotion, self).__init__(name)
+
+    def make(self, *message, **context):
+        if not 'loops' in context:
+            return
+
+        if context['loops']:
+            context['loops'].pop()
+
+        else:
+            return {'error': 'no_loops'}
+
+
 def stopper(n, *m, **c):
     if 'text' in c:
         if len(c['text']) > 0:
-            return 'error'
+            return {'error': 'unknown_command at %s' % c['parsed_length']}
+        elif c['loops']:
+            unclosed = [str(p[1]) for p in c['loops']]
+            return {'error': 'unclosed_loops at %s' % ','.join(unclosed)}
         else:
             return 'stop'
 
 
 class Parser(TextParsingProcess):
     def parse_source(self, source):
-        context = {'text': source}
-        context.update(Language.init())
+        context = {'text': source, 'root': ComplexNotion('root'), 'loops': []}
 
         return self.parse('new', self.get_graph(), **context)
 
@@ -133,6 +197,8 @@ class Parser(TextParsingProcess):
 
         simple_cmd = CommandNotion()
 
+        ConditionalRelation(command, LoopStartNotion(), Language.WHILE)
+
         ConditionalRelation(command, simple_cmd, Language.INC)
         ConditionalRelation(command, simple_cmd, Language.DEC)
         ConditionalRelation(command, simple_cmd, Language.PREV)
@@ -140,21 +206,42 @@ class Parser(TextParsingProcess):
         ConditionalRelation(command, simple_cmd, Language.OUT)
         ConditionalRelation(command, simple_cmd, Language.IN)
 
-        NextRelation(command, FunctionNotion('Unknown command', stopper))
+        ConditionalRelation(command, LoopEndNotion(), Language.END_WHILE)
+
+        NextRelation(command, FunctionNotion('Bad command', stopper))
 
         return root
 
 
 def load(from_str):
-    from test import logger
-
     parser = Parser()
-    parser.callback = logger
-    #logger.logging = True
-
     r = parser.parse_source(from_str)
 
-    pass
+    if r == 'error':
+        return r, parser.context['errors']
+    else:
+        return 'ok', parser.context['root']
+
+def run(program):
+    context = {}
+    context.update(Language.init())
+
+    runner = StatefulProcess()
+    runner.parse(program, **context)
 
 
-load(',>,<.>.')
+#s = ',>,<.>.'
+#s = '++[.-]'
+
+#s = '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.')
+#s = '++>++<[.->[.-]<]') 2,2,1,1
+#s = '[.[[]'
+
+s = '+++a'
+
+result, out = load(s)
+
+if result == 'ok':
+    run(out)
+else:
+    print out
