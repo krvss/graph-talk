@@ -2,6 +2,7 @@ from ut import *
 
 import unittest
 
+
 # Simple process logger
 class Logger(Abstract):
     filter = None
@@ -26,6 +27,7 @@ class Logger(Abstract):
 logger = Logger()
 logger.logging = False
 
+
 class Debugger(Abstract):
     def parse(self, *message, **context):
         if message[0] == "next_post" and str(context["from"].current) == '"here"':
@@ -38,8 +40,9 @@ class Skipper(Abstract):
             return "skip"
 
 
-def showstopper(abstract, *message, **context):
-    return abstract.name
+def showstopper(notion, *message, **context):
+    return notion.name
+
 
 def state_stater(notion, *message, **context):
     if "state" in context and "v" in context["state"]:
@@ -47,22 +50,28 @@ def state_stater(notion, *message, **context):
     else:
         return {"set_state" : {"v":1}}
 
+
 def state_checker(notion, *message, **context):
     if "state" in context and "v" in context["state"]:
         return "error"
     else:
         return None
 
+
 _acc = 0
+
+
 def acc(notion, *message, **context):
     global _acc
     _acc += 1
     return _acc
 
+
 def accF(notion, *message, **context):
     global _acc
     _acc += 1
     return False
+
 
 def is_a(condition, *message, **context):
     if "text" in context and context["text"].startswith("a"):
@@ -70,11 +79,13 @@ def is_a(condition, *message, **context):
     else:
         return False, 0
 
+
 def has_condition(notion, *message, **context):
     if 'state' in context and 'notifications' in context['state']:
-       return context['state']['notifications']['condition']
+        return context['state']['notifications']['condition']
     else:
         return False
+
 
 def add_to_result(notion, *message, **context):
     add = notion.name
@@ -83,7 +94,10 @@ def add_to_result(notion, *message, **context):
 
     return {"update_context":{"result": add}}
 
+
 _loop = 5
+
+
 def if_loop(*message, **context):
     global _loop
 
@@ -128,7 +142,6 @@ class BasicTests(unittest.TestCase):
         # If there is more than 1 relation ComplexNotion should return the list
         self.assertListEqual(cn.parse(), [r1, r2])
 
-
     def test_next(self):
         #logger.logging = True
 
@@ -154,7 +167,6 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, a)
         self.assertEqual(r, "ok")
-
 
     def test_callback(self):
         global _acc
@@ -199,7 +211,6 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertEqual(_acc, 1)
         self.assertEqual(process.current, a)
-
 
     def test_queue(self):
         global _acc
@@ -251,7 +262,6 @@ class BasicTests(unittest.TestCase):
         _acc = 0
         process.parse(b, b, b)
         self.assertEqual(_acc, 3)
-
 
     def test_context(self):
         #logger.logging = True
@@ -313,7 +323,6 @@ class BasicTests(unittest.TestCase):
         r = process.parse("new", root, test = "context_bad")
         self.assertEqual(r, "unknown")
 
-
     def test_errors(self):
         #logger.logging = True
         root = ComplexNotion("root")
@@ -370,7 +379,6 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.current, None)
         self.assertEqual(r, "ok")
 
-
     def test_condition(self):
         #logger.logging = True
         # Simple positive condition test root -a-> a for "a"
@@ -418,7 +426,6 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
-
 
     def test_complex(self):
         #logger.logging = True
@@ -480,7 +487,6 @@ class BasicTests(unittest.TestCase):
         self.assertTrue(not process.errors)
         self.assertEqual(process.current, ab) # Last complex notion with list
 
-
     def test_states(self):
         #logger.logging = True
         root = ComplexNotion("root")
@@ -513,7 +519,6 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertNotIn(inc, process.states)
-
 
     def test_dict_tracking(self):
         d = {"a": 1, "c": 12}
@@ -557,7 +562,6 @@ class BasicTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             DictChangeOperation("fail", 1, 2 )
-
 
     def test_stacking_context(self):
         #logger.logging = True
@@ -617,7 +621,6 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertFalse(process.context_stack)
-
 
     def test_loop(self):
         #logger.logging = True
@@ -703,7 +706,6 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn(l2, process.states)
         self.assertFalse(process.context_stack)
 
-
     def test_selective(self):
         #logger.logging = True
         process = TextParsingProcess()
@@ -769,7 +771,6 @@ class BasicTests(unittest.TestCase):
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
 
-
     def test_special(self):
         #logger.logging = True
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
@@ -803,6 +804,7 @@ class BasicTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+
 
 def test():
     suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)

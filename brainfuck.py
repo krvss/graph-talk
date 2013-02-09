@@ -28,6 +28,7 @@ def _getch():
         fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
     return c
 
+
 def getch():
     try:
         return _getch()
@@ -35,8 +36,8 @@ def getch():
         return sys.stdin.read(1)
 
 
-#  Brainfuck language description
-class Language:
+# Execution commands
+class SimpleCommand(FunctionNotion):
     INC = '+'
     DEC = '-'
     NEXT = '>'
@@ -44,89 +45,50 @@ class Language:
     OUT = '.'
     IN = ','
 
-    WHILE = '['
-    END_WHILE = ']'
+    def __init__(self, name):
+        super(SimpleCommand, self).__init__(name, self.run)
 
-    @staticmethod
-    def increment(memory, position):
-        memory[position] = memory[position] + 1 if memory[position] < 256 else 0
-
-    @staticmethod
-    def decrement(memory, position):
-        memory[position] = memory[position] - 1 if memory[position] > 0 else 255
-
-    @staticmethod
-    def next(memory, position):
-        if position < len(memory) - 1:
-            return position + 1
-
-    @staticmethod
-    def previous(memory, position):
-        if position > 0:
-            return position - 1
-
-    @staticmethod
-    def output(memory, position):
-        cell = memory[position]
-        out = '\'%s\'' % cell if cell < 10 else chr(cell)
-        sys.stdout.write(out)
-
-    @staticmethod
-    def input(memory, position):
-        memory[position] = ord(getch())
-
-    @staticmethod
-    def init():
-        # TODO: set to 30000
-        return {"memory": [0] * 30, "position" : 0}
-
-    @staticmethod
-    def get_command(id):
-        if id == Language.INC:
-            return Language.increment
-
-        elif id == Language.DEC:
-            return Language.decrement
-
-        elif id == Language.NEXT:
-            return Language.next
-
-        elif id == Language.PREV:
-            return Language.previous
-
-        elif id == Language.OUT:
-            return Language.output
-
-        elif id == Language.IN:
-            return Language.input
-
-
-class BasicCommand(FunctionNotion):
-    def __init__(self, command):
-        super(BasicCommand, self).__init__('BasicCommand', self.run)
-        self.command = command
-
+    # Just select a proper command basing on name and execute it using memory and position
     def run(self, *message, **context):
         if not 'memory' in context:
             return
 
-        new_pos = self.command(context['memory'], context['position'])
+        memory = context['memory']
+        position = context['position']
 
-        if new_pos is not None:
-            return {'update_context': {'position' : new_pos}}
+        if self.name == SimpleCommand.INC:
+            memory[position] = memory[position] + 1 if memory[position] < 256 else 0
+
+        elif self.name == SimpleCommand.DEC:
+            memory[position] = memory[position] - 1 if memory[position] > 0 else 255
+
+        elif self.name == SimpleCommand.NEXT:
+            if position == len(memory) - 1:
+                memory.append(0)
+
+            return {'update_context': {'position': position + 1}}
+
+        elif self.name == SimpleCommand.PREV:
+            if position > 0:
+                return {'update_context': {'position': position - 1}}
+            else:
+                return {'error': 'position underflow'}
+
+        elif self.name == SimpleCommand.OUT:
+            cell = memory[position]
+            # Printout in a friendly format
+            out = '\'%s\'' % cell if cell < 10 else chr(cell)
+
+            sys.stdout.write(out)
+
+        elif self.name == SimpleCommand.IN:
+            memory[position] = ord(getch())
 
 
-class LoopCommandRelation(LoopRelation):
-    def __init__(self, subject, object):
-        super(LoopCommandRelation, self).__init__(subject, object, self.check)
-
-    def check(self, *message, **context):
-        return context['memory'][context['position']] != 0
-
-
-class CommandNotion(FunctionNotion):
-    def __init__(self, name = 'CommandNotion'):
-        super(CommandNotion, self).__init__(name, self.make)
+# Parser commands
+class ParseCommand(FunctionNotion):
+    def __init__(self, name):
+        super(ParseCommand, self).__init__(name, self.make)
 
     def get_top(self, context):
         return context['loops'][len(context['loops']) - 1][0] if context['loops'] else context['root']
@@ -135,113 +97,99 @@ class CommandNotion(FunctionNotion):
         if not 'state' in context:
             return
 
-        lang_cmd = Language.get_command(context['state']['notifications']['condition'])
-
-        NextRelation(self.get_top(context), BasicCommand(lang_cmd))
+        NextRelation(self.get_top(context), SimpleCommand(context['state']['notifications']['condition']))
 
 
-class LoopStartNotion(CommandNotion):
-    def __init__(self, name = 'LoopStartNotion'):
-        super(LoopStartNotion, self).__init__(name)
-
+class ParseLoopStart(ParseCommand):
     def make(self, *message, **context):
         if not 'root' in context:
             return
 
-        top = self.get_top(context)
         new_top = ComplexNotion('Loop')
 
-        LoopCommandRelation(top, new_top)
+        LoopRelation(self.get_top(context), new_top, lambda r, *m, **c: c['memory'][c['position']] != 0)
         context['loops'].append((new_top, context['parsed_length'] - 1))
 
 
-class LoopEndNotion(CommandNotion):
-    def __init__(self, name = 'LoopEndNotion'):
-        super(LoopEndNotion, self).__init__(name)
-
+class ParseLoopEnd(ParseCommand):
     def make(self, *message, **context):
         if not 'loops' in context:
             return
 
         if context['loops']:
             context['loops'].pop()
-
         else:
             return {'error': 'no_loops'}
 
 
-def stopper(n, *m, **c):
-    if 'text' in c:
-        if len(c['text']) > 0:
-            return {'error': 'unknown_command at %s' % c['parsed_length']}
-        elif c['loops']:
-            unclosed = [str(p[1]) for p in c['loops']]
-            return {'error': 'unclosed_loops at %s' % ','.join(unclosed)}
+# Language parser and interpreter
+class Parser:
+    @staticmethod
+    def parse_stop(notion, *message, **context):
+        if not 'text' in context:
+            return
+
+        if len(context['text']) > 0:
+            return {'error': 'unknown_command "%s" at position %s' % (context['text'][0], context['parsed_length'])}
+
+        elif context['loops']:
+            unclosed = [str(p[1]) for p in context['loops']]
+            return {'error': 'unclosed_loops at position %s' % ','.join(unclosed)}
+
         else:
             return 'stop'
-
-
-class Parser(TextParsingProcess):
-    def parse_source(self, source):
-        context = {'text': source, 'root': ComplexNotion('root'), 'loops': []}
-
-        return self.parse('new', self.get_graph(), **context)
 
     @staticmethod
     def get_graph():
         root = ComplexNotion('Brainfuck Program')
-
         command = SelectiveNotion('Command')
-
         LoopRelation(root, command)
 
-        simple_cmd = CommandNotion()
+        ConditionalRelation(command, ParseLoopStart('Loop start'), '[')
+        ConditionalRelation(command, ParseLoopEnd('Loop end'), ']')
 
-        ConditionalRelation(command, LoopStartNotion(), Language.WHILE)
+        simple_command = ParseCommand('Simple command')
+        ConditionalRelation(command, simple_command, SimpleCommand.INC)
+        ConditionalRelation(command, simple_command, SimpleCommand.DEC)
+        ConditionalRelation(command, simple_command, SimpleCommand.PREV)
+        ConditionalRelation(command, simple_command, SimpleCommand.NEXT)
+        ConditionalRelation(command, simple_command, SimpleCommand.OUT)
+        ConditionalRelation(command, simple_command, SimpleCommand.IN)
 
-        ConditionalRelation(command, simple_cmd, Language.INC)
-        ConditionalRelation(command, simple_cmd, Language.DEC)
-        ConditionalRelation(command, simple_cmd, Language.PREV)
-        ConditionalRelation(command, simple_cmd, Language.NEXT)
-        ConditionalRelation(command, simple_cmd, Language.OUT)
-        ConditionalRelation(command, simple_cmd, Language.IN)
-
-        ConditionalRelation(command, LoopEndNotion(), Language.END_WHILE)
-
-        NextRelation(command, FunctionNotion('Bad command', stopper))
+        NextRelation(command, FunctionNotion('Stop', Parser.parse_stop))
 
         return root
 
+    @staticmethod
+    def execute(from_str):
+        process = TextParsingProcess()
 
-def load(from_str):
-    parser = Parser()
-    r = parser.parse_source(from_str)
+        root = ComplexNotion('root')
+        context = {'text': from_str, 'root': root, 'loops': []}
 
-    if r == 'error':
-        return r, parser.context['errors']
-    else:
-        return 'ok', parser.context['root']
+        r = process.parse(Parser.get_graph(), **context)
 
-def run(program):
-    context = {}
-    context.update(Language.init())
+        if r == 'error':
+            return 'Parsing error(s): %s' % process.context['errors']
 
-    runner = StatefulProcess()
-    runner.parse(program, **context)
+        context = {'memory': [0] * len(from_str), 'position': 0}
+
+        r = process.parse('new', root, **context)
+
+        if r != 'ok':
+            return 'Runtime error(s): %s ' % process.errors
+
+        return 'ok'
 
 
 #s = ',>,<.>.'
 #s = '++[.-]'
 
-#s = '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.')
+s = '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.'
+s = 'a<'
 #s = '++>++<[.->[.-]<]') 2,2,1,1
 #s = '[.[[]'
 
-s = '+++a'
+#s = '+++a'
 
-result, out = load(s)
-
-if result == 'ok':
-    run(out)
-else:
-    print out
+print Parser.execute(s)
