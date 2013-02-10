@@ -1,12 +1,12 @@
-from ut import *
-
 import unittest
+
+from ut import *
 
 
 # Simple process logger
 class Logger(Abstract):
     filter = None
-    logging = True
+    logging = False
 
     def parse(self, *message, **context):
         if not self.logging:
@@ -18,37 +18,39 @@ class Logger(Abstract):
         process = context['from']
 
         log_str = '%s:' % message[0]
-        properties = ', '.join([ ('%s: %s' % (p, getattr(process, p))) for p in process._queueing_properties() ])
+        properties = ', '.join([('%s: %s' % (p, getattr(process, p))) for p in process._queueing_properties()])
 
         print log_str + properties
 
         return None
 
 logger = Logger()
-logger.logging = False
 
 
+# Dialog test
 class Debugger(Abstract):
     def parse(self, *message, **context):
         if message[0] == "next_post" and str(context["from"].current) == '"here"':
             return "debug"
 
 
+# Skip test
 class Skipper(Abstract):
     def parse(self, *message, **context):
         if message[0] == "unknown_pre":
             return "skip"
 
 
+# Test functions
 def showstopper(notion, *message, **context):
     return notion.name
 
 
-def state_stater(notion, *message, **context):
+def state_starter(notion, *message, **context):
     if "state" in context and "v" in context["state"]:
-        return {"set_state" : {"v": context["state"]["v"] + 1}}
+        return {"set_state": {"v": context["state"]["v"] + 1}}
     else:
-        return {"set_state" : {"v":1}}
+        return {"set_state": {"v": 1}}
 
 
 def state_checker(notion, *message, **context):
@@ -57,17 +59,10 @@ def state_checker(notion, *message, **context):
     else:
         return None
 
-
 _acc = 0
 
 
-def acc(notion, *message, **context):
-    global _acc
-    _acc += 1
-    return _acc
-
-
-def accF(notion, *message, **context):
+def accumulate_false(notion, *message, **context):
     global _acc
     _acc += 1
     return False
@@ -94,7 +89,6 @@ def add_to_result(notion, *message, **context):
 
     return {"update_context":{"result": add}}
 
-
 _loop = 5
 
 
@@ -111,9 +105,9 @@ def if_loop(*message, **context):
     return False
 
 
-# TODO: ensure test coverage
-class BasicTests(unittest.TestCase):
+class UtTests(unittest.TestCase):
 
+    # General objects test
     def test_objects(self):
         n1 = Notion("n1")
         n2 = Notion("n2")
@@ -133,7 +127,7 @@ class BasicTests(unittest.TestCase):
         cn = ComplexNotion("cn")
         r1.subject = cn
 
-        # If relation is only one ComplexNotion should return it
+        # If relation is only one ComplexNotion should return it, not a list
         self.assertEqual(cn.parse(), r1)
 
         r2 = Relation(cn, n1)
@@ -154,7 +148,7 @@ class BasicTests(unittest.TestCase):
         process = Process()
         process.callback = logger
 
-        r = process.parse(root, test="next")
+        r = process.parse(root, test="test_next_1")
 
         self.assertEqual(process.reply, "a")
         self.assertEqual(process.current, a)
@@ -183,7 +177,7 @@ class BasicTests(unittest.TestCase):
         process.callback = debugger
         self.assertEqual(process.callback, debugger)
 
-        r = process.parse(root, test="debugging")
+        r = process.parse(root, test="test_debugging")
 
         self.assertEqual(r, "unknown")
         self.assertEqual(process.current, debugger)
@@ -199,14 +193,14 @@ class BasicTests(unittest.TestCase):
         b = FunctionNotion("b", showstopper)
         NextRelation(a, b)
 
-        c = FunctionNotion("c", accF)
+        c = FunctionNotion("c", accumulate_false)
         NextRelation(a, c)
 
         skipper = Skipper()
         process.callback = skipper
 
         _acc = 0
-        r = process.parse("new", root, test="skipper")
+        r = process.parse("new", root, test="test_skipper")
 
         self.assertEqual(r, "ok")
         self.assertEqual(_acc, 1)
@@ -217,21 +211,21 @@ class BasicTests(unittest.TestCase):
 
         #logger.logging = True
 
-        # Stack test: root -> (a, d); a -> (b,c)
+        # Stack test: root -> (a, d); a -> (b, b2, c)
         root = ComplexNotion("root")
         a = ComplexNotion("a")
 
         NextRelation(root, a)
 
-        b = FunctionNotion("b", accF) # Just return False to keep going to C
-        b2 = ValueNotion("b2", []) # Test of empty array
-        c = FunctionNotion("c", showstopper) # Stop here
+        b = FunctionNotion("b", accumulate_false)  # Just return False to keep going to C
+        b2 = ValueNotion("b2", [])  # Test of empty array
+        c = FunctionNotion("c", showstopper)  # Stop here
 
         NextRelation(a, b)
         NextRelation(a, b2)
         NextRelation(a, c)
 
-        d = FunctionNotion("d", showstopper)
+        d = FunctionNotion("d", showstopper)  # And stop here too
 
         NextRelation(root, d)
 
@@ -246,16 +240,16 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r, "unknown")
         self.assertEqual(_acc, 1)
 
-        r = process.parse("skip", test="test_skip") # Make process pop from stack
+        r = process.parse("skip", test="test_skip_1")  # Make process pop from stack
 
         self.assertEqual(process.reply, "d")
         self.assertEqual(process.current, d)
         self.assertEqual(r, "unknown")
 
-        r = process.parse("skip", test="test_skip_2") # Trying empty stack
+        r = process.parse("skip", test="test_skip_2")  # Trying empty stack
 
         self.assertEqual(process.reply, [])
-        self.assertEqual(process.current, root) # Root is because it was ComplexNotion
+        self.assertEqual(process.current, root)  # Root is because it was ComplexNotion
         self.assertEqual(r, "ok")
 
         # Trying list message
@@ -268,8 +262,11 @@ class BasicTests(unittest.TestCase):
 
         # Verify correctness of adding
         root = ComplexNotion("root")
-        a = FunctionNotion("context", lambda notion, *message, **context:{"add_context":{"context": True}})
-        b = FunctionNotion("check_context", lambda notion, *message, **context: 'stop' if 'context' in context else False)
+        a = FunctionNotion("ctx", lambda notion, *message, **context:
+                           {"add_context": {"ctx": True}})
+
+        b = FunctionNotion("check_context", lambda notion, *message, **context:
+                           'stop' if 'ctx' in context else False)
 
         NextRelation(root, a)
         NextRelation(root, b)
@@ -277,50 +274,53 @@ class BasicTests(unittest.TestCase):
         process = SharedContextProcess()
         process.callback = logger
 
-        r = process.parse(root, test = "context_add")
+        r = process.parse(root, test="test_context_add_1")
         self.assertEqual(r, "stop")
-        self.assertIn("context", process.context)
+        self.assertIn("ctx", process.context)
 
-        process.context["context"] = False
+        process.context["ctx"] = False
 
-        r = process.parse("new", root, {"add_context": {"from": "message"}}, test = "context_add_2", context = "1")
+        r = process.parse("new", root, {"add_context": {"from": "me"}}, test="test_context_add_2", ctx="1")
+
         self.assertEqual(r, "stop")
-        self.assertEqual("1", process.context["context"])
-        self.assertEqual("message", process.context["from"])
+        self.assertEqual("1", process.context["ctx"])
+        self.assertEqual("me", process.context["from"])
 
         # Checking that context is the same if there is no new command
         r = process.parse(root)
-        self.assertEqual("message", process.context["from"])
+        self.assertEqual(r, "stop")
+        self.assertEqual("me", process.context["from"])
 
         # Checking that context is NOT the same if there is new command
         r = process.parse("new", root)
+        self.assertEqual(r, "stop")
         self.assertNotIn("from", process.context)
 
         # Verify updating
-        a.function = lambda notion, *message, **context: {"update_context":{"context": "new"}}
+        a.function = lambda notion, *message, **context: {"update_context": {"ctx": "new"}}
 
-        r = process.parse("new", root, test = "context_update", context = "2")
+        r = process.parse("new", root, test="test_context_update", ctx="2")
         self.assertEqual(r, "stop")
-        self.assertEqual("new", process.context["context"])
+        self.assertEqual("new", process.context["ctx"])
 
         # Verify deleting & mass deleting
-        a.function = lambda notion, *message, **context: {"delete_context":"context"}
+        a.function = lambda notion, *message, **context: {"delete_context": "ctx"}
 
-        r = process.parse("new", root, test = "context_del", context = "3")
+        r = process.parse("new", root, test="test_context_del", ctx="3")
         self.assertEqual(r, "ok")
-        self.assertNotIn("context", process.context)
+        self.assertNotIn("ctx", process.context)
 
-        a.function = lambda notion, *message, **context: {"delete_context":["context", "more", "more2"]}
+        a.function = lambda notion, *message, **context: {"delete_context": ["ctx", "more", "more2"]}
 
-        r = process.parse("new", root, test = "context_del", context = "4", more = False)
+        r = process.parse("new", root, test="test_context_del", ctx="4", more=False)
         self.assertEqual(r, "ok")
-        self.assertNotIn("context", process.context)
+        self.assertNotIn("ctx", process.context)
         self.assertNotIn("more", process.context)
 
         # See what's happening if command argument is incorrect
         a.function = lambda notion, *message, **context: {"update_context"}
 
-        r = process.parse("new", root, test = "context_bad")
+        r = process.parse("new", root, test="test_context_bad")
         self.assertEqual(r, "unknown")
 
     def test_errors(self):
@@ -330,10 +330,10 @@ class BasicTests(unittest.TestCase):
 
         NextRelation(root, a)
 
-        b = FunctionNotion("stop", showstopper) # First stop
-        c = FunctionNotion("error", showstopper) # Error!
-        d = FunctionNotion("errorer", lambda notion, *message, **context: {"error": "i_m_bad"}) # Another error!
-        e = FunctionNotion("end", showstopper) # And finally here
+        b = FunctionNotion("stop", showstopper)  # First stop
+        c = FunctionNotion("error", showstopper)  # Error!
+        d = FunctionNotion("errorer", lambda notion, *message, **context: {"error": "i_m_bad"})  # Another error!
+        e = FunctionNotion("end", showstopper)  # And finally here
 
         NextRelation(a, b)
         NextRelation(a, c)
@@ -343,7 +343,7 @@ class BasicTests(unittest.TestCase):
         process = TextParsingProcess()
         process.callback = logger
 
-        r = process.parse(root, test="test_errors")
+        r = process.parse(root, test="test_stop_1")
 
         self.assertEqual(r, "stop")
         self.assertEqual(process.current, b)
@@ -384,7 +384,7 @@ class BasicTests(unittest.TestCase):
         # Simple positive condition test root -a-> a for "a"
         root = ComplexNotion("root")
 
-        d = FunctionNotion("noti", has_condition)
+        d = FunctionNotion("d", has_condition)
 
         c = ConditionalRelation(root, d, "a")
 
@@ -448,10 +448,9 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.context["result"], "ab")
         self.assertTrue(r)
         self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, ab) # Because root has 1 child only, so no lists
+        self.assertEqual(process.current, ab)  # Because root has 1 child only, so no lists
 
         # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for "a"
-
         r1.subject = None
         r2.subject = None
 
@@ -464,7 +463,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 1)
         self.assertIn(r2, process.errors)
-        self.assertEqual(process.current, ab) # Nowhere to go
+        self.assertEqual(process.current, ab)  # Nowhere to go
 
         # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
         c = ComplexNotion("c")
@@ -485,13 +484,13 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 3)
         self.assertTrue(not process.errors)
-        self.assertEqual(process.current, ab) # Last complex notion with list
+        self.assertEqual(process.current, ab)  # Last complex notion with list
 
     def test_states(self):
         #logger.logging = True
         root = ComplexNotion("root")
 
-        inc = FunctionNotion("1", state_stater)
+        inc = FunctionNotion("1", state_starter)
 
         NextRelation(root, inc)
         NextRelation(root, inc)
@@ -508,7 +507,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(process.states[inc]["v"], 2)
 
         # Checking clearing of states when new
-        r = process.parse("new", root, test="test_states_1")
+        r = process.parse("new", root, test="test_states_2")
         self.assertEqual(r, "stop")
         self.assertEqual(process.states[inc]["v"], 2)
 
@@ -546,13 +545,13 @@ class BasicTests(unittest.TestCase):
 
         self.assertEqual(d["b"], 3)
         self.assertEqual(d2["b"], 3)
-        self.assertEqual(d["a"] , 0)
+        self.assertEqual(d["a"], 0)
         self.assertNotIn("c", d)
 
         ops.undo()
 
         self.assertEqual(d["a"], 1)
-        self.assertEqual(d["c"] , 12)
+        self.assertEqual(d["c"], 12)
         self.assertNotIn("b", d)
 
         self.assertEqual(len(d), 2)
@@ -561,7 +560,7 @@ class BasicTests(unittest.TestCase):
         self.assertEqual(repr(s1), "%s %s=%s<-%s" % (DictChangeOperation.SET,  s1._key, s1._value, s1._old_value))
 
         with self.assertRaises(ValueError):
-            DictChangeOperation("fail", 1, 2 )
+            DictChangeOperation("fail", 1, 2)
 
     def test_stacking_context(self):
         #logger.logging = True
@@ -581,7 +580,7 @@ class BasicTests(unittest.TestCase):
         process = StackingContextProcess()
         process.callback = logger
 
-        r = process.parse(root, test="stacking_test")
+        r = process.parse(root, test="test_stacking_1")
 
         self.assertEqual(r, "ok")
         self.assertNotIn("inject", process.context)
@@ -597,27 +596,29 @@ class BasicTests(unittest.TestCase):
 
         NextRelation(root, FunctionNotion("delete_context", lambda n, *m, **c: {"delete_context": "terminator"}))
 
-        NextRelation(root, FunctionNotion("change_context2", lambda n, *m, **c: {"update_context": {"alien": "omnomnom"}}))
+        NextRelation(root, FunctionNotion("change_context2", lambda n, *m, **c:
+                                          {"update_context": {"alien": "omnomnom"}}))
 
         NextRelation(root, FunctionNotion("check_context", lambda n, *m, **c: False if "alien" in c else "error"))
 
         NextRelation(root, FunctionNotion("push", push_l))
 
-        NextRelation(root, FunctionNotion("change_context3", lambda n, *m, **c: {"update_context": {"test": "predator"}}))
+        NextRelation(root, FunctionNotion("change_context3", lambda n, *m, **c:
+                                          {"update_context": {"test": "predator"}}))
 
         NextRelation(root, FunctionNotion("forget", lambda n, *m, **c: "forget_context"))
 
         pop = FunctionNotion("pop", lambda n, *m, **c: "pop_context")
         NextRelation(root, pop)
 
-        r = process.parse(root, test="stacking_test2")
+        r = process.parse(root, test="test_stacking_2")
 
         self.assertEqual(r, "ok")
         self.assertNotIn("alien", process.context)
         self.assertNotIn("terminator", process.context)
-        self.assertEqual("predator", process.context["test"])
+        self.assertEqual("predator", process.context["test"])  # Lasts because context changes were forgotten
 
-        r = process.parse("new", pop, test="stacking_test3")
+        r = process.parse("new", pop, test="test_stacking_3")
 
         self.assertEqual(r, "ok")
         self.assertFalse(process.context_stack)
@@ -635,7 +636,7 @@ class BasicTests(unittest.TestCase):
         process = TextParsingProcess()
         process.callback = logger
 
-        r = process.parse(root, text = "aaaaa", test="test_loop1")
+        r = process.parse(root, text="aaaaa", test="test_loop_1")
 
         self.assertEqual(process.context["result"], "aaaaa")
         self.assertEqual(r, "ok")
@@ -644,7 +645,7 @@ class BasicTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
 
         # Negative loop test: root -5!-> a's -a-> a for "aaaa"
-        r = process.parse("new", root, text = "aaaa", test="test_loop2")
+        r = process.parse("new", root, text="aaaa", test="test_loop_2")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "error")
@@ -657,7 +658,7 @@ class BasicTests(unittest.TestCase):
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = None
 
-        r = process.parse("new", root, text = "aaaa", test="test_loop3")
+        r = process.parse("new", root, text="aaaa", test="test_loop_3")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -668,10 +669,10 @@ class BasicTests(unittest.TestCase):
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
 
-        r = process.parse("new", root, text="aaaaa", test="test_loop4")
+        r = process.parse("new", root, text="aaaaa", test="test_loop_4")
 
         self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 5)
+        self.assertEqual(process.parsed_length, 5)  # External functions stops at 5
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
 
@@ -683,8 +684,7 @@ class BasicTests(unittest.TestCase):
 
         l2 = LoopRelation(root, aaa, 2)
 
-        context = {"start": root}
-        r = process.parse("new", root, text="aaaaa", test="test_loop5")
+        r = process.parse("new", root, text="aaaaa", test="test_loop_5")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -694,7 +694,7 @@ class BasicTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
-        r = process.parse("new", root, text="aaab", test="test_loop5")
+        r = process.parse("new", root, text="aaab", test="test_loop_6")
 
         self.assertEqual(process.context["result"], "aaa")
         self.assertEqual(r, "error")
@@ -762,7 +762,7 @@ class BasicTests(unittest.TestCase):
         bb = FunctionNotion("bb", add_to_result)
         NextRelation(root, bb)
 
-        r = process.parse("new", root, text="aa", test="test_selective_2")
+        r = process.parse("new", root, text="aa", test="test_selective_3")
 
         self.assertEqual(process.context["result"], "aa")
         self.assertTrue(r, "ok")
@@ -807,7 +807,7 @@ class BasicTests(unittest.TestCase):
 
 
 def test():
-    suite = unittest.TestLoader().loadTestsFromTestCase(BasicTests)
-    #suite = unittest.TestLoader().loadTestsFromName('test.BasicTests.test_special')
+    suite = unittest.TestLoader().loadTestsFromTestCase(UtTests)
+    #suite = unittest.TestLoader().loadTestsFromName('test.UtTests.test_special')
     unittest.TextTestRunner(verbosity=2).run(suite)
 
