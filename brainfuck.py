@@ -181,15 +181,39 @@ class Parser:
 
         return 'ok'
 
+# Tests
 
-#s = ',>,<.>.'
-#s = '++[.-]'
+# Input and output 2 chars
+s = ',>,<.>.'
 
+# Simple loop
+s = '++[.-]'
+
+# Underflow error
+s = '+<'
+
+# Nested loops: print 2,2,1,1
+s = '++>++<[.->[.-]<]'
+
+# Loops level error
+s = '[.[[]'
+
+# Bad command error
+s = '+++a'
+
+# Hello, World!
 s = '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.'
-s = 'a<'
-#s = '++>++<[.->[.-]<]') 2,2,1,1
-#s = '[.[[]'
 
-#s = '+++a'
 
-print Parser.execute(s)
+def main():
+    if len(sys.argv) == 2:
+        f = open(sys.argv[1], "r")
+        print Parser.execute(f.read())
+        f.close()
+    else:
+        print "Usage: " + sys.argv[0] + " filename"
+
+if __name__ == "__main__":
+    main()
+else:
+    print Parser.execute(s)

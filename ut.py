@@ -42,13 +42,13 @@ class Relation(Abstract):
             return
 
         # Disconnect old one
-        if old_value:
+        if isinstance(old_value, Abstract):
             old_value.parse('un_relate', **{'from': self})
 
         setattr(self, '_' + target, value)
 
         # Connect new one
-        if value:
+        if isinstance(value, Abstract):
             value.parse('relate', **{'from': self})
 
     @property
@@ -74,7 +74,7 @@ class Relation(Abstract):
         return self.__str__()
 
 
-# Value notion is notion that returns custom value
+# Value notion is a notion that returns custom value
 class ValueNotion(Notion):
     def __init__(self, name, value):
         super(ValueNotion, self).__init__(name)
@@ -84,14 +84,14 @@ class ValueNotion(Notion):
         return self.value
 
 
-# Function notion is notion that can callback custom function
+# Function notion is a notion that can callback custom function
 class FunctionNotion(Notion):
     def __init__(self, name, function):
         super(FunctionNotion, self).__init__(name)
         self.function = function if callable(function) else None
 
     def parse(self, *message, **context):
-        return self.function(self, *message, **context) if callable(self.function) else None
+        return self.function(self, *message, **context) if self.function else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -137,6 +137,7 @@ class NextRelation(Relation):
 
 
 # Selective notion: complex notion that can consist of one of its objects
+# It tries all relations and uses the one without errors
 class SelectiveNotion(ComplexNotion):
     def parse(self, *message, **context):
         if context.get('state'):
@@ -144,13 +145,13 @@ class SelectiveNotion(ComplexNotion):
                 cases = context['state']['cases']
 
                 if cases:
-                    case = cases.pop(0)  # Try another case
+                    case = cases.pop(0)  # Try another case, if any
 
                     # Pop context and update state, then try another case and come back here
-                    return ['pop_context', 'forget_context', {'set_state': {'cases': cases}},
-                            'push_context', case, self]
+                    return ['pop_context', 'forget_context', {'set_state': {'cases': cases}}, 'push_context',
+                            case, self]
                 else:
-                    return ['forget_context', 'clear_state', 'error']
+                    return ['forget_context', 'clear_state', 'error']  # No more opportunities
             else:
                 return ['forget_context', 'clear_state']  # Everything is ok, forget the past
 
@@ -161,10 +162,11 @@ class SelectiveNotion(ComplexNotion):
 
         case = reply.pop(0)
         return ['push_context', {'set_state': {'cases': reply}},
-                case, self]  # Try first one
+                case, self]  # Try first case
 
 
 # Conditional relation is a condition to go further if text starts with sequence
+# Optional flag defines should it return error if condition does not match or not
 class ConditionalRelation(Relation):
     def __init__(self, subject, object, checker, optional=False):
         super(ConditionalRelation, self).__init__(subject, object)
@@ -185,7 +187,7 @@ class ConditionalRelation(Relation):
 
             if result:
                 reply = {'move': length}
-                if self.object:
+                if self.object:  # Leave a message for the object to know what worked
                     reply['notify'] = {'to': self.object, 'data': {'condition': result}}
 
                 return [reply, self.object]
@@ -194,7 +196,7 @@ class ConditionalRelation(Relation):
             return 'error'
 
 
-# Loop relation is a cycle that repeats object for specified or infinite number of times
+# Loop relation is a cycle that repeats object for specified or infinite number of times util error
 class LoopRelation(Relation):
     def __init__(self, subject, object, n=None):
         super(LoopRelation, self).__init__(subject, object)
@@ -210,12 +212,12 @@ class LoopRelation(Relation):
             context['from'] = self
             repeat = self.n(self, *message, **context)
 
-        elif context['state']:
+        elif context['state']:  # May be where here before
             if context.get('errors'):
                 repeat = False
 
                 if not self.n:
-                    restore = True  # Number of iterations is arbitrary if no restriction, we need to restore
+                    restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
                                     # last good context
                 else:
                     error = True  # Number is fixed so we have an error
@@ -236,7 +238,7 @@ class LoopRelation(Relation):
             reply += [{'set_state': {'n': 1 if self.n else True}}, 'push_context']
 
         if repeat:
-            reply += [self.object, self]  # We need to come back after object to think should we repeat or not
+            reply += [self.object, self]  # We need to come back after the object to think should we repeat or not
         else:
             if restore:
                 reply.append('pop_context')  # If we need to restore we need to repair context
@@ -253,12 +255,12 @@ class LoopRelation(Relation):
 class Process(Abstract):
     def __init__(self):
         super(Process, self).__init__()
-
         self.result = None
 
         self._queue = []
         self._callback = None
 
+    # Ask callback regarding event happening
     def callback_event(self, info):
         if self.current != self._callback and self._callback:  # We do not need infinite asking loops
             reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'context': self.context})
@@ -274,7 +276,9 @@ class Process(Abstract):
         # We need to check should we pass self to event trigger or not, no need to do if for lambdas
         return event(self) if not hasattr(event, '__self__') else event()
 
+    # Run event if conditions are appropriate
     def run_event(self, event):
+        # Event [1] is a condition checker
         can_run = self._run_event_func(event[1]) if event[1] else True
         result = None
 
@@ -301,13 +305,14 @@ class Process(Abstract):
         else:
             self._queue[-1].update(top)
 
+    # Get the field from queue top (or lower), if no field or so default is returned
     def _queue_top_get(self, field, offset=-1):
         if self._queue and field in self._queue[offset]:
             return self._queue[offset].get(field)
 
         return self._queueing_properties().get(field)
 
-    # Gets command string from reply or message
+    # Get command string from reply or message, remove it if pull is true
     def get_command(self, command, pull=False):
         data = None
 
@@ -339,14 +344,14 @@ class Process(Abstract):
 
     # Events
     def get_events(self):
-        return [('new',
-                 lambda self: self.get_command('new', True),
-                 self.event_new
+        return [('new',  # Name
+                 lambda self: self.get_command('new', True),  # Run condition
+                 self.event_new  # Handler if condition is ok
                  ),
                 ('pull_message',
                  lambda self: not self.reply and self.message and
                  isinstance(self.message[0], Abstract),
-                 self.event_pull_message
+                 self.event_pull_next
                  ),
                 ('stop',
                  lambda self: self.get_command('stop', True),
@@ -382,7 +387,7 @@ class Process(Abstract):
 
         del self._queue[:-1]  # Removing previous elements from queue
 
-    def event_pull_message(self):
+    def event_pull_next(self):
         self._to_queue(True, current=self.message[0], reply=self.message[0])
         del self.message[0]
 
@@ -396,8 +401,7 @@ class Process(Abstract):
         self._queue.pop()  # Let's move on
 
     def event_push(self):
-        first = self.reply.pop(0)  # First one is ready to be processed
-        self._to_queue(False, reply=first)
+        self._to_queue(False, reply=self.reply.pop(0))  # First one is ready to be processed
 
     def event_ok(self):
         return 'ok'  # We're done if nothing in the queue
@@ -472,7 +476,7 @@ class Process(Abstract):
         return self._queue_top_get('reply')
 
 
-# Context process supports context modification commands
+# Shared context process supports context modification commands
 class SharedContextProcess(Process):
     def get_events(self):
         return super(SharedContextProcess, self).get_events() + \
@@ -522,7 +526,7 @@ class SharedContextProcess(Process):
 
 
 # Process that can save and restore context
-# Useful for cases when process needs to try various routes in the graph
+# Useful for cases when process needs to try various paths in the graph
 class StackingContextProcess(SharedContextProcess):
     def _queueing_properties(self):
         p = super(StackingContextProcess, self)._queueing_properties()
@@ -549,7 +553,7 @@ class StackingContextProcess(SharedContextProcess):
         super(StackingContextProcess, self).event_new()
 
         if self.context_stack:
-            self._to_queue(True, context_stack=self._queueing_properties()['context_stack'])  # Clearing stack
+            self._to_queue(True, context_stack=self._queueing_properties()['context_stack'])  # Clearing stack if new
 
     def is_tracking(self):
         return self.context_stack
@@ -587,6 +591,7 @@ class StackingContextProcess(SharedContextProcess):
 
 
 # Process with support of abstract states and notifications between them
+# Useful to preserve private a state of an abstract
 class StatefulProcess(StackingContextProcess):
     def _queueing_properties(self):
         p = super(StatefulProcess, self)._queueing_properties()
@@ -615,12 +620,13 @@ class StatefulProcess(StackingContextProcess):
         super(StatefulProcess, self).event_new()
 
         if self.states:
-            self._to_queue(True,  states=self._queueing_properties()['states'])  # Clearing states
+            self._to_queue(True,  states=self._queueing_properties()['states'])  # Clearing states if new
 
     def event_next(self):
         # Self.reply is a new next, this is how the Process made
         self.context['state'] = self.states.get(self.reply) if self.reply in self.states else {}
 
+        # Now the state contains the right state
         super(StatefulProcess, self).event_next()
 
         del self.context['state']
@@ -639,8 +645,8 @@ class StatefulProcess(StackingContextProcess):
             del self.states[self.current]
 
     def event_notify(self):
-        data = self.get_command('notify', True)
-        recipient = data['to']
+        msg = self.get_command('notify', True)
+        recipient = msg['to']
 
         if not recipient in self.states:
             self._set_state(recipient, {})
@@ -648,7 +654,7 @@ class StatefulProcess(StackingContextProcess):
         if not 'notifications' in self.states[recipient]:
             self.states[recipient]['notifications'] = {}
 
-        self.states[recipient]['notifications'].update(data['data'])
+        self.states[recipient]['notifications'].update(msg['data'])
 
     @property
     def states(self):
@@ -659,18 +665,14 @@ class StatefulProcess(StackingContextProcess):
 class TextParsingProcess(StatefulProcess):
     def get_events(self):
         return super(TextParsingProcess, self).get_events() + \
-            [
-                (
-                    'error',
-                    lambda self: self.get_command('error'),
-                    self.event_error
-                ),
-                (
-                    'move',
-                    lambda self: self.get_command('move') and 'text' in self.context,
-                    self.event_move
-                )
-            ]
+            [('error',
+              lambda self: self.get_command('error'),
+              self.event_error
+              ),
+             ('move',
+              lambda self: self.get_command('move') and 'text' in self.context,
+              self.event_move
+              )]
 
     def event_start(self):
         super(TextParsingProcess, self).event_start()
@@ -697,6 +699,8 @@ class TextParsingProcess(StatefulProcess):
         error = self.get_command('error', True)
         key = self.current or self
 
+        # Error is not just a value in context but a dict itself, so in case of tracking we need to be able to
+        # revert its internal changes too
         if not self.is_tracking():
             self.errors[key] = error
         else:
