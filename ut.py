@@ -611,8 +611,8 @@ class StatefulProcess(StackingContextProcess):
               ),
              ('notify',
               lambda self: isinstance(self.get_command('notify'), dict) and
-                           isinstance(self.get_command('notify').get('to'), Abstract) and
-                           'data' in self.get_command('notify'),
+              isinstance(self.get_command('notify').get('to'), Abstract) and
+              'data' in self.get_command('notify'),
               self.event_notify
               )]
 
