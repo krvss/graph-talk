@@ -168,32 +168,67 @@ class SelectiveNotion(ComplexNotion):
 # Conditional relation is a condition to go further if text starts with sequence
 # Optional flag defines should it return error if condition does not match or not
 class ConditionalRelation(Relation):
+    REGEX_TYPE_NAME = 'SRE_Pattern'
+
     def __init__(self, subject, object, checker, optional=False):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
         self.optional = optional
 
-    def parse(self, *message, **context):
+    #TODO: text -> sequence
+    def check_length(self, *message, **context):
         if self.checker:
             length = result = None
 
             if callable(self.checker):
                 result, length = self.checker(self, *message, **context)
+
             elif 'text' in context:
-                length = len(self.checker) if context['text'].startswith(self.checker) else 0
+                if type(self.checker).__name__ == ConditionalRelation.REGEX_TYPE_NAME:
+                    m = self.checker.match(context['text'])
 
-                if length > 0:
-                    result = self.checker
+                    if m:
+                        length = m.end()
+                        result = m.group()
+                    else:
+                        length = 0
 
-            if result:
-                reply = {'move': length}
-                if self.object:  # Leave a message for the object to know what worked
-                    reply['notify'] = {'to': self.object, 'data': {'condition': result}}
+                else:
+                    length = len(self.checker) if context['text'].startswith(self.checker) else 0
 
-                return [reply, self.object]
+                    if length > 0:
+                        result = self.checker
 
-        if not self.optional:
-            return 'error'
+            return result, length
+
+        else:
+            return "", -1
+
+    def parse(self, *message, **context):
+        if context.get('state'):
+            if context.get('errors'):
+                return ['forget_context', 'clear_state', 'error']  # Did not work
+            else:
+                return ['forget_context', 'clear_state']  # Everything is ok
+
+        result, length = self.check_length(*message, **context)
+
+        if message and message[0] == 'check':
+            return length
+
+        if result:
+            reply = {'move': length}
+            if self.object:  # Leave a message for the object to know what worked
+                reply['notify'] = {'to': self.object, 'data': {'condition': result}}
+
+            return [reply, self.object]
+
+        elif self.checker:
+            return 'error' if not self.optional else None
+
+        if self.object:
+            return ['push_context', {'set_state': {'try': self.object}},
+                    self.object, self]  # Try the object
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times util error

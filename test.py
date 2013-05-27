@@ -1,6 +1,7 @@
 import unittest
 
 from ut import *
+import re
 
 
 # Simple process logger
@@ -426,6 +427,20 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
+
+        # Regex check
+        c.optional = False
+
+        c.checker = re.compile(r"(\s)*")
+
+        r = process.parse("new", root, text="     ")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 5)
+
+        #TODO: Try test
+
+
 
     def test_complex(self):
         #logger.logging = True
