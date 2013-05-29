@@ -75,5 +75,9 @@ class DictChangeGroup(object):
             c.undo()
 
 
-
-
+def is_number(n):
+    try:
+        n + 1
+        return True
+    except TypeError:
+        return False

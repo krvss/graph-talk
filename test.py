@@ -438,18 +438,6 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 5)
 
-        # Try test
-        c.checker = None
-        t = ComplexNotion("try")
-        ConditionalRelation(t, None, "a")
-        ConditionalRelation(t, None, "b")
-        c.object = t
-
-        r = process.parse("new", root, text="aaa")
-        self.assertEqual(r, "error")
-        self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.context["text"], "aaa")
-
     def test_complex(self):
         #logger.logging = True
         # Complex notion test: root -> ab -> (a , b) with empty message
@@ -758,7 +746,6 @@ class UtTests(unittest.TestCase):
         self.assertNotIn("result", process.context)
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 0)
-        self.assertIn(c2, process.errors)
         self.assertIn(root, process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
@@ -793,6 +780,8 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+
+        # TODO: check longest regex/selection
 
     def test_special(self):
         #logger.logging = True

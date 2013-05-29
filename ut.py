@@ -160,6 +160,30 @@ class SelectiveNotion(ComplexNotion):
         if not isinstance(reply, list):
             return reply
 
+        # Searching for the longest case
+        cases = {}
+        max_key, max_len = None, 0
+        for r in reply:
+            length = r.parse('check', **context)
+
+            if is_number(length):
+                if length > max_len:
+                    if max_key:
+                        del cases[max_key]
+
+                    max_key, max_len = r, length
+                else:
+                    continue
+
+            cases[r] = None
+
+        if not cases:
+            return 'error'  # No ways
+
+        for case in cases.keys():
+            if not case in reply:
+                reply.remove(case)
+
         case = reply.pop(0)
         return ['push_context', {'set_state': {'cases': reply}},
                 case, self]  # Try first case
@@ -175,8 +199,8 @@ class ConditionalRelation(Relation):
         self.checker = checker
         self.optional = optional
 
-    #TODO: text -> sequence
-    def check_length(self, *message, **context):
+    # Return result and length of check
+    def check(self, *message, **context):
         if self.checker:
             length = result = None
 
@@ -202,16 +226,10 @@ class ConditionalRelation(Relation):
             return result, length
 
         else:
-            return "", -1
+            return None, None
 
     def parse(self, *message, **context):
-        if context.get('state'):
-            if context.get('errors'):
-                return ['pop_context', 'clear_state', 'error']  # Did not work
-            else:
-                return ['forget_context', 'clear_state']  # Everything is ok
-
-        result, length = self.check_length(*message, **context)
+        result, length = self.check(*message, **context)
 
         if message and message[0] == 'check':
             return length
@@ -225,10 +243,6 @@ class ConditionalRelation(Relation):
 
         elif self.checker:
             return 'error' if not self.optional else None
-
-        if self.object:
-            return ['push_context', {'set_state': {'try': self.object}},
-                    self.object, self]  # Try the object
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times util error
