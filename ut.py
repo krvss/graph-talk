@@ -207,7 +207,7 @@ class ConditionalRelation(Relation):
     def parse(self, *message, **context):
         if context.get('state'):
             if context.get('errors'):
-                return ['forget_context', 'clear_state', 'error']  # Did not work
+                return ['pop_context', 'clear_state', 'error']  # Did not work
             else:
                 return ['forget_context', 'clear_state']  # Everything is ok
 

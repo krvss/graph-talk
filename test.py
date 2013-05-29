@@ -438,9 +438,17 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 5)
 
-        #TODO: Try test
+        # Try test
+        c.checker = None
+        t = ComplexNotion("try")
+        ConditionalRelation(t, None, "a")
+        ConditionalRelation(t, None, "b")
+        c.object = t
 
-
+        r = process.parse("new", root, text="aaa")
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.context["text"], "aaa")
 
     def test_complex(self):
         #logger.logging = True
