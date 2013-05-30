@@ -423,7 +423,7 @@ class UtTests(unittest.TestCase):
         # Optional check
         c.optional = True
 
-        r = process.parse("new", root, text="b")
+        r = process.parse("new", root, text="")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
@@ -437,6 +437,13 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 5)
+
+        # Underflow check
+        r = process.parse("new", root, text=" z")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 1)
+
 
     def test_complex(self):
         #logger.logging = True
@@ -695,7 +702,7 @@ class UtTests(unittest.TestCase):
 
         l2 = LoopRelation(root, aaa, 2)
 
-        r = process.parse("new", root, text="aaaaa", test="test_loop_5")
+        r = process.parse("new", root, text="aaaa", test="test_loop_5")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -750,7 +757,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
 
-        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa, -bb->bb) ) ) for "aa"
+        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa), -bb->bb ) ) for "aa"
         c1.subject = None
         c2.subject = None
 
@@ -764,13 +771,13 @@ class UtTests(unittest.TestCase):
         ConditionalRelation(a, b, "b")
 
         a2 = ComplexNotion("a2")
-        NextRelation(root, a2)
+        na2 = NextRelation(root, a2)
 
         aa = FunctionNotion("aa", add_to_result)
-        ConditionalRelation(a2, aa, "aa")
+        caa = ConditionalRelation(a2, aa, "aa")
 
         bb = FunctionNotion("bb", add_to_result)
-        NextRelation(root, bb)
+        nbb = NextRelation(root, bb)
 
         r = process.parse("new", root, text="aa", test="test_selective_3")
 
@@ -781,7 +788,35 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
 
-        # TODO: check longest regex/selection
+        # Longest regex/selection
+        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), -a-> a2 -> (-c->aa), -a+->bb ) ) for "aaaa"
+        na2.subject = None
+        na2.object = None
+
+        ConditionalRelation(root, a2, "a")
+        caa.checker = "c"
+
+        nbb.subject = None
+        nbb.object = None
+        cbb = ConditionalRelation(root, bb, re.compile("(a)+"))
+
+        r = process.parse("new", root, text="aaaa", test="test_selective_4")
+
+        self.assertEqual(process.context["result"], "bb")
+        self.assertTrue(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertFalse(process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+
+        # Negative test
+        r = process.parse("new", root, text="x", test="test_selective_5")
+        self.assertTrue(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertIn(root, process.errors)
+        self.assertIn(cbb, process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
 
     def test_special(self):
         #logger.logging = True
