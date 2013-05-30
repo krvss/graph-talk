@@ -257,7 +257,10 @@ class LoopRelation(Relation):
 
         reply = []
 
-        if self.n and callable(self.n):
+        if self.n == 0:
+            return None
+
+        elif self.n and callable(self.n):
             context['from'] = self
             repeat = self.n(self, *message, **context)
 

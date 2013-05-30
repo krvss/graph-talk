@@ -694,6 +694,15 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
 
+        # n=0 test
+        l.n = 0
+        r = process.parse("new", root, text="", test="test_loop_5")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 0)  # External functions stops at 5
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+
         # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
         l.n = 2
 
@@ -702,7 +711,7 @@ class UtTests(unittest.TestCase):
 
         l2 = LoopRelation(root, aaa, 2)
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_5")
+        r = process.parse("new", root, text="aaaa", test="test_loop_6")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -712,7 +721,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
-        r = process.parse("new", root, text="aaab", test="test_loop_6")
+        r = process.parse("new", root, text="aaab", test="test_loop_7")
 
         self.assertEqual(process.context["result"], "aaa")
         self.assertEqual(r, "error")
