@@ -742,6 +742,11 @@ class TextParsingProcess(StatefulProcess):
         if self.errors:
             self.result = 'error'
 
+        # If not parsed text left this is an error
+        if self.context.get('text') and not self.errors:
+            self.errors[self] = 'underflow'
+            self.result = 'error'
+
         return super(TextParsingProcess, self).event_result()
 
     def event_error(self):
