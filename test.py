@@ -207,7 +207,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(_acc, 1)
-        self.assertEqual(process.current, a) # Returns to complex notion a after b and c
+        self.assertEqual(process.current, c)
 
     def test_queue(self):
         global _acc
@@ -251,8 +251,8 @@ class UtTests(unittest.TestCase):
 
         r = process.parse("skip", test="test_skip_2")  # Trying empty stack
 
-        self.assertEqual(process.reply, [])
-        self.assertEqual(process.current, root)  # Root because it was ComplexNotion
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, None)  # Because everything skipped
         self.assertEqual(r, "ok")
 
         # Trying list message
@@ -319,7 +319,7 @@ class UtTests(unittest.TestCase):
         r = process.parse("new", root, test="test_context_del", ctx="3")
         self.assertEqual(r, "ok")
         self.assertNotIn("ctx", process.context)
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, b)
 
         a.function = lambda notion, *message, **context: {"delete_context": ["ctx", "more", "more2"]}
 
@@ -327,7 +327,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertNotIn("ctx", process.context)
         self.assertNotIn("more", process.context)
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, b)
 
         # See what's happening if command argument is incorrect
         a.function = lambda notion, *message, **context: {"update_context"}
@@ -486,7 +486,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.context["result"], "ab")
         self.assertTrue(r)
         self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, ab)  # Because root has 1 child only, so no lists
+        self.assertEqual(process.current, b)
 
         # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for "a"
         r1.subject = None
@@ -501,7 +501,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 1)
         self.assertIn(r2, process.errors)
-        self.assertEqual(process.current, ab)  # Last complex notion with list
+        self.assertEqual(process.current, r2)  # Finished at error
 
         # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
         c = ComplexNotion("c")
@@ -522,7 +522,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 3)
         self.assertTrue(not process.errors)
-        self.assertEqual(process.current, ab)  # same as above
+        self.assertEqual(process.current, f)
 
     def test_states(self):
         #logger.logging = True
@@ -560,7 +560,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertNotIn(inc, process.states)
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, inc)
 
     def test_dict_tracking(self):
         d = {"a": 1, "c": 12}
@@ -618,7 +618,8 @@ class UtTests(unittest.TestCase):
 
         NextRelation(root, FunctionNotion("del_context", lambda n, *m, **c: {"delete_context": "inject"}))
 
-        NextRelation(root, FunctionNotion("pop_context", lambda n, *m, **c: "pop_context"))
+        p = FunctionNotion("pop_context", lambda n, *m, **c: "pop_context")
+        NextRelation(root, p)
 
         process = StackingContextProcess()
         process.callback = logger
@@ -626,7 +627,7 @@ class UtTests(unittest.TestCase):
         r = process.parse(root, test="test_stacking_1")
 
         self.assertEqual(r, "ok")
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, p)
         self.assertNotIn("inject", process.context)
 
         # Now tracking is on!
@@ -658,7 +659,7 @@ class UtTests(unittest.TestCase):
         r = process.parse(root, test="test_stacking_2")
 
         self.assertEqual(r, "ok")
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, pop)
         self.assertNotIn("alien", process.context)
         self.assertNotIn("terminator", process.context)
         self.assertEqual("predator", process.context["test"])  # Lasts because context changes were forgotten

@@ -185,6 +185,7 @@ class SelectiveNotion(ComplexNotion):
                 reply.remove(case)
 
         case = reply.pop(0)
+        # TODO: if non-epsilon case do not push context
         return ['push_context', {'set_state': {'cases': reply}},
                 case, self]  # Try first case
 
@@ -453,7 +454,8 @@ class Process(Abstract):
         self._queue.pop()  # Let's move on
 
     def event_push(self):
-        self._to_queue(False, reply=self.reply.pop(0))  # First one is ready to be processed
+        # We update the queue if this is a last item
+        self._to_queue(len(self.reply) == 1, reply=self.reply.pop(0))  # First one is ready to be processed
 
     def event_ok(self):
         return 'ok'  # We're done if nothing in the queue
