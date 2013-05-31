@@ -167,6 +167,7 @@ class UtTests(unittest.TestCase):
         global _acc
 
         # Simple debugger test: stop at "a" notion, skip the result by the command and go further
+        # Root -> a
         root = ComplexNotion("here")
         a = ComplexNotion("a")
 
@@ -191,6 +192,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, a)
 
         # Simple skip test: always skip unknowns
+        # Root -> a -> (b, c)
         b = FunctionNotion("b", showstopper)
         NextRelation(a, b)
 
@@ -205,7 +207,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(_acc, 1)
-        self.assertEqual(process.current, a)
+        self.assertEqual(process.current, a) # Returns to complex notion a after b and c
 
     def test_queue(self):
         global _acc
@@ -250,18 +252,20 @@ class UtTests(unittest.TestCase):
         r = process.parse("skip", test="test_skip_2")  # Trying empty stack
 
         self.assertEqual(process.reply, [])
-        self.assertEqual(process.current, root)  # Root is because it was ComplexNotion
+        self.assertEqual(process.current, root)  # Root because it was ComplexNotion
         self.assertEqual(r, "ok")
 
         # Trying list message
         _acc = 0
         process.parse(b, b, b)
         self.assertEqual(_acc, 3)
+        self.assertEqual(process.current, b)
 
     def test_context(self):
         #logger.logging = True
 
         # Verify correctness of adding
+        # Root -> (a, b)
         root = ComplexNotion("root")
         a = FunctionNotion("ctx", lambda notion, *message, **context:
                            {"add_context": {"ctx": True}})
@@ -278,6 +282,7 @@ class UtTests(unittest.TestCase):
         r = process.parse(root, test="test_context_add_1")
         self.assertEqual(r, "stop")
         self.assertIn("ctx", process.context)
+        self.assertEqual(process.current, b)
 
         process.context["ctx"] = False
 
@@ -286,16 +291,19 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "stop")
         self.assertEqual("1", process.context["ctx"])
         self.assertEqual("me", process.context["from"])
+        self.assertEqual(process.current, b)
 
         # Checking that context is the same if there is no new command
         r = process.parse(root)
         self.assertEqual(r, "stop")
         self.assertEqual("me", process.context["from"])
+        self.assertEqual(process.current, b)
 
         # Checking that context is NOT the same if there is new command
         r = process.parse("new", root)
         self.assertEqual(r, "stop")
         self.assertNotIn("from", process.context)
+        self.assertEqual(process.current, b)
 
         # Verify updating
         a.function = lambda notion, *message, **context: {"update_context": {"ctx": "new"}}
@@ -303,6 +311,7 @@ class UtTests(unittest.TestCase):
         r = process.parse("new", root, test="test_context_update", ctx="2")
         self.assertEqual(r, "stop")
         self.assertEqual("new", process.context["ctx"])
+        self.assertEqual(process.current, b)
 
         # Verify deleting & mass deleting
         a.function = lambda notion, *message, **context: {"delete_context": "ctx"}
@@ -310,6 +319,7 @@ class UtTests(unittest.TestCase):
         r = process.parse("new", root, test="test_context_del", ctx="3")
         self.assertEqual(r, "ok")
         self.assertNotIn("ctx", process.context)
+        self.assertEqual(process.current, root)
 
         a.function = lambda notion, *message, **context: {"delete_context": ["ctx", "more", "more2"]}
 
@@ -317,15 +327,18 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertNotIn("ctx", process.context)
         self.assertNotIn("more", process.context)
+        self.assertEqual(process.current, root)
 
         # See what's happening if command argument is incorrect
         a.function = lambda notion, *message, **context: {"update_context"}
 
         r = process.parse("new", root, test="test_context_bad")
         self.assertEqual(r, "unknown")
+        self.assertEqual(process.current, a)
 
     def test_errors(self):
         #logger.logging = True
+        # Root -> a (b, c, d, e)
         root = ComplexNotion("root")
         a = ComplexNotion("a")
 
@@ -377,12 +390,13 @@ class UtTests(unittest.TestCase):
         r = process.parse("new", test="test_stop_3")
 
         self.assertFalse(process.reply)
-        self.assertEqual(process.current, None)
+        self.assertFalse(process.errors)
+        self.assertEqual(process.current, None)  # Because queue was cleared by new
         self.assertEqual(r, "ok")
 
     def test_condition(self):
         #logger.logging = True
-        # Simple positive condition test root -a-> a for "a"
+        # Simple positive condition test root -a-> d for "a"
         root = ComplexNotion("root")
 
         d = FunctionNotion("d", has_condition)
@@ -405,8 +419,9 @@ class UtTests(unittest.TestCase):
         self.assertIn(c, process.errors)
         self.assertEqual(process.errors[c], "error")
         self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
 
-        # Simple positive condition test root -function-> a for "a"
+        # Simple positive condition test root -function-> None for "a"
         c.checker = is_a
         c.object = None
 
@@ -414,11 +429,13 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(process.parsed_length, 1)
         self.assertEqual(r, "ok")
+        self.assertEqual(process.current, c)
 
         r = process.parse("new", root, text="b")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
 
         # Optional check
         c.optional = True
@@ -427,6 +444,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
 
         # Regex check
         c.optional = False
@@ -437,13 +455,15 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 5)
+        self.assertEqual(process.current, c)
 
         # Underflow check
         r = process.parse("new", root, text=" z")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 1)
-
+        self.assertEqual(process.current, c)
+        self.assertEqual(process.errors[process], "underflow")
 
     def test_complex(self):
         #logger.logging = True
@@ -481,7 +501,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 1)
         self.assertIn(r2, process.errors)
-        self.assertEqual(process.current, ab)  # Nowhere to go
+        self.assertEqual(process.current, ab)  # Last complex notion with list
 
         # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
         c = ComplexNotion("c")
@@ -502,17 +522,19 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 3)
         self.assertTrue(not process.errors)
-        self.assertEqual(process.current, ab)  # Last complex notion with list
+        self.assertEqual(process.current, ab)  # same as above
 
     def test_states(self):
         #logger.logging = True
+        # Root -> (inc, inc, s, "state_check", inc)
         root = ComplexNotion("root")
 
         inc = FunctionNotion("1", state_starter)
 
         NextRelation(root, inc)
         NextRelation(root, inc)
-        NextRelation(root, FunctionNotion("stop", showstopper))
+        s = FunctionNotion("stop", showstopper)
+        NextRelation(root, s)
         NextRelation(root, FunctionNotion("state_check", state_checker))
         NextRelation(root, inc)
 
@@ -522,12 +544,14 @@ class UtTests(unittest.TestCase):
         r = process.parse(root, test="test_states_1")
 
         self.assertEqual(r, "stop")
+        self.assertEqual(process.current, s)
         self.assertEqual(process.states[inc]["v"], 2)
 
         # Checking clearing of states when new
         r = process.parse("new", root, test="test_states_2")
         self.assertEqual(r, "stop")
         self.assertEqual(process.states[inc]["v"], 2)
+        self.assertEqual(process.current, s)
 
         # Manual clearing of states
         inc.function = lambda n, *m, **c: "clear_state"
@@ -536,6 +560,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, "ok")
         self.assertNotIn(inc, process.states)
+        self.assertEqual(process.current, root)
 
     def test_dict_tracking(self):
         d = {"a": 1, "c": 12}
@@ -601,6 +626,7 @@ class UtTests(unittest.TestCase):
         r = process.parse(root, test="test_stacking_1")
 
         self.assertEqual(r, "ok")
+        self.assertEqual(process.current, root)
         self.assertNotIn("inject", process.context)
 
         # Now tracking is on!
@@ -632,6 +658,7 @@ class UtTests(unittest.TestCase):
         r = process.parse(root, test="test_stacking_2")
 
         self.assertEqual(r, "ok")
+        self.assertEqual(process.current, root)
         self.assertNotIn("alien", process.context)
         self.assertNotIn("terminator", process.context)
         self.assertEqual("predator", process.context["test"])  # Lasts because context changes were forgotten
@@ -639,6 +666,7 @@ class UtTests(unittest.TestCase):
         r = process.parse("new", pop, test="test_stacking_3")
 
         self.assertEqual(r, "ok")
+        self.assertEqual(process.current, pop)
         self.assertFalse(process.context_stack)
 
     def test_loop(self):
@@ -661,6 +689,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 5)
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
 
         # Negative loop test: root -5!-> a's -a-> a for "aaaa"
         r = process.parse("new", root, text="aaaa", test="test_loop_2")
@@ -672,6 +701,7 @@ class UtTests(unittest.TestCase):
         self.assertIn(l, process.errors)
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
 
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = None
@@ -683,6 +713,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 4)
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
 
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
@@ -693,6 +724,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 5)  # External functions stops at 5
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
 
         # n=0 test
         l.n = 0
@@ -702,6 +734,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 0)  # External functions stops at 5
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
 
         # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
         l.n = 2
@@ -719,6 +752,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(l, process.states)
         self.assertNotIn(l2, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l2)  # Returning to the top loop
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
         r = process.parse("new", root, text="aaab", test="test_loop_7")
@@ -732,6 +766,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(l, process.states)
         self.assertNotIn(l2, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l2)  # Returning to the top loop
 
     def test_selective(self):
         #logger.logging = True
@@ -755,6 +790,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
 
         # Alternative negative test: same tree, message "xx"
         r = process.parse("new", root, text="xx", test="test_selective_2")
@@ -765,6 +801,7 @@ class UtTests(unittest.TestCase):
         self.assertIn(root, process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
 
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa), -bb->bb ) ) for "aa"
         c1.subject = None
@@ -796,6 +833,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
 
         # Longest regex/selection
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), -a-> a2 -> (-c->aa), -a+->bb ) ) for "aaaa"
@@ -817,6 +855,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
 
         # Negative test
         r = process.parse("new", root, text="x", test="test_selective_5")
@@ -826,6 +865,7 @@ class UtTests(unittest.TestCase):
         self.assertIn(cbb, process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
 
     def test_special(self):
         #logger.logging = True
