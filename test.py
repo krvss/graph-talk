@@ -802,7 +802,7 @@ class UtTests(unittest.TestCase):
         self.assertIn(root, process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, root)  # No case found
 
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa), -bb->bb ) ) for "aa"
         c1.subject = None
@@ -846,7 +846,7 @@ class UtTests(unittest.TestCase):
 
         nbb.subject = None
         nbb.object = None
-        cbb = ConditionalRelation(root, bb, re.compile("(a)+"))
+        ConditionalRelation(root, bb, re.compile("(a)+"))
 
         r = process.parse("new", root, text="aaaa", test="test_selective_4")
 

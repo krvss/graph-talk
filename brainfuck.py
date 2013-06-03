@@ -167,13 +167,15 @@ class Parser:
         root = ComplexNotion('root')
         context = {'text': from_str, 'root': root, 'loops': []}
 
+        # Loading
         r = process.parse(Parser.get_graph(), **context)
 
         if r == 'error':
-            return 'Parsing error(s): %s' % process.context['errors']
+            return 'Parsing error(s): %s' % process.errors
 
         context = {'memory': [0] * len(from_str), 'position': 0}
 
+        # Execution
         r = process.parse('new', root, **context)
 
         if r != 'ok':
