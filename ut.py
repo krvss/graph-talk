@@ -174,20 +174,26 @@ class SelectiveNotion(ComplexNotion):
                     max_key, max_len = r, length
                 else:
                     continue
+            else:
+                length = None
 
-            cases[r] = None
+            cases[r] = length
 
         if not cases:
             return 'error'  # No ways
 
-        for case in cases.keys():
-            if not case in reply:
-                reply.remove(case)
+        filtered = []
+        for r in reply:
+            if r in cases.keys():
+                filtered.append(r)
 
-        case = reply.pop(0)
-        # TODO: if non-epsilon case do not push context
-        return ['push_context', {'set_state': {'cases': reply}},
-                case, self]  # Try first case
+        case = filtered.pop(0)
+
+        if not filtered and cases[case] is not None:
+            return case  # No need to try, just go
+        else:
+            return ['push_context', {'set_state': {'cases': filtered}},
+                    case, self]  # Try first case
 
 
 # Conditional relation is a condition to go further if text starts with sequence

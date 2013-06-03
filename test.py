@@ -791,7 +791,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, root)
+        self.assertEqual(process.current, b)
 
         # Alternative negative test: same tree, message "xx"
         r = process.parse("new", root, text="xx", test="test_selective_2")
@@ -812,7 +812,7 @@ class UtTests(unittest.TestCase):
         NextRelation(root, a1)
 
         a = ComplexNotion("a")
-        ConditionalRelation(a1, a, "a")
+        a1a = ConditionalRelation(a1, a, "a")
 
         b = FunctionNotion("b", add_to_result)
         ConditionalRelation(a, b, "b")
@@ -863,7 +863,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r, "error")
         self.assertEqual(process.parsed_length, 0)
         self.assertIn(root, process.errors)
-        self.assertIn(cbb, process.errors)
+        self.assertIn(a1a, process.errors)  # Error for the first real condition after epsilon move to a1
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, root)
