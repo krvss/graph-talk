@@ -91,7 +91,8 @@ class FunctionNotion(Notion):
         self.function = function if callable(function) else None
 
     def parse(self, *message, **context):
-        return self.function(self, *message, **context) if self.function else None
+        if has_first(message, 'next'):
+            return self.function(self, *message, **context) if self.function else None
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -125,22 +126,24 @@ class ComplexNotion(Notion):
                     self.un_relate(context.get('from'))
                     return True
 
-             # Returning copy of relation list by default, not using a list if there is only one
-            if self._relations:
-                return self._relations[0] if len(self._relations) == 1 else list(self._relations)
+                elif message[0] == 'next':
+                     # Returning copy of relation list by default, not using a list if there is only one
+                    if self._relations:
+                        return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
 
 # Next relation is just a simple sequence relation
 class NextRelation(Relation):
     def parse(self, *message, **context):
-        return self.object
+        if has_first(message, 'next'):
+            return self.object
 
 
 # Selective notion: complex notion that can consist of one of its objects
 # It tries all relations and uses the one without errors
 class SelectiveNotion(ComplexNotion):
     def parse(self, *message, **context):
-        if context.get('state'):
+        if context.get('state') and message and message[0] == 'next':
             if context.get('errors'):
                 cases = context['state']['cases']
 
@@ -157,7 +160,7 @@ class SelectiveNotion(ComplexNotion):
 
         reply = super(SelectiveNotion, self).parse(*message, **context)
 
-        if not isinstance(reply, list):
+        if not isinstance(reply, list) or (not message or message[0] != 'next'):
             return reply
 
         # Searching for the longest case
@@ -238,8 +241,11 @@ class ConditionalRelation(Relation):
     def parse(self, *message, **context):
         result, length = self.check(*message, **context)
 
-        if message and message[0] == 'check':
-            return length
+        if message:
+            if message[0] == 'check':
+                return length
+            if message[0] != 'next':
+                return result
 
         if result:
             reply = {'move': length}
@@ -259,6 +265,9 @@ class LoopRelation(Relation):
         self.n = n
 
     def parse(self, *message, **context):
+        if not has_first(message, 'next'):
+            return
+
         repeat = True
         error = restore = False
 
@@ -428,6 +437,7 @@ class Process(Abstract):
                  lambda self: not self.reply and len(self._queue) <= 1,
                  self.event_ok
                  ),
+                # TODO pass event
                 ('next',
                  lambda self: isinstance(self.reply, Abstract),
                  self.event_next
@@ -468,7 +478,7 @@ class Process(Abstract):
 
     def event_next(self):
         self._to_queue(True, current=self.reply,
-                       reply=self.reply.parse(*self.message, **self.context))
+                       reply=self.reply.parse('next', **self.context))
 
     def event_unknown(self):
         return 'unknown'

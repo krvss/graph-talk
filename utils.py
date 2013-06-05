@@ -81,3 +81,7 @@ def is_number(n):
         return True
     except TypeError:
         return False
+
+
+def has_first(l, value):
+    return l and l[0] == value

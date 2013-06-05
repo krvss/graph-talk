@@ -44,7 +44,8 @@ class Skipper(Abstract):
 
 # Test functions
 def showstopper(notion, *message, **context):
-    return notion.name
+    if has_first(message, 'next'):
+        return notion.name
 
 
 def state_starter(notion, *message, **context):
@@ -88,7 +89,7 @@ def add_to_result(notion, *message, **context):
     if "result" in context:
         add = context["result"] + add
 
-    return {"update_context":{"result": add}}
+    return {"update_context": {"result": add}}
 
 _loop = 5
 
@@ -129,13 +130,13 @@ class UtTests(unittest.TestCase):
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it, not a list
-        self.assertEqual(cn.parse(), r1)
+        self.assertEqual(cn.parse('next'), r1)
 
         r2 = Relation(cn, n1)
         r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
-        self.assertListEqual(cn.parse(), [r1, r2])
+        self.assertListEqual(cn.parse('next'), [r1, r2])
 
     def test_next(self):
         #logger.logging = True
