@@ -84,7 +84,7 @@ class ValueNotion(Notion):
         return self.value
 
 
-# Function notion is a notion that can callback custom function
+# Function notion is a notion that uses callback custom function when next is queried
 class FunctionNotion(Notion):
     def __init__(self, name, function):
         super(FunctionNotion, self).__init__(name)
@@ -137,6 +137,21 @@ class NextRelation(Relation):
     def parse(self, *message, **context):
         if has_first(message, 'next'):
             return self.object
+
+
+# Function relation is a relation that uses callback custom function when passed
+class FunctionRelation(NextRelation):
+    def __init__(self, subject, object, function):
+        super(FunctionRelation, self).__init__(subject, object)
+        self.function = function if callable(function) else None
+
+    def parse(self, *message, **context):
+        reply = super(FunctionRelation, self).parse(*message, **context)
+
+        if reply:
+            return reply
+        elif has_first(message, 'pass'):
+            return self.function(self, *message, **context) if self.function else None
 
 
 # Selective notion: complex notion that can consist of one of its objects
@@ -245,7 +260,7 @@ class ConditionalRelation(Relation):
             if message[0] == 'check':
                 return length
             if message[0] != 'next':
-                return result
+                return
 
         if result:
             reply = {'move': length}
@@ -437,7 +452,10 @@ class Process(Abstract):
                  lambda self: not self.reply and len(self._queue) <= 1,
                  self.event_ok
                  ),
-                # TODO pass event
+                ('pass',
+                 lambda self: isinstance(self.reply, Abstract),
+                 self.event_pass
+                 ),
                 ('next',
                  lambda self: isinstance(self.reply, Abstract),
                  self.event_next
@@ -475,6 +493,11 @@ class Process(Abstract):
 
     def event_ok(self):
         return 'ok'  # We're done if nothing in the queue
+
+    def event_pass(self):
+        reply = self.reply.parse('pass', **self.context)
+        if reply:
+            self._to_queue(False, current=self.reply, reply=reply)
 
     def event_next(self):
         self._to_queue(True, current=self.reply,
@@ -669,6 +692,13 @@ class StatefulProcess(StackingContextProcess):
 
         return p
 
+    def _add_current_state(self):
+        # Self.reply is a new next, this is how the Process made
+        self.context['state'] = self.states.get(self.reply) if self.reply in self.states else {}
+
+    def _del_current_state(self):
+        del self.context['state']
+
     def get_events(self):
         return super(StatefulProcess, self).get_events() + \
             [('set_state',
@@ -692,14 +722,18 @@ class StatefulProcess(StackingContextProcess):
         if self.states:
             self._to_queue(True,  states=self._queueing_properties()['states'])  # Clearing states if new
 
-    def event_next(self):
-        # Self.reply is a new next, this is how the Process made
-        self.context['state'] = self.states.get(self.reply) if self.reply in self.states else {}
+    def event_pass(self):
+        self._add_current_state()
 
         # Now the state contains the right state
-        super(StatefulProcess, self).event_next()
+        super(StatefulProcess, self).event_pass()
 
-        del self.context['state']
+        self._del_current_state()
+
+    def event_next(self):
+        self._add_current_state()
+        super(StatefulProcess, self).event_next()
+        self._del_current_state()
 
     def _set_state(self, abstract, state):
         if abstract in self.states:

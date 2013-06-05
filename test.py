@@ -44,8 +44,7 @@ class Skipper(Abstract):
 
 # Test functions
 def showstopper(notion, *message, **context):
-    if has_first(message, 'next'):
-        return notion.name
+    return notion.name
 
 
 def state_starter(notion, *message, **context):
@@ -64,7 +63,7 @@ def state_checker(notion, *message, **context):
 _acc = 0
 
 
-def accumulate_false(notion, *message, **context):
+def accumulate_false(abstract, *message, **context):
     global _acc
     _acc += 1
     return False
@@ -139,22 +138,26 @@ class UtTests(unittest.TestCase):
         self.assertListEqual(cn.parse('next'), [r1, r2])
 
     def test_next(self):
+        global _acc
+
         #logger.logging = True
 
         # Simple next test: root -> a
         root = ComplexNotion("root")
         a = FunctionNotion("a", showstopper)
 
-        NextRelation(root, a)
+        f = FunctionRelation(root, a, accumulate_false)
 
         process = Process()
         process.callback = logger
 
+        _acc = 0
         r = process.parse(root, test="test_next_1")
 
         self.assertEqual(process.reply, "a")
         self.assertEqual(process.current, a)
         self.assertEqual(r, "unknown")
+        self.assertEqual(_acc, 1)
 
         # Now function will not confuse process
         a.function = None
@@ -163,6 +166,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.reply, None)
         self.assertEqual(process.current, a)
         self.assertEqual(r, "ok")
+
+        # Now we will stop at the relation
+        f.function = lambda a, *m, **c: 'stop' if has_first(m, 'pass') else False
+        r = process.parse(root, test="test_next_3")
+
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, f)
+        self.assertEqual(r, "stop")
 
     def test_callback(self):
         global _acc
