@@ -168,7 +168,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
 
         # Now we will stop at the relation
-        f.function = lambda a, *m, **c: 'stop' if has_first(m, 'pass') else False
+        f.function = lambda a, *m, **c: 'stop' if has_first(m, 'next') else False
         r = process.parse(root, test="test_next_3")
 
         self.assertEqual(process.reply, None)

@@ -146,12 +146,13 @@ class FunctionRelation(NextRelation):
         self.function = function if callable(function) else None
 
     def parse(self, *message, **context):
-        reply = super(FunctionRelation, self).parse(*message, **context)
+        own_reply = super(FunctionRelation, self).parse(*message, **context)
+        func_reply = self.function(self, *message, **context) if self.function else None
 
-        if reply:
-            return reply
-        elif has_first(message, 'pass'):
-            return self.function(self, *message, **context) if self.function else None
+        if own_reply and func_reply:
+            return [func_reply, own_reply]
+        else:
+            return func_reply or own_reply
 
 
 # Selective notion: complex notion that can consist of one of its objects
@@ -452,10 +453,6 @@ class Process(Abstract):
                  lambda self: not self.reply and len(self._queue) <= 1,
                  self.event_ok
                  ),
-                ('pass',
-                 lambda self: isinstance(self.reply, Abstract),
-                 self.event_pass
-                 ),
                 ('next',
                  lambda self: isinstance(self.reply, Abstract),
                  self.event_next
@@ -493,11 +490,6 @@ class Process(Abstract):
 
     def event_ok(self):
         return 'ok'  # We're done if nothing in the queue
-
-    def event_pass(self):
-        reply = self.reply.parse('pass', **self.context)
-        if reply:
-            self._to_queue(False, current=self.reply, reply=reply)
 
     def event_next(self):
         self._to_queue(True, current=self.reply,
@@ -722,16 +714,9 @@ class StatefulProcess(StackingContextProcess):
         if self.states:
             self._to_queue(True,  states=self._queueing_properties()['states'])  # Clearing states if new
 
-    def event_pass(self):
-        self._add_current_state()
-
-        # Now the state contains the right state
-        super(StatefulProcess, self).event_pass()
-
-        self._del_current_state()
-
     def event_next(self):
         self._add_current_state()
+        # Now the state contains the right state
         super(StatefulProcess, self).event_next()
         self._del_current_state()
 
