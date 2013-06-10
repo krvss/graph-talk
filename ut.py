@@ -131,6 +131,10 @@ class ComplexNotion(Notion):
                     if self._relations:
                         return self._relations[0] if len(self._relations) == 1 else list(self._relations)
 
+    @property
+    def relations(self):
+        return list(self._relations)
+
 
 # Next relation is just a simple sequence relation
 class NextRelation(Relation):
@@ -266,7 +270,7 @@ class ConditionalRelation(Relation):
         if result:
             reply = {'move': length}
             if self.object:  # Leave a message for the object to know what worked
-                reply['notify'] = {'to': self.object, 'data': {'condition': result}}
+                reply['update_context'] = {'passed_condition': result}
 
             return [reply, self.object]
 

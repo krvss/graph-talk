@@ -84,13 +84,15 @@ ConditionalRelation(normal, None, re.compile(WHITE_SPACE))
 # Identifiers and numbers
 integer = ComplexNotion("Integer")
 ConditionalRelation(normal, integer, re.compile(INTEGER))
-# TODO: previous condition without notifications
-FunctionRelation(integer, print_out, lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: "TODO"}})
+
+FunctionRelation(integer, print_out,
+                 lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: c["passed_condition"]}})
 
 
 identifier = ComplexNotion("id")
 ConditionalRelation(normal, identifier, re.compile(IDENTIFIER))
-FunctionRelation(identifier, print_out, lambda r, *m, **c: {"update_context": {c_token: "OBJECTID", c_data: "TODO"}}) # TODO
+FunctionRelation(identifier, print_out,
+                 lambda r, *m, **c: {"update_context": {c_token: "OBJECTID", c_data: c["passed_condition"]}})
 
 s = "   \r\n  \r\n 111 alfa_2 \n   34 \r"
 c = {"text": s, c_data: None, c_token: None, c_line: 1}

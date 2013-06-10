@@ -77,6 +77,13 @@ def is_a(condition, *message, **context):
 
 
 def has_condition(notion, *message, **context):
+    if 'passed_condition' in context:
+        return context['passed_condition']
+    else:
+        return False
+
+
+def has_notification(notion, *message, ** context):
     if 'state' in context and 'notifications' in context['state']:
         return context['state']['notifications']['condition']
     else:
@@ -415,6 +422,8 @@ class UtTests(unittest.TestCase):
 
         c = ConditionalRelation(root, d, "a")
 
+        self.assertIsNone(c.parse("test"))
+
         process = TextParsingProcess()
         process.callback = logger
 
@@ -476,6 +485,11 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 1)
         self.assertEqual(process.current, c)
         self.assertEqual(process.errors[process], "underflow")
+
+        # Zero checker test
+        c.checker = None
+
+        self.assertIsNone(c.parse("check"))
 
     def test_complex(self):
         #logger.logging = True
@@ -573,6 +587,17 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
         self.assertNotIn(inc, process.states)
         self.assertEqual(process.current, inc)
+
+        # Notifications
+        while root.relations:
+            root.un_relate(root.relations[0])
+
+        t = FunctionNotion("terminator", has_notification)
+        FunctionRelation(root, t, lambda r, *m, **c: {'notify': {'to': t, 'data': {'condition': 'stop'}}})
+
+        r = process.parse("new", root, test="test_states_4")
+        self.assertEqual(r, "stop")
+        self.assertEqual(process.current, t)
 
     def test_dict_tracking(self):
         d = {"a": 1, "c": 12}
@@ -688,6 +713,8 @@ class UtTests(unittest.TestCase):
         root = ComplexNotion("root")
         aa = ComplexNotion("a's")
         l = LoopRelation(root, aa, 5)
+
+        self.assertIsNone(l.parse("test"))
 
         a = FunctionNotion("a", add_to_result)
         c = ConditionalRelation(aa, a, "a")
@@ -859,6 +886,9 @@ class UtTests(unittest.TestCase):
         nbb.subject = None
         nbb.object = None
         ConditionalRelation(root, bb, re.compile("(a)+"))
+
+        s = FunctionNotion("stop", showstopper)
+        ConditionalRelation(root, s, "a")
 
         r = process.parse("new", root, text="aaaa", test="test_selective_4")
 
