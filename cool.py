@@ -41,7 +41,7 @@ TOKEN_TYPES = (
 EOL = r"(\r\n|\n|\r){1}"
 WHITE_SPACE = r"[ \f\t\v]*"
 
-CHAR_ANY = "."
+ANY_CHAR = "."
 
 INTEGER = "[0-9]+"
 IDENTIFIER = "[A-Za-z0-9_]*"
@@ -60,39 +60,58 @@ def out(notion, *m, **c):
     o = ''
 
     if c[c_token]:
-        o = '#' + str(c[c_line]) + " : " + c[c_token] + " "
+        o = '#' + str(c[c_line]) + " " + c[c_token] + " "
 
     if c[c_data]:
         o += c[c_data]
 
     print o
 
-# Root
-root = ComplexNotion("COOL program")
-normal = SelectiveNotion("Statement")
-LoopRelation(root, normal)
+# General purpose notions
 
 # Out
 print_out = FunctionNotion("Print out", out)
 
-# Space
-eol = FunctionNotion("eol", inc_lineno)
-ConditionalRelation(normal, eol, re.compile(EOL))
+# EOL
+eol = FunctionNotion("EOL", inc_lineno)
 
-ConditionalRelation(normal, None, re.compile(WHITE_SPACE))
+# Any char
+any_char = FunctionRelation("Any", None, re.compile(ANY_CHAR))
+
+# Skip till EOL
+skip_till_eol = ComplexNotion("Skip")
+char_or_eol = SelectiveNotion("Char/EOL")
+LoopRelation(skip_till_eol, char_or_eol)
+
+# TODO: Break the loop
+
+
+# Root
+root = ComplexNotion("COOL program")
+statement = SelectiveNotion("Statement")
+LoopRelation(root, statement)
+
+# Space
+ConditionalRelation(statement, eol, re.compile(EOL))
+ConditionalRelation(statement, None, re.compile(WHITE_SPACE))
 
 # Identifiers and numbers
 integer = ComplexNotion("Integer")
-ConditionalRelation(normal, integer, re.compile(INTEGER))
+ConditionalRelation(statement, integer, re.compile(INTEGER))
 
 FunctionRelation(integer, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: c["passed_condition"]}})
 
 
 identifier = ComplexNotion("id")
-ConditionalRelation(normal, identifier, re.compile(IDENTIFIER))
+ConditionalRelation(statement, identifier, re.compile(IDENTIFIER))
 FunctionRelation(identifier, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "OBJECTID", c_data: c["passed_condition"]}})
+
+# Comments
+inline_comment = ComplexNotion("Inline comment")
+ConditionalRelation(statement, inline_comment, "--")
+
 
 s = "   \r\n  \r\n 111 alfa_2 \n   34 \r"
 c = {"text": s, c_data: None, c_token: None, c_line: 1}

@@ -97,7 +97,7 @@ class ParseCommand(FunctionNotion):
         if not 'state' in context:
             return
 
-        NextRelation(self.get_top(context), SimpleCommand(context['state']['notifications']['condition']))
+        NextRelation(self.get_top(context), SimpleCommand(context['passed_condition']))
 
 
 class ParseLoopStart(ParseCommand):
