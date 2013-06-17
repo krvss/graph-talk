@@ -31,7 +31,7 @@ logger = Logger()
 # Dialog test
 class Debugger(Abstract):
     def parse(self, *message, **context):
-        if message[0] == "next_post" and str(context["from"].current) == '"here"':
+        if message[0] == "query_post" and str(context["from"].current) == '"here"':
             return "debug"
 
 
@@ -373,7 +373,7 @@ class UtTests(unittest.TestCase):
         NextRelation(a, d)
         NextRelation(a, e)
 
-        process = TextParsingProcess()
+        process = ParsingProcess()
         process.callback = logger
 
         r = process.parse(root, test="test_stop_1")
@@ -424,7 +424,7 @@ class UtTests(unittest.TestCase):
 
         self.assertIsNone(c.parse("test"))
 
-        process = TextParsingProcess()
+        process = ParsingProcess()
         process.callback = logger
 
         r = process.parse(root, text="a")
@@ -504,7 +504,7 @@ class UtTests(unittest.TestCase):
         b = FunctionNotion("b", add_to_result)
         r2 = NextRelation(ab, b)
 
-        process = TextParsingProcess()
+        process = ParsingProcess()
         process.callback = logger
 
         r = process.parse(root, test="test_complex_1")
@@ -719,7 +719,7 @@ class UtTests(unittest.TestCase):
         a = FunctionNotion("a", add_to_result)
         c = ConditionalRelation(aa, a, "a")
 
-        process = TextParsingProcess()
+        process = ParsingProcess()
         process.callback = logger
 
         r = process.parse(root, text="aaaaa", test="test_loop_1")
@@ -808,9 +808,54 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l2)  # Returning to the top loop
 
+        # Break test: root -2!-> a's (-a-> a, -!->)
+        l.n = 2
+        l.subject = root
+
+        b = FunctionNotion("b", add_to_result)
+        NextRelation(aa, b)
+
+        c = FunctionNotion("c", add_to_result)
+        NextRelation(root, c)
+
+        a.function = lambda a, *m, **c: [add_to_result(a, *m, **c), 'break']
+
+        r = process.parse("new", root, text="a", test="test_loop_8")
+
+        self.assertEqual(process.context["result"], "ac")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, c)
+
+        # Continue test
+        a.function = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
+
+        r = process.parse("new", root, text="aa", test="test_loop_9")
+
+        self.assertEqual(process.context["result"], "aac")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, c)
+
+        # Final verification
+        a.function = add_to_result
+
+        r = process.parse("new", root, text="aa", test="test_loop_10")
+
+        self.assertEqual(process.context["result"], "ababc")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, c)  # Returning to the loop
+
     def test_selective(self):
         #logger.logging = True
-        process = TextParsingProcess()
+        process = ParsingProcess()
         process.callback = logger
 
         # Simple selective test: root -a-> a, -b-> b for "b"
@@ -932,7 +977,7 @@ class UtTests(unittest.TestCase):
 
         test_string = "bbaabb"
 
-        process = TextParsingProcess()
+        process = ParsingProcess()
         process.callback = logger
 
         r = process.parse(root, text=test_string, test="special_test_1")

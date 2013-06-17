@@ -162,7 +162,7 @@ class Parser:
 
     @staticmethod
     def execute(from_str):
-        process = TextParsingProcess()
+        process = ParsingProcess()
 
         root = ComplexNotion('root')
         context = {'text': from_str, 'root': root, 'loops': []}

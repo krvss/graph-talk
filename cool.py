@@ -116,7 +116,7 @@ ConditionalRelation(statement, inline_comment, "--")
 s = "   \r\n  \r\n 111 alfa_2 \n   34 \r"
 c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
-p = TextParsingProcess()
+p = ParsingProcess()
 
 r = p.parse(root, **c)
 

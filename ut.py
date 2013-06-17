@@ -151,6 +151,7 @@ class FunctionRelation(NextRelation):
 
     def parse(self, *message, **context):
         own_reply = super(FunctionRelation, self).parse(*message, **context)
+        #TODO: next only?
         func_reply = self.function(self, *message, **context) if self.function else None
 
         if own_reply and func_reply:
@@ -285,7 +286,7 @@ class LoopRelation(Relation):
         self.n = n
 
     def parse(self, *message, **context):
-        if not has_first(message, 'next'):
+        if not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue'):
             return
 
         repeat = True
@@ -300,7 +301,7 @@ class LoopRelation(Relation):
             context['from'] = self
             repeat = self.n(self, *message, **context)
 
-        elif context['state']:  # May be where here before
+        elif context['state']:  # May be was here before
             if context.get('errors'):
                 repeat = False
 
@@ -310,7 +311,13 @@ class LoopRelation(Relation):
                 else:
                     error = True  # Number is fixed so we have an error
             else:
-                if self.n:
+                if message[0] != 'next':
+                    reply.append('next')
+
+                if message[0] == 'break':  # Consider work done
+                    repeat = False
+
+                elif self.n:
                     i = context['state']['n']
 
                     if i < self.n:
@@ -439,7 +446,7 @@ class Process(Abstract):
                 ('pull_message',
                  lambda self: not self.reply and self.message and
                  isinstance(self.message[0], Abstract),
-                 self.event_pull_next
+                 self.event_pull_message
                  ),
                 ('stop',
                  lambda self: self.get_command('stop', True),
@@ -457,9 +464,9 @@ class Process(Abstract):
                  lambda self: not self.reply and len(self._queue) <= 1,
                  self.event_ok
                  ),
-                ('next',
+                ('query',
                  lambda self: isinstance(self.reply, Abstract),
-                 self.event_next
+                 self.event_query
                  ),
                 ('queue_push',
                  lambda self: isinstance(self.reply, list) and len(self.reply) > 0,
@@ -475,7 +482,7 @@ class Process(Abstract):
 
         del self._queue[:-1]  # Removing previous elements from queue
 
-    def event_pull_next(self):
+    def event_pull_message(self):
         self._to_queue(True, current=self.message[0], reply=self.message[0])
         del self.message[0]
 
@@ -495,9 +502,12 @@ class Process(Abstract):
     def event_ok(self):
         return 'ok'  # We're done if nothing in the queue
 
-    def event_next(self):
+    def get_query(self):
+        return 'next'
+
+    def event_query(self):
         self._to_queue(True, current=self.reply,
-                       reply=self.reply.parse('next', **self.context))
+                       reply=self.reply.parse(self.get_query(), **self.context))
 
     def event_unknown(self):
         return 'unknown'
@@ -718,10 +728,10 @@ class StatefulProcess(StackingContextProcess):
         if self.states:
             self._to_queue(True,  states=self._queueing_properties()['states'])  # Clearing states if new
 
-    def event_next(self):
+    def event_query(self):
         self._add_current_state()
         # Now the state contains the right state
-        super(StatefulProcess, self).event_next()
+        super(StatefulProcess, self).event_query()
         self._del_current_state()
 
     def _set_state(self, abstract, state):
@@ -754,10 +764,14 @@ class StatefulProcess(StackingContextProcess):
         return self._queue_top_get('states')
 
 
-# Text parsing process supports error and move commands for text processing
-class TextParsingProcess(StatefulProcess):
+# Parsing process supports error and move commands for text processing
+class ParsingProcess(StatefulProcess):
+    def get_query(self):
+        q = self.states[self].get('query') if self in self.states else None
+        return q or super(ParsingProcess, self).get_query()
+
     def get_events(self):
-        return super(TextParsingProcess, self).get_events() + \
+        return super(ParsingProcess, self).get_events() + \
             [('error',
               lambda self: self.get_command('error'),
               self.event_error
@@ -765,10 +779,22 @@ class TextParsingProcess(StatefulProcess):
              ('move',
               lambda self: self.get_command('move') and 'text' in self.context,
               self.event_move
+              ),
+             ('break',
+              lambda self: self.get_command('break', True) and self.query == 'next',
+              self.event_break
+              ),
+             ('next',
+              lambda self: self.get_command('next', True) and self.query != 'next',
+              self.event_next
+              ),
+             ('continue',
+              lambda self: self.get_command('continue', True) and self.query == 'next',
+              self.event_continue
               )]
 
     def event_start(self):
-        super(TextParsingProcess, self).event_start()
+        super(ParsingProcess, self).event_start()
 
         if not 'errors' in self.context:  # Add errors if they are not in context
             self._context_add('errors', {})
@@ -777,7 +803,7 @@ class TextParsingProcess(StatefulProcess):
             self._context_add('parsed_length', 0)
 
     def event_new(self):
-        super(TextParsingProcess, self).event_new()
+        super(ParsingProcess, self).event_new()
 
         self._context_set('parsed_length', 0)
 
@@ -791,7 +817,7 @@ class TextParsingProcess(StatefulProcess):
             self.errors[self] = 'underflow'
             self.result = 'error'
 
-        return super(TextParsingProcess, self).event_result()
+        return super(ParsingProcess, self).event_result()
 
     def event_error(self):
         error = self.get_command('error', True)
@@ -810,6 +836,17 @@ class TextParsingProcess(StatefulProcess):
         self._context_set('text', self.context['text'][move:])
         self._context_set('parsed_length', self.parsed_length + move)
 
+    def event_break(self):
+        self._set_state(self, {'query': 'break'})
+        self.event_pop()
+
+    def event_next(self):
+        self._set_state(self, {'query': None})
+
+    def event_continue(self):
+        self._set_state(self, {'query': 'continue'})
+        self.event_pop()
+
     @property
     def errors(self):
         return self.context['errors'] if 'errors' in self.context else {}
@@ -817,3 +854,9 @@ class TextParsingProcess(StatefulProcess):
     @property
     def parsed_length(self):
         return self.context['parsed_length'] if 'parsed_length' in self.context else 0
+
+    @property
+    def query(self):
+        return self.get_query()
+
+
