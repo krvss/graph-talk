@@ -81,6 +81,7 @@ class ValueNotion(Notion):
         self.value = value
 
     def parse(self, *message, **context):
+        #TODO: think of copying
         return self.value
 
 

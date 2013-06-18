@@ -5,6 +5,7 @@ import re
 
 
 # Simple process logger
+# TODO: formalize; integrate with pdb (stop at certain place); move to utils
 class Logger(Abstract):
     filter = None
     logging = False
@@ -365,7 +366,7 @@ class UtTests(unittest.TestCase):
 
         b = FunctionNotion("stop", showstopper)  # First stop
         c = FunctionNotion("error", showstopper)  # Error!
-        d = FunctionNotion("errorer", lambda notion, *message, **context: {"error": "i_m_bad"})  # Another error!
+        d = ValueNotion("errorer", {"error": "i_m_bad"})  # Another error!
         e = FunctionNotion("end", showstopper)  # And finally here
 
         NextRelation(a, b)
@@ -647,15 +648,13 @@ class UtTests(unittest.TestCase):
         # Testing without tracking
         root = ComplexNotion("root")
 
-        NextRelation(root, FunctionNotion("change_context",
-                                          lambda n, *m, **c: {"add_context": {"inject": "ninja"}}))
+        NextRelation(root, ValueNotion("change_context", {"add_context": {"inject": "ninja"}}))
 
-        NextRelation(root, FunctionNotion("change_context2",
-                                          lambda n, *m, **c: {"update_context": {"inject": "revenge of ninja"}}))
+        NextRelation(root, ValueNotion("change_context2", {"update_context": {"inject": "revenge of ninja"}}))
 
-        NextRelation(root, FunctionNotion("del_context", lambda n, *m, **c: {"delete_context": "inject"}))
+        NextRelation(root, ValueNotion("del_context", {"delete_context": "inject"}))
 
-        p = FunctionNotion("pop_context", lambda n, *m, **c: "pop_context")
+        p = ValueNotion("pop_context", "pop_context")
         NextRelation(root, p)
 
         process = StackingContextProcess()
@@ -670,27 +669,23 @@ class UtTests(unittest.TestCase):
         # Now tracking is on!
         root = ComplexNotion("root")
 
-        push_l = lambda n, *m, **c: "push_context"
+        NextRelation(root, ValueNotion("push", "push_context"))
 
-        NextRelation(root, FunctionNotion("push", push_l))
+        NextRelation(root, ValueNotion("change_context", {"add_context": {"terminator": "2"}}))
 
-        NextRelation(root, FunctionNotion("change_context", lambda n, *m, **c: {"add_context": {"terminator": "2"}}))
+        NextRelation(root, ValueNotion("delete_context", {"delete_context": "terminator"}))
 
-        NextRelation(root, FunctionNotion("delete_context", lambda n, *m, **c: {"delete_context": "terminator"}))
-
-        NextRelation(root, FunctionNotion("change_context2", lambda n, *m, **c:
-                                          {"update_context": {"alien": "omnomnom"}}))
+        NextRelation(root, ValueNotion("change_context2", {"update_context": {"alien": "omnomnom"}}))
 
         NextRelation(root, FunctionNotion("check_context", lambda n, *m, **c: False if "alien" in c else "error"))
 
-        NextRelation(root, FunctionNotion("push", push_l))
+        NextRelation(root, ValueNotion("push", "push_context"))
 
-        NextRelation(root, FunctionNotion("change_context3", lambda n, *m, **c:
-                                          {"update_context": {"test": "predator"}}))
+        NextRelation(root, ValueNotion("change_context3", {"update_context": {"test": "predator"}}))
 
-        NextRelation(root, FunctionNotion("forget", lambda n, *m, **c: "forget_context"))
+        NextRelation(root, ValueNotion("forget", "forget_context"))
 
-        pop = FunctionNotion("pop", lambda n, *m, **c: "pop_context")
+        pop = ValueNotion("pop", "pop_context")
         NextRelation(root, pop)
 
         r = process.parse(root, test="test_stacking_2")
