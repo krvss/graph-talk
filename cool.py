@@ -50,7 +50,7 @@ IDENTIFIER = "[A-Za-z0-9_]*"
 # Functions
 def inc_lineno(notion, *m, **c):
     if 'state' in c:
-        c[c_line] += 1
+        return {'update_context': {c_line: c[c_line] + 1}}
 
 
 def out(notion, *m, **c):
@@ -75,16 +75,13 @@ print_out = FunctionNotion("Print out", out)
 # EOL
 eol = FunctionNotion("EOL", inc_lineno)
 
-# Any char
+# Any char: just consume the text
 any_char = FunctionRelation("Any", None, re.compile(ANY_CHAR))
 
-# Skip till EOL
-skip_till_eol = ComplexNotion("Skip")
-char_or_eol = SelectiveNotion("Char/EOL")
-LoopRelation(skip_till_eol, char_or_eol)
+# Break: stop loop
+stop_loop = ValueNotion("Break", "break")
 
-# TODO: Break the loop
-
+# Inline comments
 
 # Root
 root = ComplexNotion("COOL program")
@@ -112,11 +109,27 @@ FunctionRelation(identifier, print_out,
 inline_comment = ComplexNotion("Inline comment")
 ConditionalRelation(statement, inline_comment, "--")
 
+inline_comment_chars = SelectiveNotion("Inline comment characters")
+LoopRelation(inline_comment, inline_comment_chars)
 
-s = "   \r\n  \r\n 111 alfa_2 \n   34 \r"
+inline_comment_end = ComplexNotion("Inline comment end")
+ConditionalRelation(inline_comment_chars, inline_comment_end, re.compile(EOL))
+
+NextRelation(inline_comment_end, eol)
+NextRelation(inline_comment_end, stop_loop)
+
+ConditionalRelation(inline_comment_chars, None, re.compile(ANY_CHAR))
+
+s = "   \r\n  \r\n 111 alfa_2 \n   34 \r 12 --13 \r\n 8"
 c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
+
+from test import logger
+#logger.logging = True
+
 p = ParsingProcess()
+p.callback = logger
+
 
 r = p.parse(root, **c)
 
