@@ -3,30 +3,7 @@ import unittest
 from ut import *
 import re
 
-
-# Simple process logger
-# TODO: formalize; integrate with pdb (stop at certain place); move to utils
-class Logger(Abstract):
-    filter = None
-    logging = False
-
-    def parse(self, *message, **context):
-        if not self.logging:
-            return None
-
-        if Logger.filter and not Logger.filter in message:
-            return False
-
-        process = context['from']
-
-        log_str = '%s:' % message[0]
-        properties = ', '.join([('%s: %s' % (p, getattr(process, p))) for p in process._queueing_properties()])
-
-        print log_str + properties
-
-        return None
-
-logger = Logger()
+logger = Analyzer()
 
 
 # Dialog test
@@ -148,7 +125,7 @@ class UtTests(unittest.TestCase):
     def test_next(self):
         global _acc
 
-        #logger.logging = True
+        # logger.add_queries()
 
         # Simple next test: root -> a
         root = ComplexNotion("root")
@@ -232,7 +209,7 @@ class UtTests(unittest.TestCase):
     def test_queue(self):
         global _acc
 
-        #logger.logging = True
+        #logger.add_queries()
 
         # Stack test: root -> (a, d); a -> (b, b2, c)
         root = ComplexNotion("root")
@@ -282,7 +259,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
     def test_context(self):
-        #logger.logging = True
+        #logger.add_queries()
 
         # Verify correctness of adding
         # Root -> (a, b)
@@ -357,7 +334,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, a)
 
     def test_errors(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Root -> a (b, c, d, e)
         root = ComplexNotion("root")
         a = ComplexNotion("a")
@@ -415,7 +392,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
 
     def test_condition(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Simple positive condition test root -a-> d for "a"
         root = ComplexNotion("root")
 
@@ -493,7 +470,7 @@ class UtTests(unittest.TestCase):
         self.assertIsNone(c.parse("check"))
 
     def test_complex(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Complex notion test: root -> ab -> (a , b) with empty message
         root = ComplexNotion("root")
         ab = ComplexNotion("ab")
@@ -552,7 +529,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, f)
 
     def test_states(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Root -> (inc, inc, s, "state_check", inc)
         root = ComplexNotion("root")
 
@@ -644,7 +621,7 @@ class UtTests(unittest.TestCase):
             DictChangeOperation("fail", 1, 2)
 
     def test_stacking_context(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Testing without tracking
         root = ComplexNotion("root")
 
@@ -703,7 +680,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
 
     def test_loop(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Simple loop test: root -5!-> a's -a-> a for "aaaaa"
         root = ComplexNotion("root")
         aa = ComplexNotion("a's")
@@ -849,7 +826,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, c)  # Returning to the loop
 
     def test_selective(self):
-        #logger.logging = True
+        #logger.add_queries()
         process = ParsingProcess()
         process.callback = logger
 
@@ -951,7 +928,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, root)
 
     def test_special(self):
-        #logger.logging = True
+        #logger.add_queries()
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
         root = ComplexNotion("root")
         sequence = ComplexNotion("sequence")
@@ -983,6 +960,40 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
+
+    def test_analyzer(self):
+        global _acc
+
+        root = ComplexNotion("root")
+
+        a = Analyzer()
+        a.events.append({'filter': 'query', 'abstract': root, 'call': accumulate_false})
+
+        # Simple next test: root -> a
+        process = ParsingProcess()
+        process.callback = a
+
+        r = process.parse(root, test="analyzer_test_1")
+        self.assertEqual(_acc, 2)
+        self.assertEqual(r, "ok")
+
+        _acc = 0
+
+        a.events = [lambda *m, **c: 'Skadoosh']
+        r = process.parse(root, test="analyzer_test_2")
+        self.assertEqual(_acc, 0)
+        self.assertEqual(r, "unknown")
+
+        # Uncomment for max coverage
+        '''a.events = []
+        a.add_queries()
+        a.add_details()
+
+        _acc = 0
+
+        r = process.parse("new", root, test="analyzer_test_2")
+        self.assertEqual(_acc, 0)
+        self.assertEqual(r, "ok")'''
 
 
 def test():
