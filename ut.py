@@ -229,7 +229,7 @@ class ConditionalRelation(Relation):
     def __init__(self, subject, object, checker, optional=False):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
-        self.optional = optional
+        self.optional = optional  # TODO optional in selective notions
 
     # Return result and length of check
     def check(self, *message, **context):

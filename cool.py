@@ -46,6 +46,7 @@ ANY_CHAR = "."
 INTEGER = "[0-9]+"
 IDENTIFIER = "[A-Za-z0-9_]*"
 
+EOF = chr(0)
 
 # Functions
 def inc_lineno(notion, *m, **c):
@@ -54,18 +55,17 @@ def inc_lineno(notion, *m, **c):
 
 
 def out(notion, *m, **c):
-    if not 'state' in c:
-        return
-
     o = ''
 
-    if c[c_token]:
+    if c_token in c:
         o = '#' + str(c[c_line]) + " " + c[c_token] + " "
 
-    if c[c_data]:
+    if c_data in c:
         o += c[c_data]
 
-    print o
+    if o:
+        print o
+
 
 # General purpose notions
 
@@ -74,9 +74,6 @@ print_out = FunctionNotion("Print out", out)
 
 # EOL
 eol = FunctionNotion("EOL", inc_lineno)
-
-# Any char: just consume the text
-any_char = FunctionRelation("Any", None, re.compile(ANY_CHAR))
 
 # Break: stop loop
 stop_loop = ValueNotion("Break", "break")
@@ -96,20 +93,23 @@ ConditionalRelation(statement, None, re.compile(WHITE_SPACE))
 integer = ComplexNotion("Integer")
 ConditionalRelation(statement, integer, re.compile(INTEGER))
 
+# TODO: think about valuerelation etc - no need to use lambda if only return needed
 FunctionRelation(integer, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: c["passed_condition"]}})
 
 
 identifier = ComplexNotion("id")
 ConditionalRelation(statement, identifier, re.compile(IDENTIFIER))
+
 FunctionRelation(identifier, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "OBJECTID", c_data: c["passed_condition"]}})
 
 # Comments
+# Inline
 inline_comment = ComplexNotion("Inline comment")
 ConditionalRelation(statement, inline_comment, "--")
 
-inline_comment_chars = SelectiveNotion("Inline comment characters")
+inline_comment_chars = SelectiveNotion("Inline comment characters")  # Inline comment is a set of chars except EOL
 LoopRelation(inline_comment, inline_comment_chars)
 
 inline_comment_end = ComplexNotion("Inline comment end")
@@ -118,14 +118,45 @@ ConditionalRelation(inline_comment_chars, inline_comment_end, re.compile(EOL))
 NextRelation(inline_comment_end, eol)
 NextRelation(inline_comment_end, stop_loop)
 
-ConditionalRelation(inline_comment_chars, None, re.compile(ANY_CHAR))
+ConditionalRelation(inline_comment_chars, None, re.compile(ANY_CHAR))  # Just consume chars
 
-s = "   \r\n  \r\n 111 alfa_2 \n   34 \r 12 --13 \r\n 8"
+# Multiline
+multiline_comment = ComplexNotion("Multiline comment")
+ConditionalRelation(statement, multiline_comment, "(*")  # TODO: attach function to each abstract?
+
+ConditionalRelation(multiline_comment, eol, re.compile(EOL), True)
+
+error_unmatched_comment = FunctionNotion("Unmatched multi-line", {"error": "Unmatched *)"})
+ConditionalRelation(multiline_comment, error_unmatched_comment, EOF, True)
+
+mm = ConditionalRelation(multiline_comment, multiline_comment, "(*", True)
+ConditionalRelation(multiline_comment, None, "*)")
+
+
+def deb(*m, **c): # TODO: make a default
+    pass
+
+# Test
+s1 = """
+
+111 alfa_2
+34
+12 --13
+8
+"""
+
+s = """(*(**)*)"""
+
+s += EOF
+ConditionalRelation(statement, None, EOF)  # Done!
+
 c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
 
 from test import logger
-#logger.logging = True
+#logger.add_queries()
+
+logger.events.append({"filter": "query_post", "abstract": mm, "call": deb})
 
 p = ParsingProcess()
 p.callback = logger
@@ -134,6 +165,9 @@ p.callback = logger
 r = p.parse(root, **c)
 
 print r
+
+if r != "ok":
+    print p.errors
 
 exit()
 
