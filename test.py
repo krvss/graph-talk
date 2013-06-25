@@ -129,9 +129,9 @@ class UtTests(unittest.TestCase):
 
         # Simple next test: root -> a
         root = ComplexNotion("root")
-        a = FunctionNotion("a", showstopper)
+        a = ActionNotion("a", showstopper)
 
-        f = FunctionRelation(root, a, accumulate_false)
+        f = ActionRelation(root, a, accumulate_false)
 
         process = Process()
         process.callback = logger
@@ -145,7 +145,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(_acc, 1)
 
         # Now function will not confuse process
-        a.function = None
+        a.action = None
         r = process.parse("new", root, test="test_next_2")
 
         self.assertEqual(process.reply, None)
@@ -153,7 +153,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, "ok")
 
         # Now we will stop at the relation
-        f.function = lambda a, *m, **c: 'stop' if has_first(m, 'next') else False
+        f.action = lambda a, *m, **c: 'stop' if has_first(m, 'next') else False
         r = process.parse(root, test="test_next_3")
 
         self.assertEqual(process.reply, None)
@@ -190,10 +190,10 @@ class UtTests(unittest.TestCase):
 
         # Simple skip test: always skip unknowns
         # Root -> a -> (b, c)
-        b = FunctionNotion("b", showstopper)
+        b = ActionNotion("b", showstopper)
         NextRelation(a, b)
 
-        c = FunctionNotion("c", accumulate_false)
+        c = ActionNotion("c", accumulate_false)
         NextRelation(a, c)
 
         skipper = Skipper()
@@ -217,15 +217,15 @@ class UtTests(unittest.TestCase):
 
         NextRelation(root, a)
 
-        b = FunctionNotion("b", accumulate_false)  # Just return False to keep going to C
-        b2 = ValueNotion("b2", [])  # Test of empty array
-        c = FunctionNotion("c", showstopper)  # Stop here
+        b = ActionNotion("b", accumulate_false)  # Just return False to keep going to C
+        b2 = ActionNotion("b2", [])  # Test of empty array
+        c = ActionNotion("c", showstopper)  # Stop here
 
         NextRelation(a, b)
         NextRelation(a, b2)
         NextRelation(a, c)
 
-        d = FunctionNotion("d", showstopper)  # And stop here too
+        d = ActionNotion("d", showstopper)  # And stop here too
 
         NextRelation(root, d)
 
@@ -264,10 +264,9 @@ class UtTests(unittest.TestCase):
         # Verify correctness of adding
         # Root -> (a, b)
         root = ComplexNotion("root")
-        a = FunctionNotion("ctx", lambda notion, *message, **context:
-                           {"add_context": {"ctx": True}})
+        a = ActionNotion("ctx", {"add_context": {"ctx": True}}, True)
 
-        b = FunctionNotion("check_context", lambda notion, *message, **context:
+        b = ActionNotion("check_context", lambda notion, *message, **context:
                            'stop' if 'ctx' in context else False)
 
         NextRelation(root, a)
@@ -303,7 +302,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify updating
-        a.function = lambda notion, *message, **context: {"update_context": {"ctx": "new"}}
+        a.action = {"update_context": {"ctx": "new"}}
 
         r = process.parse("new", root, test="test_context_update", ctx="2")
         self.assertEqual(r, "stop")
@@ -311,14 +310,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify deleting & mass deleting
-        a.function = lambda notion, *message, **context: {"delete_context": "ctx"}
+        a.action = {"delete_context": "ctx"}
 
         r = process.parse("new", root, test="test_context_del", ctx="3")
         self.assertEqual(r, "ok")
         self.assertNotIn("ctx", process.context)
         self.assertEqual(process.current, b)
 
-        a.function = lambda notion, *message, **context: {"delete_context": ["ctx", "more", "more2"]}
+        a.action = {"delete_context": ["ctx", "more", "more2"]}
 
         r = process.parse("new", root, test="test_context_del", ctx="4", more=False)
         self.assertEqual(r, "ok")
@@ -327,7 +326,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # See what's happening if command argument is incorrect
-        a.function = lambda notion, *message, **context: {"update_context"}
+        a.action = {"update_context"}
 
         r = process.parse("new", root, test="test_context_bad")
         self.assertEqual(r, "unknown")
@@ -341,10 +340,10 @@ class UtTests(unittest.TestCase):
 
         NextRelation(root, a)
 
-        b = FunctionNotion("stop", showstopper)  # First stop
-        c = FunctionNotion("error", showstopper)  # Error!
-        d = ValueNotion("errorer", {"error": "i_m_bad"})  # Another error!
-        e = FunctionNotion("end", showstopper)  # And finally here
+        b = ActionNotion("stop", showstopper)  # First stop
+        c = ActionNotion("error", showstopper)  # Error!
+        d = ActionNotion("errorer", {"error": "i_m_bad"})  # Another error!
+        e = ActionNotion("end", showstopper)  # And finally here
 
         NextRelation(a, b)
         NextRelation(a, c)
@@ -396,7 +395,7 @@ class UtTests(unittest.TestCase):
         # Simple positive condition test root -a-> d for "a"
         root = ComplexNotion("root")
 
-        d = FunctionNotion("d", has_condition)
+        d = ActionNotion("d", has_condition)
 
         c = ConditionalRelation(root, d, "a")
 
@@ -476,10 +475,10 @@ class UtTests(unittest.TestCase):
         ab = ComplexNotion("ab")
         NextRelation(root, ab)
 
-        a = FunctionNotion("a", add_to_result)
+        a = ActionNotion("a", add_to_result)
         r1 = NextRelation(ab, a)
 
-        b = FunctionNotion("b", add_to_result)
+        b = ActionNotion("b", add_to_result)
         r2 = NextRelation(ab, b)
 
         process = ParsingProcess()
@@ -511,13 +510,13 @@ class UtTests(unittest.TestCase):
         c = ComplexNotion("c")
         NextRelation(ab, c)
 
-        d = FunctionNotion("d", add_to_result)
+        d = ActionNotion("d", add_to_result)
         NextRelation(c, d)
 
-        e = FunctionNotion("e", add_to_result)
+        e = ActionNotion("e", add_to_result)
         NextRelation(c, e)
 
-        f = FunctionNotion("f", add_to_result)
+        f = ActionNotion("f", add_to_result)
         ConditionalRelation(ab, f, "f")
 
         r = process.parse("new", root, text="abf", test="test_complex_3")
@@ -533,13 +532,13 @@ class UtTests(unittest.TestCase):
         # Root -> (inc, inc, s, "state_check", inc)
         root = ComplexNotion("root")
 
-        inc = FunctionNotion("1", state_starter)
+        inc = ActionNotion("1", state_starter)
 
         NextRelation(root, inc)
         NextRelation(root, inc)
-        s = FunctionNotion("stop", showstopper)
+        s = ActionNotion("stop", showstopper)
         NextRelation(root, s)
-        NextRelation(root, FunctionNotion("state_check", state_checker))
+        NextRelation(root, ActionNotion("state_check", state_checker))
         NextRelation(root, inc)
 
         process = StatefulProcess()
@@ -558,7 +557,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, s)
 
         # Manual clearing of states
-        inc.function = lambda n, *m, **c: "clear_state"
+        inc.action = "clear_state"
 
         r = process.parse(test="test_states_3")
 
@@ -570,8 +569,8 @@ class UtTests(unittest.TestCase):
         while root.relations:
             root.un_relate(root.relations[0])
 
-        t = FunctionNotion("terminator", has_notification)
-        FunctionRelation(root, t, lambda r, *m, **c: {'notify': {'to': t, 'data': {'condition': 'stop'}}})
+        t = ActionNotion("terminator", has_notification)
+        ActionRelation(root, t, {'notify': {'to': t, 'data': {'condition': 'stop'}}}, True)
 
         r = process.parse("new", root, test="test_states_4")
         self.assertEqual(r, "stop")
@@ -625,13 +624,13 @@ class UtTests(unittest.TestCase):
         # Testing without tracking
         root = ComplexNotion("root")
 
-        NextRelation(root, ValueNotion("change_context", {"add_context": {"inject": "ninja"}}))
+        NextRelation(root, ActionNotion("change_context", {"add_context": {"inject": "ninja"}}))
 
-        NextRelation(root, ValueNotion("change_context2", {"update_context": {"inject": "revenge of ninja"}}))
+        NextRelation(root, ActionNotion("change_context2", {"update_context": {"inject": "revenge of ninja"}}))
 
-        NextRelation(root, ValueNotion("del_context", {"delete_context": "inject"}))
+        NextRelation(root, ActionNotion("del_context", {"delete_context": "inject"}))
 
-        p = ValueNotion("pop_context", "pop_context")
+        p = ActionNotion("pop_context", "pop_context")
         NextRelation(root, p)
 
         process = StackingContextProcess()
@@ -646,23 +645,23 @@ class UtTests(unittest.TestCase):
         # Now tracking is on!
         root = ComplexNotion("root")
 
-        NextRelation(root, ValueNotion("push", "push_context"))
+        NextRelation(root, ActionNotion("push", "push_context"))
 
-        NextRelation(root, ValueNotion("change_context", {"add_context": {"terminator": "2"}}))
+        NextRelation(root, ActionNotion("change_context", {"add_context": {"terminator": "2"}}))
 
-        NextRelation(root, ValueNotion("delete_context", {"delete_context": "terminator"}))
+        NextRelation(root, ActionNotion("delete_context", {"delete_context": "terminator"}))
 
-        NextRelation(root, ValueNotion("change_context2", {"update_context": {"alien": "omnomnom"}}))
+        NextRelation(root, ActionNotion("change_context2", {"update_context": {"alien": "omnomnom"}}))
 
-        NextRelation(root, FunctionNotion("check_context", lambda n, *m, **c: False if "alien" in c else "error"))
+        NextRelation(root, ActionNotion("check_context", lambda n, *m, **c: False if "alien" in c else "error"))
 
-        NextRelation(root, ValueNotion("push", "push_context"))
+        NextRelation(root, ActionNotion("push", "push_context"))
 
-        NextRelation(root, ValueNotion("change_context3", {"update_context": {"test": "predator"}}))
+        NextRelation(root, ActionNotion("change_context3", {"update_context": {"test": "predator"}}))
 
-        NextRelation(root, ValueNotion("forget", "forget_context"))
+        NextRelation(root, ActionNotion("forget", "forget_context"))
 
-        pop = ValueNotion("pop", "pop_context")
+        pop = ActionNotion("pop", "pop_context")
         NextRelation(root, pop)
 
         r = process.parse(root, test="test_stacking_2")
@@ -688,7 +687,7 @@ class UtTests(unittest.TestCase):
 
         self.assertIsNone(l.parse("test"))
 
-        a = FunctionNotion("a", add_to_result)
+        a = ActionNotion("a", add_to_result)
         c = ConditionalRelation(aa, a, "a")
 
         process = ParsingProcess()
@@ -784,13 +783,13 @@ class UtTests(unittest.TestCase):
         l.n = 2
         l.subject = root
 
-        b = FunctionNotion("b", add_to_result)
+        b = ActionNotion("b", add_to_result)
         NextRelation(aa, b)
 
-        c = FunctionNotion("c", add_to_result)
+        c = ActionNotion("c", add_to_result)
         NextRelation(root, c)
 
-        a.function = lambda a, *m, **c: [add_to_result(a, *m, **c), 'break']
+        a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'break']
 
         r = process.parse("new", root, text="a", test="test_loop_8")
 
@@ -802,7 +801,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, c)
 
         # Continue test
-        a.function = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
+        a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
 
         r = process.parse("new", root, text="aa", test="test_loop_9")
 
@@ -814,7 +813,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, c)
 
         # Final verification
-        a.function = add_to_result
+        a.action = add_to_result
 
         r = process.parse("new", root, text="aa", test="test_loop_10")
 
@@ -832,11 +831,11 @@ class UtTests(unittest.TestCase):
 
         # Simple selective test: root -a-> a, -b-> b for "b"
         root = SelectiveNotion("root")
-        a = FunctionNotion("a", add_to_result)
+        a = ActionNotion("a", add_to_result)
 
         c1 = ConditionalRelation(root, a, "a")
 
-        b = FunctionNotion("b", add_to_result)
+        b = ActionNotion("b", add_to_result)
         c2 = ConditionalRelation(root, b, "b")
 
         r = process.parse(root, text="b", test="test_selective_1")
@@ -870,16 +869,16 @@ class UtTests(unittest.TestCase):
         a = ComplexNotion("a")
         a1a = ConditionalRelation(a1, a, "a")
 
-        b = FunctionNotion("b", add_to_result)
+        b = ActionNotion("b", add_to_result)
         ConditionalRelation(a, b, "b")
 
         a2 = ComplexNotion("a2")
         na2 = NextRelation(root, a2)
 
-        aa = FunctionNotion("aa", add_to_result)
+        aa = ActionNotion("aa", add_to_result)
         caa = ConditionalRelation(a2, aa, "aa")
 
-        bb = FunctionNotion("bb", add_to_result)
+        bb = ActionNotion("bb", add_to_result)
         nbb = NextRelation(root, bb)
 
         r = process.parse("new", root, text="aa", test="test_selective_3")
@@ -904,7 +903,7 @@ class UtTests(unittest.TestCase):
         nbb.object = None
         ConditionalRelation(root, bb, re.compile("(a)+"))
 
-        s = FunctionNotion("stop", showstopper)
+        s = ActionNotion("stop", showstopper)
         ConditionalRelation(root, s, "a")
 
         r = process.parse("new", root, text="aaaa", test="test_selective_4")
@@ -937,13 +936,13 @@ class UtTests(unittest.TestCase):
 
         a_seq = ComplexNotion("a's")
         LoopRelation(sequence, a_seq)
-        a = FunctionNotion("a", add_to_result)
+        a = ActionNotion("a", add_to_result)
 
         ConditionalRelation(a_seq, a, "a")
 
         b_seq = ComplexNotion("b's")
         LoopRelation(sequence, b_seq)
-        b = FunctionNotion("b", add_to_result)
+        b = ActionNotion("b", add_to_result)
 
         ConditionalRelation(b_seq, b, "b")
 

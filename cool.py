@@ -70,13 +70,13 @@ def out(notion, *m, **c):
 # General purpose notions
 
 # Out
-print_out = FunctionNotion("Print out", out)
+print_out = ActionNotion("Print out", out)
 
 # EOL
-eol = FunctionNotion("EOL", inc_lineno)
+eol = ActionNotion("EOL", inc_lineno)
 
 # Break: stop loop
-stop_loop = ValueNotion("Break", "break")
+stop_loop = ActionNotion("Break", "break")
 
 # Inline comments
 
@@ -94,14 +94,14 @@ integer = ComplexNotion("Integer")
 ConditionalRelation(statement, integer, re.compile(INTEGER))
 
 # TODO: think about valuerelation etc - no need to use lambda if only return needed
-FunctionRelation(integer, print_out,
+ActionRelation(integer, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: c["passed_condition"]}})
 
 
 identifier = ComplexNotion("id")
 ConditionalRelation(statement, identifier, re.compile(IDENTIFIER))
 
-FunctionRelation(identifier, print_out,
+ActionRelation(identifier, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "OBJECTID", c_data: c["passed_condition"]}})
 
 # Comments
@@ -126,7 +126,7 @@ ConditionalRelation(statement, multiline_comment, "(*")  # TODO: attach function
 
 ConditionalRelation(multiline_comment, eol, re.compile(EOL), True)
 
-error_unmatched_comment = FunctionNotion("Unmatched multi-line", {"error": "Unmatched *)"})
+error_unmatched_comment = ActionNotion("Unmatched multi-line", {"error": "Unmatched *)"})
 ConditionalRelation(multiline_comment, error_unmatched_comment, EOF, True)
 
 mm = ConditionalRelation(multiline_comment, multiline_comment, "(*", True)

@@ -37,7 +37,7 @@ def getch():
 
 
 # Execution commands
-class SimpleCommand(FunctionNotion):
+class SimpleCommand(ActionNotion):
     INC = '+'
     DEC = '-'
     NEXT = '>'
@@ -86,7 +86,7 @@ class SimpleCommand(FunctionNotion):
 
 
 # Parser commands
-class ParseCommand(FunctionNotion):
+class ParseCommand(ActionNotion):
     def __init__(self, name):
         super(ParseCommand, self).__init__(name, self.make)
 
@@ -156,7 +156,7 @@ class Parser:
         ConditionalRelation(command, simple_command, SimpleCommand.OUT)
         ConditionalRelation(command, simple_command, SimpleCommand.IN)
 
-        NextRelation(command, FunctionNotion('Stop', Parser.parse_stop))
+        NextRelation(command, ActionNotion('Stop', Parser.parse_stop))
 
         return root
 

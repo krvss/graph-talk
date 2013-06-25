@@ -4,18 +4,17 @@
 from utils import *
 
 
-# Base class for all communicable objects
+# Base interface for all communicable objects
 class Abstract(object):
 
-    # The way to send the abstract a message
+    # The way to send the abstract a message in a certain context
     def parse(self, *message, **context):
-        return None
+        pass
 
 
 # Notion is an abstract with name
 class Notion(Abstract):
     def __init__(self, name):
-        super(Notion, self).__init__()
         self.name = name
 
     def __str__(self):
@@ -29,7 +28,6 @@ class Notion(Abstract):
 # Relation is a connection between one or more abstracts: subject -> object
 class Relation(Abstract):
     def __init__(self, subject, object):
-        super(Relation, self).__init__()
         self._object = self._subject = None
 
         self.subject = subject
@@ -74,26 +72,31 @@ class Relation(Abstract):
         return self.__str__()
 
 
-# Value notion is a notion that returns custom value
-class ValueNotion(Notion):
-    def __init__(self, name, value):
-        super(ValueNotion, self).__init__(name)
-        self.value = value
+# Action is a simple function/value keeper; it returns either function call result or value itself
+# If copy is true a copy of result will be returned via copy() call
+class Action(Abstract):
+    def __init__(self, action, copy=False):
+        self.action = action
+        self.copy = copy
 
     def parse(self, *message, **context):
-        #TODO: think of copying
-        return self.value
+        result = self.action if not callable(self.action) else self.action(self, *message, **context)
+
+        if self.copy and hasattr(result, 'copy'):
+            result = result.copy()
+
+        return result
 
 
-# Function notion is a notion that uses callback custom function when next is queried
-class FunctionNotion(Notion):
-    def __init__(self, name, function):
-        super(FunctionNotion, self).__init__(name)
-        self.function = function if callable(function) else None
+# Action notion is a notion that calls for Action when next is queried
+class ActionNotion(Notion, Action):
+    def __init__(self, name, action, copy=False):
+        Notion.__init__(self, name)
+        Action.__init__(self, action, copy)
 
     def parse(self, *message, **context):
         if has_first(message, 'next'):
-            return self.function(self, *message, **context) if self.function else None
+            return Action.parse(self, *message, **context)
 
 
 # Complex notion is a notion that relates with other notions (objects)
@@ -144,21 +147,20 @@ class NextRelation(Relation):
             return self.object
 
 
-# Function relation is a relation that uses callback custom function when passed
-class FunctionRelation(NextRelation):
-    def __init__(self, subject, object, function):
-        super(FunctionRelation, self).__init__(subject, object)
-        self.function = function if callable(function) else None
+# Action relation is a relation that uses Action when asked
+class ActionRelation(NextRelation, Action):
+    def __init__(self, subject, object, action, copy=False):
+        NextRelation.__init__(self, subject, object)
+        Action.__init__(self, action, copy)
 
     def parse(self, *message, **context):
-        own_reply = super(FunctionRelation, self).parse(*message, **context)
-        #TODO: next only?
-        func_reply = self.function(self, *message, **context) if self.function else None
+        own_reply = super(ActionRelation, self).parse(*message, **context)
+        act_reply = Action.parse(self, *message, **context)
 
-        if own_reply and func_reply:
-            return [func_reply, own_reply]
+        if own_reply and act_reply:
+            return [act_reply, own_reply]
         else:
-            return func_reply or own_reply
+            return act_reply or own_reply
 
 
 # Selective notion: complex notion that can consist of one of its objects
