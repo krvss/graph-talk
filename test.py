@@ -1,6 +1,8 @@
 import unittest
 
 from ut import *
+from debug import *
+
 import re
 
 logger = Analyzer()
@@ -266,8 +268,7 @@ class UtTests(unittest.TestCase):
         root = ComplexNotion("root")
         a = ActionNotion("ctx", {"add_context": {"ctx": True}}, True)
 
-        b = ActionNotion("check_context", lambda notion, *message, **context:
-                           'stop' if 'ctx' in context else False)
+        b = ActionNotion("check_context", lambda notion, *message, **context: 'stop' if 'ctx' in context else False)
 
         NextRelation(root, a)
         NextRelation(root, b)
@@ -302,12 +303,16 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify updating
-        a.action = {"update_context": {"ctx": "new"}}
+        value = {"update_context": {"ctx": "new"}}
+        a.action = value
 
         r = process.parse("new", root, test="test_context_update", ctx="2")
         self.assertEqual(r, "stop")
         self.assertEqual("new", process.context["ctx"])
         self.assertEqual(process.current, b)
+
+        # Check copying of actions
+        self.assertTrue("update_context" in value)
 
         # Verify deleting & mass deleting
         a.action = {"delete_context": "ctx"}
@@ -317,7 +322,9 @@ class UtTests(unittest.TestCase):
         self.assertNotIn("ctx", process.context)
         self.assertEqual(process.current, b)
 
-        a.action = {"delete_context": ["ctx", "more", "more2"]}
+        a.copy = False
+        value = {"delete_context": ["ctx", "more", "more2"]}
+        a.action = value
 
         r = process.parse("new", root, test="test_context_del", ctx="4", more=False)
         self.assertEqual(r, "ok")
@@ -325,8 +332,11 @@ class UtTests(unittest.TestCase):
         self.assertNotIn("more", process.context)
         self.assertEqual(process.current, b)
 
+        # Check disabled copy
+        self.assertFalse(value)
+
         # See what's happening if command argument is incorrect
-        a.action = {"update_context"}
+        a.action = "update_context"
 
         r = process.parse("new", root, test="test_context_bad")
         self.assertEqual(r, "unknown")

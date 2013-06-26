@@ -93,7 +93,6 @@ ConditionalRelation(statement, None, re.compile(WHITE_SPACE))
 integer = ComplexNotion("Integer")
 ConditionalRelation(statement, integer, re.compile(INTEGER))
 
-# TODO: think about valuerelation etc - no need to use lambda if only return needed
 ActionRelation(integer, print_out,
                  lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: c["passed_condition"]}})
 
@@ -122,7 +121,7 @@ ConditionalRelation(inline_comment_chars, None, re.compile(ANY_CHAR))  # Just co
 
 # Multiline
 multiline_comment = ComplexNotion("Multiline comment")
-ConditionalRelation(statement, multiline_comment, "(*")  # TODO: attach function to each abstract?
+ConditionalRelation(statement, multiline_comment, "(*")
 
 ConditionalRelation(multiline_comment, eol, re.compile(EOL), True)
 
@@ -132,9 +131,8 @@ ConditionalRelation(multiline_comment, error_unmatched_comment, EOF, True)
 mm = ConditionalRelation(multiline_comment, multiline_comment, "(*", True)
 ConditionalRelation(multiline_comment, None, "*)")
 
+ConditionalRelation(statement, error_unmatched_comment, "*)")  # Closing without opening
 
-def deb(*m, **c): # TODO: make a default
-    pass
 
 # Test
 s1 = """
@@ -145,7 +143,8 @@ s1 = """
 8
 """
 
-s = """(*(**)*)"""
+s2 = """(*(**)*)"""
+s = "(**)*)"
 
 s += EOF
 ConditionalRelation(statement, None, EOF)  # Done!
@@ -154,9 +153,9 @@ c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
 
 from test import logger
-#logger.add_queries()
+logger.add_queries()
 
-logger.events.append({"filter": "query_post", "abstract": mm, "call": deb})
+logger.events.append({"filter": "query_post", "abstract": mm})
 
 p = ParsingProcess()
 p.callback = logger
