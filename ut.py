@@ -289,7 +289,7 @@ class LoopRelation(Relation):
         self.n = n  # TODO: endless loop vs optional number of repeats
 
     def is_finite(self):
-        return self.n != '*' and self.n is not True and self.n != '+' and self != '?'
+        return self.n != '*' and self.n is not True and self.n != '+'
 
     def parse(self, *message, **context):
         if not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue'):
@@ -317,7 +317,7 @@ class LoopRelation(Relation):
             if context.get('errors'):
                 repeat = False
 
-                if self.n == '*':
+                if self.n == '*' or self.n == '?':
                     restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
                                     # last good context
 
@@ -326,6 +326,7 @@ class LoopRelation(Relation):
                         restore = True
                     else:
                         error = True
+
                 else:
                     error = True  # Number is fixed so we have an error
             else:
@@ -336,7 +337,7 @@ class LoopRelation(Relation):
                     repeat = False
 
                 elif self.is_finite():
-                    if iteration >= self.n:
+                    if self.n == '?' or iteration >= self.n:
                         repeat = False  # No more iterations
                 else:
                     reply += ['forget_context', 'push_context']  # Prepare for the new iteration
