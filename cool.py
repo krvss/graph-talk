@@ -75,6 +75,9 @@ print_out = ActionNotion("Print out", out)
 # EOL
 eol = ActionNotion("EOL", inc_lineno)
 
+# EOF
+eof = ActionNotion("EOF", 'break')
+
 # Break: stop loop
 stop_loop = ActionNotion("Break", "break")
 
@@ -83,7 +86,10 @@ stop_loop = ActionNotion("Break", "break")
 # Root
 root = ComplexNotion("COOL program")
 statement = SelectiveNotion("Statement")
-LoopRelation(root, statement)
+LoopRelation(root, statement, True)
+
+# EOF
+ConditionalRelation(statement, eof, EOF)
 
 # Space
 ConditionalRelation(statement, eol, re.compile(EOL))
@@ -125,12 +131,13 @@ ConditionalRelation(statement, multiline_comment, "(*")
 
 ConditionalRelation(multiline_comment, eol, re.compile(EOL), True)
 
-error_unmatched_comment = ActionNotion("Unmatched multi-line", {"error": "Unmatched *)"})
-ConditionalRelation(multiline_comment, error_unmatched_comment, EOF, True)
+error_EOF_comment = ActionNotion("EOF in comment", {"error": "EOF in comment"})
+ConditionalRelation(multiline_comment, error_EOF_comment, EOF, True)
 
 mm = ConditionalRelation(multiline_comment, multiline_comment, "(*", True)
 ConditionalRelation(multiline_comment, None, "*)")
 
+error_unmatched_comment = ActionNotion("Unmatched multi-line", {"error": "Unmatched *)"})
 ConditionalRelation(statement, error_unmatched_comment, "*)")  # Closing without opening
 
 
@@ -143,8 +150,8 @@ s1 = """
 8
 """
 
-s2 = """(*(**)*)"""
-s = "(**)*)"
+s = """(*(**)*)"""
+s = "*)"
 
 s += EOF
 ConditionalRelation(statement, None, EOF)  # Done!

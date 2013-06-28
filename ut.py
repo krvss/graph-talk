@@ -322,7 +322,7 @@ class LoopRelation(Relation):
                 if message[0] == 'break':  # Consider work done
                     repeat = False
 
-                elif self.n != '*':
+                elif self.n != '*' and self.n is not True:
                     i = context['state']['n']
 
                     if i < self.n:
