@@ -288,12 +288,16 @@ class LoopRelation(Relation):
         super(LoopRelation, self).__init__(subject, object)
         self.n = n  # TODO: endless loop vs optional number of repeats
 
+    def is_finite(self):
+        return self.n != '*' and self.n is not True and self.n != '+' and self != '?'
+
     def parse(self, *message, **context):
         if not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue'):
             return
 
         repeat = True
         error = restore = False
+        iteration = 1
 
         reply = []
 
@@ -304,15 +308,24 @@ class LoopRelation(Relation):
             repeat = self.n(self, *message, **context)
 
             if repeat:
-                reply += [{'set_state': {'n': repeat}}]  # Storing for the future calls
+                iteration = repeat  # Storing for the future calls
+                reply.append({'set_state': {'n': iteration}})
 
         elif context['state']:  # May be was here before
+            iteration = context['state'].get('n')
+
             if context.get('errors'):
                 repeat = False
 
                 if self.n == '*':
                     restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
                                     # last good context
+
+                elif self.n == '+':  # We should be here for at lest 1 time, if yes - everything is OK
+                    if iteration > 1:
+                        restore = True
+                    else:
+                        error = True
                 else:
                     error = True  # Number is fixed so we have an error
             else:
@@ -322,20 +335,18 @@ class LoopRelation(Relation):
                 if message[0] == 'break':  # Consider work done
                     repeat = False
 
-                elif self.n != '*' and self.n is not True:
-                    i = context['state']['n']
-
-                    if i < self.n:
-                        reply.append({'set_state': {'n': i + 1}})
-                    else:
+                elif self.is_finite():
+                    if iteration >= self.n:
                         repeat = False  # No more iterations
-
                 else:
                     reply += ['forget_context', 'push_context']  # Prepare for the new iteration
                                                                  # apply last changes and start new tracking
+                if repeat:
+                    iteration += 1
+                    reply.append({'set_state': {'n': iteration}})
         else:
             # A very first iteration - init the variable and store the context
-            reply += [{'set_state': {'n': 1 if self.n != '*' else True}}, 'push_context']
+            reply += [{'set_state': {'n': 1}}, 'push_context']
 
         if repeat:
             reply += [self.object, self]  # We need to come back after the object to think should we repeat or not
