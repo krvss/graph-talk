@@ -284,7 +284,7 @@ class ConditionalRelation(Relation):
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times util error
 class LoopRelation(Relation):
-    def __init__(self, subject, object, n=None):
+    def __init__(self, subject, object, n='*'):
         super(LoopRelation, self).__init__(subject, object)
         self.n = n  # TODO: endless loop vs optional number of repeats
 
@@ -297,18 +297,20 @@ class LoopRelation(Relation):
 
         reply = []
 
-        if self.n == 0:
+        if not self.n:
             return None
 
-        elif self.n and callable(self.n):
-            context['from'] = self
+        elif callable(self.n):
             repeat = self.n(self, *message, **context)
+
+            if repeat:
+                reply += [{'set_state': {'n': repeat}}]  # Storing for the future calls
 
         elif context['state']:  # May be was here before
             if context.get('errors'):
                 repeat = False
 
-                if not self.n:
+                if self.n == '*':
                     restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
                                     # last good context
                 else:
@@ -320,7 +322,7 @@ class LoopRelation(Relation):
                 if message[0] == 'break':  # Consider work done
                     repeat = False
 
-                elif self.n:
+                elif self.n != '*':
                     i = context['state']['n']
 
                     if i < self.n:
@@ -333,7 +335,7 @@ class LoopRelation(Relation):
                                                                  # apply last changes and start new tracking
         else:
             # A very first iteration - init the variable and store the context
-            reply += [{'set_state': {'n': 1 if self.n else True}}, 'push_context']
+            reply += [{'set_state': {'n': 1 if self.n != '*' else True}}, 'push_context']
 
         if repeat:
             reply += [self.object, self]  # We need to come back after the object to think should we repeat or not

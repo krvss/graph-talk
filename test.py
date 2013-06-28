@@ -77,20 +77,14 @@ def add_to_result(notion, *message, **context):
 
     return {"update_context": {"result": add}}
 
-_loop = 5
-
 
 def if_loop(*message, **context):
     global _loop
 
-    _loop -= 1
-
-    if _loop >= 0:
-        return True
-
-    _loop = 5
-
-    return False
+    if not 'n' in context['state']:
+        return 5
+    else:
+        return context['state']['n'] - 1
 
 
 class UtTests(unittest.TestCase):
@@ -725,7 +719,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, l)  # Returning to the loop
 
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
-        l.n = None
+        l.n = '*'
 
         r = process.parse("new", root, text="aaaa", test="test_loop_3")
 
