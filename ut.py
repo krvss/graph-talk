@@ -286,12 +286,24 @@ class ConditionalRelation(Relation):
 class LoopRelation(Relation):
     def __init__(self, subject, object, n='*'):
         super(LoopRelation, self).__init__(subject, object)
-        self.n = n  # TODO: endless loop vs optional number of repeats
 
-    def is_finite(self):
-        return self.n != '*' and self.n is not True and self.n != '+'
+        if isinstance(n, tuple):
+            if len(n) > 1 and n[0] and n[1]:
+                self.m = n[0]
+                self.n = n[1]
+            else:
+                self.n = n[0]
+        else:
+            self.n = n
+
+    def is_finite_n(self):
+        return self.n is not True and (is_number(self.n) or self.n == '?')
+
+    def has_rollback(self):
+        return self.n == '*' or self.n == '+' or hasattr(self, 'm')
 
     def parse(self, *message, **context):
+        # TODO: refactor
         if not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue'):
             return
 
@@ -301,7 +313,7 @@ class LoopRelation(Relation):
 
         reply = []
 
-        if not self.n:
+        if not self.n and not hasattr(self, 'm'):
             return None
 
         elif callable(self.n):
@@ -327,6 +339,14 @@ class LoopRelation(Relation):
                     else:
                         error = True
 
+                elif hasattr(self, 'm'):
+                    if self.m is not None:
+                        if iteration <= self.m:
+                            error = True
+                        else:
+                            restore = True
+                    elif iteration < self.n:
+                        restore = True
                 else:
                     error = True  # Number is fixed so we have an error
             else:
@@ -336,12 +356,14 @@ class LoopRelation(Relation):
                 if message[0] == 'break':  # Consider work done
                     repeat = False
 
-                elif self.is_finite():
-                    if self.n == '?' or iteration >= self.n:
-                        repeat = False  # No more iterations
                 else:
-                    reply += ['forget_context', 'push_context']  # Prepare for the new iteration
-                                                                 # apply last changes and start new tracking
+                    if self.is_finite_n():
+                        if self.n == '?' or iteration >= self.n:
+                            repeat = False  # No more iterations
+
+                    if repeat and self.has_rollback():
+                        reply += ['forget_context', 'push_context']  # Prepare for the new iteration
+                                                                     # apply last changes and start new tracking
                 if repeat:
                     iteration += 1
                     reply.append({'set_state': {'n': iteration}})

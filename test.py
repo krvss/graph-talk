@@ -806,12 +806,109 @@ class UtTests(unittest.TestCase):
         r = process.parse("new", root, text="", test="test_loop_10")
 
         self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 0)  # External functions stops at 5
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Tuples test
+        # TODO: unify and separate names
+        # TODO: check constructor
+        l.m = 2
+        l.n = 4
+
+        r = process.parse("new", root, text="aaa", test="test_loop_10")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 3)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="a", test="test_loop_10")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertFalse(process.context_stack)
+        self.assertNotIn(l, process.states)
+        self.assertIn(c, process.errors)
+        self.assertIn(l, process.errors)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_10")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaaaa", test="test_loop_10")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(c, process.errors)
+        self.assertNotIn(l, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        l.m = None
+        l.n = 2
+        r = process.parse("new", root, text="", test="test_loop_10")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aa", test="test_loop_10")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaa", test="test_loop_10")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(c, process.errors)
+        self.assertNotIn(l, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        l.m = 3
+        l.n = None
+
+        r = process.parse("new", root, text="aa", test="test_loop_10")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertIn(c, process.errors)
+        self.assertIn(l, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaa", test="test_loop_10")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 3)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_10")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l)  # Returning to the loop
 
         # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
+        del l.m
         l.n = 2
 
         aaa = ComplexNotion("a2")
