@@ -695,7 +695,7 @@ class UtTests(unittest.TestCase):
         process = ParsingProcess()
         process.callback = logger
 
-        r = process.parse(root, text="aaaaa", test="test_loop_1")
+        r = process.parse(root, text="aaaaa", test="test_loop_basic")
 
         self.assertEqual(process.context["result"], "aaaaa")
         self.assertEqual(r, "ok")
@@ -705,7 +705,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, l)  # Returning to the loop
 
         # Negative loop test: root -5!-> a's -a-> a for "aaaa"
-        r = process.parse("new", root, text="aaaa", test="test_loop_2")
+        r = process.parse("new", root, text="aaaa", test="test_loop_neg")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "error")
@@ -719,7 +719,7 @@ class UtTests(unittest.TestCase):
         # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
         l.n = '*'
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_3")
+        r = process.parse("new", root, text="aaaa", test="test_loop_*")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -731,7 +731,7 @@ class UtTests(unittest.TestCase):
         # Loop test for endless count root -*!-> a's -a-> a for "aaaa"
         l.n = True
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_4")
+        r = process.parse("new", root, text="aaaa", test="test_loop_true_n")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "error")
@@ -744,7 +744,7 @@ class UtTests(unittest.TestCase):
         # Loop test for >1 count root -+!-> a's -a-> a for "aaaa"
         l.n = '+'
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_5")
+        r = process.parse("new", root, text="aaaa", test="test_loop_+")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -756,7 +756,7 @@ class UtTests(unittest.TestCase):
         # Loop negative test for >1 count root -+!-> a's -a-> a for "b"
         l.n = '+'
 
-        r = process.parse("new", root, text="b", test="test_loop_6")
+        r = process.parse("new", root, text="b", test="test_loop_+_neg")
 
         self.assertNotIn("result", process.context)
         self.assertEqual(r, "error")
@@ -769,7 +769,7 @@ class UtTests(unittest.TestCase):
         # Loop test for ? count root -?-> a's -a-> a for "a"
         l.n = '?'
 
-        r = process.parse("new", root, text="a", test="test_loop_7")
+        r = process.parse("new", root, text="a", test="test_loop_?")
 
         self.assertEqual(process.context["result"], "a")
         self.assertEqual(r, "ok")
@@ -781,7 +781,7 @@ class UtTests(unittest.TestCase):
         # Loop test for ? count root -?-> a's -a-> a for ""
         l.n = '?'
 
-        r = process.parse("new", root, text="", test="test_loop_8")
+        r = process.parse("new", root, text="", test="test_loop_?_2")
 
         self.assertNotIn("result", process.context)
         self.assertEqual(r, "ok")
@@ -793,7 +793,7 @@ class UtTests(unittest.TestCase):
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
 
-        r = process.parse("new", root, text="aaaaa", test="test_loop_9")
+        r = process.parse("new", root, text="aaaaa", test="test_loop_ext_func")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 5)  # External functions stops at 5
@@ -803,7 +803,7 @@ class UtTests(unittest.TestCase):
 
         # n=0 test
         l.n = 0
-        r = process.parse("new", root, text="", test="test_loop_10")
+        r = process.parse("new", root, text="", test="test_loop_n=0")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
@@ -812,12 +812,25 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, l)  # Returning to the loop
 
         # Tuples test
-        # TODO: unify and separate names
-        # TODO: check constructor
+        l2 = LoopRelation(None, None, (1, 2))
+
+        self.assertEqual(l2.m, 1)
+        self.assertEqual(l2.n, 2)
+
+        l2 = LoopRelation(None, None, (2, ))
+
+        self.assertEqual(l2.m, 2)
+        self.assertEqual(l2.n, None)
+
+        l2 = LoopRelation(None, None, (None, 2))
+
+        self.assertEqual(l2.m, None)
+        self.assertEqual(l2.n, 2)
+
         l.m = 2
         l.n = 4
 
-        r = process.parse("new", root, text="aaa", test="test_loop_10")
+        r = process.parse("new", root, text="aaa", test="test_loop_m..n")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 3)
@@ -825,7 +838,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="a", test="test_loop_10")
+        r = process.parse("new", root, text="a", test="test_loop_m..n_2")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 1)
@@ -835,7 +848,7 @@ class UtTests(unittest.TestCase):
         self.assertIn(l, process.errors)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_10")
+        r = process.parse("new", root, text="aaaa", test="test_loop_m..n_3")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 4)
@@ -843,18 +856,18 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="aaaaa", test="test_loop_10")
+        r = process.parse("new", root, text="aaaaa", test="test_loop_m..n_neg")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 4)
-        self.assertNotIn(c, process.errors)
-        self.assertNotIn(l, process.errors)
         self.assertNotIn(l, process.states)
+        self.assertNotIn(c, process.errors)  # error is not here
+        self.assertNotIn(l, process.errors)  # and not here too
         self.assertEqual(process.current, l)  # Returning to the loop
 
         l.m = None
         l.n = 2
-        r = process.parse("new", root, text="", test="test_loop_10")
+        r = process.parse("new", root, text="", test="test_loop_none..n")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 0)
@@ -862,7 +875,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="aa", test="test_loop_10")
+        r = process.parse("new", root, text="aa", test="test_loop_none..n_2")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 2)
@@ -870,19 +883,19 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="aaa", test="test_loop_10")
+        r = process.parse("new", root, text="aaa", test="test_loop_none..n_3")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 2)
-        self.assertNotIn(c, process.errors)
-        self.assertNotIn(l, process.errors)
+        self.assertNotIn(c, process.errors)  # just more than
+        self.assertNotIn(l, process.errors)  # we can eat
         self.assertNotIn(l, process.states)
         self.assertEqual(process.current, l)  # Returning to the loop
 
         l.m = 3
         l.n = None
 
-        r = process.parse("new", root, text="aa", test="test_loop_10")
+        r = process.parse("new", root, text="aa", test="test_loop_m..none_neg")
 
         self.assertEqual(r, "error")
         self.assertEqual(process.parsed_length, 2)
@@ -891,7 +904,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(l, process.states)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="aaa", test="test_loop_10")
+        r = process.parse("new", root, text="aaa", test="test_loop_m..none")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 3)
@@ -899,7 +912,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, l)  # Returning to the loop
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_10")
+        r = process.parse("new", root, text="aaaa", test="test_loop_m..none_2")
 
         self.assertEqual(r, "ok")
         self.assertEqual(process.parsed_length, 4)
@@ -916,7 +929,7 @@ class UtTests(unittest.TestCase):
 
         l2 = LoopRelation(root, aaa, 2)
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_11")
+        r = process.parse("new", root, text="aaaa", test="test_loop_nested")
 
         self.assertEqual(process.context["result"], "aaaa")
         self.assertEqual(r, "ok")
@@ -927,7 +940,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, l2)  # Returning to the top loop
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
-        r = process.parse("new", root, text="aaab", test="test_loop_12")
+        r = process.parse("new", root, text="aaab", test="test_loop_nested_neg")
 
         self.assertEqual(process.context["result"], "aaa")
         self.assertEqual(r, "error")
@@ -952,7 +965,7 @@ class UtTests(unittest.TestCase):
 
         a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'break']
 
-        r = process.parse("new", root, text="a", test="test_loop_13")
+        r = process.parse("new", root, text="a", test="test_loop_break")
 
         self.assertEqual(process.context["result"], "ac")
         self.assertEqual(r, "ok")
@@ -964,7 +977,7 @@ class UtTests(unittest.TestCase):
         # Continue test
         a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
 
-        r = process.parse("new", root, text="aa", test="test_loop_14")
+        r = process.parse("new", root, text="aa", test="test_loop_continue")
 
         self.assertEqual(process.context["result"], "aac")
         self.assertEqual(r, "ok")
@@ -976,7 +989,7 @@ class UtTests(unittest.TestCase):
         # Final verification
         a.action = add_to_result
 
-        r = process.parse("new", root, text="aa", test="test_loop_15")
+        r = process.parse("new", root, text="aa", test="test_loop_action")
 
         self.assertEqual(process.context["result"], "ababc")
         self.assertEqual(r, "ok")
@@ -1144,7 +1157,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(_acc, 0)
         self.assertEqual(r, "unknown")
 
-        # Uncomment for max coverage
+        # Uncomment for debug
         '''a.events = []
         a.add_queries()
         a.add_details()

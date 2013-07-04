@@ -288,35 +288,30 @@ class LoopRelation(Relation):
         super(LoopRelation, self).__init__(subject, object)
 
         if isinstance(n, tuple):
-            if len(n) > 1 and n[0] and n[1]:
-                self.m = n[0]
-                self.n = n[1]
-            else:
-                self.n = n[0]
+            self.m = n[0]
+            self.n = n[1] if len(n) > 1 else None
         else:
             self.n = n
 
-    def is_finite_n(self):
+    def is_ranged(self):
+        return hasattr(self, 'm')
+
+    def has_finite_n(self):
         return self.n is not True and (is_number(self.n) or self.n == '?')
 
     def has_rollback(self):
-        return self.n == '*' or self.n == '+' or hasattr(self, 'm')
+        return self.n == '*' or self.n == '+' or self.is_ranged()
 
     def parse(self, *message, **context):
-        # TODO: refactor
-        if not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue'):
-            return
+        if (not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue')) \
+                or (not self.n and not self.is_ranged()):
+            return None
 
         repeat = True
         error = restore = False
-        iteration = 1
-
         reply = []
 
-        if not self.n and not hasattr(self, 'm'):
-            return None
-
-        elif callable(self.n):
+        if callable(self.n):
             repeat = self.n(self, *message, **context)
 
             if repeat:
@@ -329,26 +324,22 @@ class LoopRelation(Relation):
             if context.get('errors'):
                 repeat = False
 
-                if self.n == '*' or self.n == '?':
+                if (self.n == '*' or self.n == '?') or (self.n == '+' and iteration > 1):
                     restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
                                     # last good context
 
-                elif self.n == '+':  # We should be here for at lest 1 time, if yes - everything is OK
-                    if iteration > 1:
-                        restore = True
-                    else:
-                        error = True
+                elif (self.n == '+' and iteration <= 1) or not self.is_ranged():
+                    error = True  # '+' means more than 1 iterations and if there is no range we have a fixed count
 
-                elif hasattr(self, 'm'):
+                elif self.is_ranged():
                     if self.m is not None:
-                        if iteration <= self.m:
+                        if iteration <= self.m:  # Less than lower limit
                             error = True
                         else:
                             restore = True
+
                     elif iteration < self.n:
                         restore = True
-                else:
-                    error = True  # Number is fixed so we have an error
             else:
                 if message[0] != 'next':
                     reply.append('next')
@@ -357,9 +348,8 @@ class LoopRelation(Relation):
                     repeat = False
 
                 else:
-                    if self.is_finite_n():
-                        if self.n == '?' or iteration >= self.n:
-                            repeat = False  # No more iterations
+                    if self.has_finite_n() and (self.n == '?' or iteration >= self.n):
+                        repeat = False  # No more iterations
 
                     if repeat and self.has_rollback():
                         reply += ['forget_context', 'push_context']  # Prepare for the new iteration
