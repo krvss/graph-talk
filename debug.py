@@ -8,6 +8,9 @@ from ut import Abstract
 class Analyzer(Abstract):
     events = []
 
+    def __init__(self):
+        self.debug = None
+
     def parse(self, *message, **context):
         process = context.get('from')
         result = False
@@ -22,7 +25,7 @@ class Analyzer(Abstract):
                     continue
 
                 result = event['call'](*message, **context) if 'call' in event else \
-                    self.default_debug(*message, **context)
+                    self.debug(*message, **context) if callable(self.debug) else None
 
             elif callable(event):
                 result = event(*message, **context)
@@ -35,11 +38,11 @@ class Analyzer(Abstract):
     def add_details(self):
         self.events.append(Analyzer.print_details)
 
-    def add_queries(self):
-        self.events.append(Analyzer.print_queries)
-
-    def default_debug(self, *message, **context):
-        pass
+    def add_queries(self, text = False):
+        if not text:
+            self.events.append(Analyzer.print_queries)
+        else:
+            self.events.append(Analyzer.print_queries_and_text)
 
     @staticmethod
     def print_details(*message, **context):
@@ -57,5 +60,13 @@ class Analyzer(Abstract):
         if message:
             if message[0].startswith('query_pre'):
                 print '( %s )' % context['from'].current,
+            elif message[0].startswith('result_pre'):
+                print ''
+
+    @staticmethod
+    def print_queries_and_text(*message, **context):
+        if message:
+            if message[0].startswith('query_pre'):
+                print '( %s : "%s" )' % (context['from'].current, context.get('context').get('text')),
             elif message[0].startswith('result_pre'):
                 print ''

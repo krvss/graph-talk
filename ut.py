@@ -228,10 +228,10 @@ class SelectiveNotion(ComplexNotion):
 class ConditionalRelation(Relation):
     REGEX_TYPE_NAME = 'SRE_Pattern'
 
-    def __init__(self, subject, object, checker, optional=False):
+    def __init__(self, subject, object, checker, mode=None):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
-        self.optional = optional  # TODO optional in selective notions
+        self.mode = mode  # TODO optional in selective notions
 
     # Return result and length of check
     def check(self, *message, **context):
@@ -272,14 +272,15 @@ class ConditionalRelation(Relation):
                 return
 
         if result:
-            reply = {'move': length}
+            reply = {'move': length} if self.mode != 'test' else {}  # In test mode we do not consume input
+
             if self.object:  # Leave a message for the object to know what worked
                 reply['update_context'] = {'passed_condition': result}
 
             return [reply, self.object]
 
         elif self.checker:
-            return 'error' if not self.optional else None
+            return 'error' if self.mode is None else None
 
 
 # Loop relation is a cycle that repeats object for specified or infinite number of times util error

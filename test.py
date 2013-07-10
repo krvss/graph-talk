@@ -438,7 +438,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, c)
 
         # Optional check
-        c.optional = True
+        c.mode = 'optional'
 
         r = process.parse("new", root, text="")
 
@@ -446,8 +446,27 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.parsed_length, 0)
         self.assertEqual(process.current, c)
 
+        # Test check
+        c.mode = 'test'
+
+        r = process.parse("new", root, text="a")
+
+        self.assertEqual(r, "error")
+        self.assertIn(process, process.errors)
+        self.assertNotIn(c, process.errors)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
+        r = process.parse("new", root, text="b")
+
+        self.assertEqual(r, "error")
+        self.assertIn(process, process.errors)
+        self.assertNotIn(c, process.errors)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
         # Regex check
-        c.optional = False
+        c.mode = None
 
         c.checker = re.compile(r"(\s)*")
 
@@ -973,6 +992,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(l, process.states)
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, c)
+        self.assertEqual(process.query, 'next')
 
         # Continue test
         a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
