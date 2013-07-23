@@ -7,6 +7,8 @@ c_line = "current_lineno"
 c_token = "current_token"
 c_data = "current_data"
 
+MAX_STR_CONST = 1025
+
 TOKEN_TYPES = (
     ("CLASS", 258),
     ("ELSE", 259),
@@ -62,9 +64,21 @@ def out(notion, *m, **c):
     if o:
         print o
 
+    return {'update_context': {c_data: ''}}
+
 
 def debug(a, *m, **c):
     pass
+
+
+def string_add(n, *m, **c):
+
+    return {'update_context': {c_data: (c[c_data] or "") + c["passed_condition"]}}
+
+    '''
+    if len(c[c_string]) >= MAX_STR_CONST:
+        return {"error": "String constant too long"}  # TODO: skip
+    '''
 
 # General purpose notions
 
@@ -148,6 +162,32 @@ ConditionalRelation(multiline_comment_chars, None, re.compile(ANY_CHAR))  # Just
 
 ConditionalRelation(multiline_comment, None, '*)')
 
+# Strings
+string = ComplexNotion("String")
+ConditionalRelation(statement, string, '"')
+
+string_chars = SelectiveNotion("String chars")
+LoopRelation(string, string_chars, True)
+
+string_eol = ComplexNotion("String EOL")
+ConditionalRelation(string_chars, string_eol, re.compile(EOL))
+
+NextRelation(string_eol, eol)
+
+string_eol_error = ActionNotion("String EOL error", ({"error": "Unterminated string constant"}, "break"))
+
+string_finished = ComplexNotion("String finished")
+ConditionalRelation(string_chars, string_finished, '"')
+
+string_token = ActionNotion("String token", {"update_context": {c_token: "STR_CONST"}}, True)
+NextRelation(string_finished, string_token)
+
+NextRelation(string_finished, print_out)
+NextRelation(string_finished, stop_loop)
+
+string_add = ActionNotion("String Add", string_add)
+ConditionalRelation(string_chars, string_add, re.compile(ANY_CHAR))
+
 
 # Test
 s1 = """
@@ -158,11 +198,15 @@ s1 = """
 8
 """
 
-s = """(*(**)
+s = """(*(*
 *)*)
-111"""
+111(*
+&&&*)
+222"""
 
 #s = "*)"
+
+s = '"sa" 11 "ass"  23'
 
 s += EOF
 end = ConditionalRelation(statement, None, EOF)  # Done!
@@ -171,10 +215,10 @@ c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
 
 from test import logger
-logger.add_queries(True)
+#logger.add_queries(True)
 logger.debug = debug
 
-logger.events.append({"filter": "queue_pop", "abstract": multiline_comment})
+logger.events.append({"filter": "update_context_post"})
 
 p = ParsingProcess()
 p.callback = logger
