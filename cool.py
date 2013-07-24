@@ -50,6 +50,8 @@ IDENTIFIER = "[A-Za-z0-9_]*"
 
 EOF = chr(0)
 
+ESC = "\\"
+
 
 # Functions
 def out(notion, *m, **c):
@@ -79,6 +81,13 @@ def string_add(n, *m, **c):
     if len(c[c_string]) >= MAX_STR_CONST:
         return {"error": "String constant too long"}  # TODO: skip
     '''
+
+
+def string_esc_convert(n, *m, **c):
+    conv = "\\" + c["passed_condition"]
+
+    return {"update_context": {"passed_condition": conv.decode('string_escape')}}
+
 
 # General purpose notions
 
@@ -169,13 +178,48 @@ ConditionalRelation(statement, string, '"')
 string_chars = SelectiveNotion("String chars")
 LoopRelation(string, string_chars, True)
 
+string_add = ActionNotion("String Add", string_add)
+
+# Errors
 string_eol = ComplexNotion("String EOL")
 ConditionalRelation(string_chars, string_eol, re.compile(EOL))
 
 NextRelation(string_eol, eol)
 
-string_eol_error = ActionNotion("String EOL error", ({"error": "Unterminated string constant"}, "break"))
+string_eol_error = ActionNotion("String EOL error", [{"error": "Unterminated string constant"}, "break"])
 
+NextRelation(string_eol, string_eol_error)
+
+string_eof = ActionNotion("String EOF error", [{"error": "EOF in string constant"}, "break"])
+ConditionalRelation(string_chars, string_eof, EOF)
+
+# Escapes
+string_esc = SelectiveNotion("String Escape")
+ConditionalRelation(string_chars, string_esc, ESC)
+
+string_add_esc = ComplexNotion("String Escape add")
+
+string_convert_esc = ActionNotion("String Convert Escape", string_esc_convert)
+NextRelation(string_add_esc, string_convert_esc)
+NextRelation(string_add_esc, string_add)
+
+ConditionalRelation(string_esc, string_add_esc, "n")
+ConditionalRelation(string_esc, string_add_esc, "t")
+ConditionalRelation(string_esc, string_add_esc, "b")
+ConditionalRelation(string_esc, string_add_esc, "f")
+
+string_esc_eol = ComplexNotion("String ESC EOL")
+
+NextRelation(string_esc_eol, ActionNotion("Add EOL", {"update_context": {"passed_condition": "\n"}}))
+NextRelation(string_esc_eol, string_add)
+NextRelation(string_esc_eol, eol)
+
+ConditionalRelation(string_esc, string_esc_eol, re.compile(EOL))
+ConditionalRelation(string_esc, string_eof, EOF)
+
+ConditionalRelation(string_esc, string_add, re.compile(ANY_CHAR))
+
+# Finishing string
 string_finished = ComplexNotion("String finished")
 ConditionalRelation(string_chars, string_finished, '"')
 
@@ -185,8 +229,8 @@ NextRelation(string_finished, string_token)
 NextRelation(string_finished, print_out)
 NextRelation(string_finished, stop_loop)
 
-string_add = ActionNotion("String Add", string_add)
 ConditionalRelation(string_chars, string_add, re.compile(ANY_CHAR))
+
 
 
 # Test
@@ -207,6 +251,7 @@ s = """(*(*
 #s = "*)"
 
 s = '"sa" 11 "ass"  23'
+s = r' "nnn\o"'
 
 s += EOF
 end = ConditionalRelation(statement, None, EOF)  # Done!

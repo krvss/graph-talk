@@ -184,7 +184,7 @@ class SelectiveNotion(ComplexNotion):
 
         reply = super(SelectiveNotion, self).parse(*message, **context)
 
-        if not isinstance(reply, list) or (not message or message[0] != 'next'):
+        if not isinstance(reply, list) or (not message or message[0] != 'next'): # TODO: isinstance of list or tuple
             return reply
 
         # Searching for the longest case
