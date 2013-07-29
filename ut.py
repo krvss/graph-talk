@@ -184,7 +184,7 @@ class SelectiveNotion(ComplexNotion):
 
         reply = super(SelectiveNotion, self).parse(*message, **context)
 
-        if not isinstance(reply, list) or (not message or message[0] != 'next'): # TODO: isinstance of list or tuple
+        if not isinstance(reply, list) or (not message or message[0] != 'next'):  # TODO: isinstance of list or tuple
             return reply
 
         # Searching for the longest case
@@ -368,7 +368,10 @@ class LoopRelation(Relation):
             if restore:
                 reply.append('pop_context')  # If we need to restore we need to repair context
 
-            reply += ['forget_context', 'clear_state']  # No more repeats, clearing
+            if not callable(self.n):
+                reply.append('forget_context')  # Nothing to forget in case of custom function
+
+            reply.append('clear_state')  # No more repeats, clearing
 
             if error:
                 reply.append('error')
@@ -742,7 +745,7 @@ class StatefulProcess(StackingContextProcess):
               self.event_set_state
               ),
              ('clear_state',
-              lambda self: self.get_command('clear_state', True) and self.current,
+              lambda self: self.current and self.get_command('clear_state', True),
               self.event_clear_state
               ),
              ('notify',
@@ -811,15 +814,15 @@ class ParsingProcess(StatefulProcess):
               self.event_move
               ),
              ('break',
-              lambda self: self.get_command('break', True) and self.query == 'next',
+              lambda self: self.query == 'next' and self.get_command('break', True),
               self.event_break
               ),
              ('next',
-              lambda self: self.get_command('next', True) and self.query != 'next',
+              lambda self: self.query != 'next' and self.get_command('next', True),
               self.event_next
               ),
              ('continue',
-              lambda self: self.get_command('continue', True) and self.query == 'next',
+              lambda self: self.query == 'next' and self.get_command('continue', True),
               self.event_continue
               )]
 
