@@ -67,6 +67,6 @@ class Analyzer(Abstract):
     def print_queries_and_text(*message, **context):
         if message:
             if message[0].startswith('query_pre'):
-                print '( %s : "%s" )' % (context['from'].current, context.get('context').get('text')),
+                print '( %s : "%s" )' % (context['from'].current, context.get('context').get('text'))
             elif message[0].startswith('result_pre'):
                 print ''

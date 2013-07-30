@@ -322,7 +322,7 @@ class LoopRelation(Relation):
         elif context['state']:  # May be was here before
             iteration = context['state'].get('n')
 
-            if context.get('errors'):
+            if context.get('errors') and self.n is not True:
                 repeat = False
 
                 if (self.n == '*' or self.n == '?') or (self.n == '+' and iteration > 1):

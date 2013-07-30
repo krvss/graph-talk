@@ -41,14 +41,16 @@ TOKEN_TYPES = (
 
 # Regexes
 EOL = r"(\r\n|\n|\r){1}"
+ESC_EOL = r"\\(\r\n|\n|\r){1}"
 WHITE_SPACE = r"[ \f\t\v]*"
 
 ANY_CHAR = "."
+ZERO_CHAR = "^" #chr(0)
 
 INTEGER = "[0-9]+"
 IDENTIFIER = "[A-Za-z0-9_]*"
 
-EOF = chr(0)
+EOF = "$"#chr(255)
 
 ESC = "\\"
 
@@ -74,20 +76,27 @@ def debug(a, *m, **c):
 
 
 def string_add(n, *m, **c):
-
     return {'update_context': {c_data: (c[c_data] or "") + c["passed_condition"]}}
 
-    '''
-    if len(c[c_string]) >= MAX_STR_CONST:
-        return {"error": "String constant too long"}  # TODO: skip
-    '''
+
+def is_0_char(n, *m, **c):
+    if c["passed_condition"] == ZERO_CHAR:
+        return True, 1
+
+    return False, 0
+
+
+def is_long_string(n, *m, **c):
+    if c[c_data] and len(c[c_data]) >= MAX_STR_CONST:
+        return True, 1
+
+    return False, 0
 
 
 def string_esc_convert(n, *m, **c):
     conv = "\\" + c["passed_condition"]
 
     return {"update_context": {"passed_condition": conv.decode('string_escape')}}
-
 
 # General purpose notions
 
@@ -178,7 +187,44 @@ ConditionalRelation(statement, string, '"')
 string_chars = SelectiveNotion("String chars")
 LoopRelation(string, string_chars, True)
 
-string_add = ActionNotion("String Add", string_add)
+string_skip = ComplexNotion("Skip chars")
+string_add_char = SelectiveNotion("String Add char")
+
+# Null character test
+string_null_char = ComplexNotion("String Null Char")
+ConditionalRelation(string_add_char, string_null_char, is_0_char, 'test')
+
+NextRelation(string_null_char, ActionNotion("String Null error", {"error": "String contains null character"}))
+NextRelation(string_null_char, string_skip)
+
+# Too long test
+string_too_long = ComplexNotion("String Too Long")
+ConditionalRelation(string_add_char, string_too_long, is_long_string, 'test')
+
+NextRelation(string_too_long, ActionNotion("String Too Long error", {"error": "String constant too long"}))
+NextRelation(string_too_long, string_skip)
+
+# Adding chars
+string_add_to_string = ActionNotion("String Add to string", string_add)
+NextRelation(string_add_char, string_add_to_string)
+
+# Skip mode
+string_skip_chars = SelectiveNotion("String skip chars")
+LoopRelation(string_skip, string_skip_chars, True)
+
+string_skip_eol = ComplexNotion("String skip EOL")
+ConditionalRelation(string_skip_chars, string_skip_eol, re.compile(EOL))
+
+NextRelation(string_skip_eol, eol)
+NextRelation(string_skip_eol, stop_loop)
+
+ConditionalRelation(string_skip_chars, eol, re.compile(ESC_EOL))
+
+ConditionalRelation(string_skip_chars, stop_loop, '"')
+
+ConditionalRelation(string_skip_chars, None, re.compile(ANY_CHAR))
+
+NextRelation(string_skip, stop_loop)
 
 # Errors
 string_eol = ComplexNotion("String EOL")
@@ -201,7 +247,7 @@ string_add_esc = ComplexNotion("String Escape add")
 
 string_convert_esc = ActionNotion("String Convert Escape", string_esc_convert)
 NextRelation(string_add_esc, string_convert_esc)
-NextRelation(string_add_esc, string_add)
+NextRelation(string_add_esc, string_add_char)
 
 ConditionalRelation(string_esc, string_add_esc, "n")
 ConditionalRelation(string_esc, string_add_esc, "t")
@@ -211,13 +257,13 @@ ConditionalRelation(string_esc, string_add_esc, "f")
 string_esc_eol = ComplexNotion("String ESC EOL")
 
 NextRelation(string_esc_eol, ActionNotion("Add EOL", {"update_context": {"passed_condition": "\n"}}))
-NextRelation(string_esc_eol, string_add)
+NextRelation(string_esc_eol, string_add_char)
 NextRelation(string_esc_eol, eol)
 
 ConditionalRelation(string_esc, string_esc_eol, re.compile(EOL))
 ConditionalRelation(string_esc, string_eof, EOF)
 
-ConditionalRelation(string_esc, string_add, re.compile(ANY_CHAR))
+ConditionalRelation(string_esc, string_add_char, re.compile(ANY_CHAR))
 
 # Finishing string
 string_finished = ComplexNotion("String finished")
@@ -229,7 +275,7 @@ NextRelation(string_finished, string_token)
 NextRelation(string_finished, print_out)
 NextRelation(string_finished, stop_loop)
 
-ConditionalRelation(string_chars, string_add, re.compile(ANY_CHAR))
+ConditionalRelation(string_chars, string_add_char, re.compile(ANY_CHAR))
 
 
 
@@ -251,7 +297,14 @@ s = """(*(*
 #s = "*)"
 
 s = '"sa" 11 "ass"  23'
-s = r' "nnn\o"'
+s = r' "nnn\o" 11 "omg/n"'
+s = '"t' + ZERO_CHAR + 'oo" 111'
+s = '''
+111
+"omg\\
+super''' + ZERO_CHAR + '''
+222'''
+
 
 s += EOF
 end = ConditionalRelation(statement, None, EOF)  # Done!
@@ -263,7 +316,7 @@ from test import logger
 #logger.add_queries(True)
 logger.debug = debug
 
-logger.events.append({"filter": "update_context_post"})
+logger.events.append({"abstract": string_add_char})
 
 p = ParsingProcess()
 p.callback = logger

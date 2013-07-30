@@ -85,6 +85,18 @@ def if_loop(*message, **context):
         return context['state']['n'] - 1
 
 
+def stop_infinite(notion, *message, **context):
+    counter = 1
+
+    if "infinite" in context:
+        if context["infinite"] == 4:
+            return "break"
+        else:
+            counter = context["infinite"] + 1
+
+    return {"update_context": {"infinite": counter}, "error": "trying to break"}
+
+
 class UtTests(unittest.TestCase):
 
     # General objects test
@@ -749,19 +761,21 @@ class UtTests(unittest.TestCase):
 
         # Loop test for endless count root -*!-> a's -a-> a for "aaaa"
         l.n = True
+        a.action = stop_infinite
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_true_n")
+        r = process.parse("new", root, text="aaaaaaa", test="test_loop_true_n")
 
-        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(process.context["infinite"], 4)
         self.assertEqual(r, "error")
-        self.assertEqual(process.parsed_length, 4)
+        self.assertEqual(process.parsed_length, 5)
         self.assertFalse(process.context_stack)
-        self.assertIn(c, process.errors)
-        self.assertIn(l, process.errors)
+        self.assertIn(a, process.errors)
+        self.assertNotIn(l, process.errors)
         self.assertEqual(process.current, l)  # Returning to the loop
 
         # Loop test for >1 count root -+!-> a's -a-> a for "aaaa"
         l.n = '+'
+        a.action = add_to_result
 
         r = process.parse("new", root, text="aaaa", test="test_loop_+")
 
