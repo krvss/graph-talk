@@ -123,6 +123,9 @@ LoopRelation(root, statement, True)
 # EOF
 ConditionalRelation(statement, eof, EOF)
 
+# End of text - we do not always have EOF
+ConditionalRelation(statement, eof, lambda n, *m, **c: (True, 1) if not c["text"] else (False, 0))
+
 # Space
 ConditionalRelation(statement, eol, re.compile(EOL))
 ConditionalRelation(statement, None, re.compile(WHITE_SPACE))
@@ -299,10 +302,8 @@ s = """(*(*
 s = '"sa" 11 "ass"  23'
 s = r' "nnn\o" 11 "omg/n"'
 s = '"t' + ZERO_CHAR + 'oo" 111'
-s = '''
-111
-"omg\\
-super''' + ZERO_CHAR + '''
+s = '"aaa'+ZERO_CHAR + '\n 111'
+s = '''"omg\nsuper"
 222'''
 
 
@@ -313,7 +314,7 @@ c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
 
 from test import logger
-#logger.add_queries(True)
+logger.add_queries(True)
 logger.debug = debug
 
 logger.events.append({"abstract": string_add_char})
