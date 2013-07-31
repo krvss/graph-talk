@@ -39,6 +39,10 @@ TOKEN_TYPES = (
     ("LET_STMT", 285)
 )
 
+TOKEN_DICT = dict(TOKEN_TYPES)
+
+SINGLE_CHAR_OP = ['@', '+', '-', '<', '{', '}', '.', ',', ':', ';', '(', ')', '=', '*', '/', '~']
+
 # Regexes
 EOL = r"(\r\n|\n|\r){1}"
 ESC_EOL = r"\\(\r\n|\n|\r){1}"
@@ -98,6 +102,28 @@ def string_esc_convert(n, *m, **c):
 
     return {"update_context": {"passed_condition": conv.decode('string_escape')}}
 
+
+def is_operator(n, *m, **c):
+    for k in TOKEN_DICT.keys():
+        l = len(k)
+
+        if len(c["text"]) >= l:
+            o = c["text"][:l]
+            if o.upper() == k:
+                return k, l
+
+    return False, 0
+
+
+def is_single_operator(n, *m, **c):
+    for op in SINGLE_CHAR_OP:
+        if len(c["text"]) >= 1:
+            if c["text"][0] == op:
+                return "'" + op + "'", 1
+
+    return False, 0
+
+
 # General purpose notions
 
 # Out
@@ -130,14 +156,22 @@ ConditionalRelation(statement, eof, lambda n, *m, **c: (True, 1) if not c["text"
 ConditionalRelation(statement, eol, re.compile(EOL))
 ConditionalRelation(statement, None, re.compile(WHITE_SPACE))
 
-# Identifiers and numbers
+# Numbers
 integer = ComplexNotion("Integer")
 ConditionalRelation(statement, integer, re.compile(INTEGER))
 
 ActionRelation(integer, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "INT_CONST", c_data: c["passed_condition"]}})
 
+# Operators
+operator = ComplexNotion("Operator")
+ConditionalRelation(statement, operator, is_operator)
+ConditionalRelation(statement, operator, is_single_operator)
 
+ActionRelation(operator, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: c["passed_condition"], c_data: ""}})
+
+# IDs
 identifier = ComplexNotion("id")
 ConditionalRelation(statement, identifier, re.compile(IDENTIFIER))
 
@@ -307,6 +341,9 @@ s = '''"omg\nsuper"
 222'''
 
 
+s = 'thEn neW 11 aa + - @'
+
+
 s += EOF
 end = ConditionalRelation(statement, None, EOF)  # Done!
 
@@ -314,7 +351,7 @@ c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
 
 from test import logger
-logger.add_queries(True)
+#logger.add_queries(True)
 logger.debug = debug
 
 logger.events.append({"abstract": string_add_char})
