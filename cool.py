@@ -45,14 +45,14 @@ ESC_EOL = r"\\(\r\n|\n|\r){1}"
 WHITE_SPACE = r"[ \f\t\v]*"
 
 ANY_CHAR = "."
-ZERO_CHAR = "^" #chr(0)
+ZERO_CHAR = chr(0)
 
 INTEGER = "[0-9]+"
 IDENTIFIER = "[A-Za-z0-9_]*"
 TYPE_ID = "[A-Z]" + IDENTIFIER
 OBJECT_ID = "[a-z]" + IDENTIFIER
 
-EOF = "$"#chr(255)
+EOF = chr(255)
 
 ESC = "\\"
 
@@ -157,11 +157,8 @@ root = ComplexNotion("COOL program")
 statement = SelectiveNotion("Statement")
 LoopRelation(root, statement, True)
 
-# EOF
+# EOF - end of processing
 ConditionalRelation(statement, eof, EOF)
-
-# End of text - we do not always have EOF
-ConditionalRelation(statement, eof, lambda n, *m, **c: (True, 1) if not c["text"] else (False, 0))
 
 # Space
 ConditionalRelation(statement, eol, re.compile(EOL))
@@ -228,9 +225,8 @@ ConditionalRelation(statement, multiline_comment, "(*")
 multiline_comment_chars = SelectiveNotion("Multiline comment chars")
 LoopRelation(multiline_comment, multiline_comment_chars, True)
 
-error_EOF_comment = ActionNotion("EOF in comment", {"error": "EOF in comment"})
-ConditionalRelation(multiline_comment_chars, error_EOF_comment, EOF)  # Error
-#TODO: do not consume EOF?
+error_EOF_comment = ActionNotion("EOF in comment", [{"error": "EOF in comment"}, "break"])
+ConditionalRelation(multiline_comment_chars, error_EOF_comment, EOF, 'test')  # Error
 
 ConditionalRelation(multiline_comment_chars, eol, re.compile(EOL))  # Increase line counter
 
@@ -299,7 +295,7 @@ string_eol_error = ActionNotion("String EOL error", [{"error": "Unterminated str
 NextRelation(string_eol, string_eol_error)
 
 string_eof = ActionNotion("String EOF error", [{"error": "EOF in string constant"}, "break"])
-ConditionalRelation(string_chars, string_eof, EOF)
+ConditionalRelation(string_chars, string_eof, EOF, 'test')
 
 # Escapes
 string_esc = SelectiveNotion("String Escape")
@@ -323,7 +319,7 @@ NextRelation(string_esc_eol, string_add_char)
 NextRelation(string_esc_eol, eol)
 
 ConditionalRelation(string_esc, string_esc_eol, re.compile(EOL))
-ConditionalRelation(string_esc, string_eof, EOF)
+ConditionalRelation(string_esc, string_eof, EOF, 'test')
 
 ConditionalRelation(string_esc, string_add_char, re.compile(ANY_CHAR))
 
@@ -364,17 +360,20 @@ s = """(*(*
 222"""
 
 #s = "*)"
+s = 'thEn NeW 11 aa + - @ => <= tRuE fAlSe FALSE True T_T Tt aB1 >>> <<< -> ' + ZERO_CHAR
+
+s = r'''
+"aaa'''
+s = "(*"
 
 s = '"sa" 11 "ass"  23'
 s = r' "nnn\o" 11 "omg/n"'
 s = '"t' + ZERO_CHAR + 'oo" 111'
-s = '"aaa'+ZERO_CHAR + '\n 111'
+
 s = '''"omg\nsuper"
 222'''
 
-
-s = 'thEn NeW 11 aa + - @ => <= tRuE fAlSe FALSE True T_T Tt aB1 >>> <<<'
-
+s = '"aaa'+ZERO_CHAR + '\n 111'
 
 s += EOF
 end = ConditionalRelation(statement, None, EOF)  # Done!
