@@ -10,33 +10,29 @@ c_data = "current_data"
 MAX_STR_CONST = 1025
 
 TOKEN_TYPES = (
-    ("CLASS", 258),
-    ("ELSE", 259),
-    ("FI", 260),
-    ("IF", 261),
-    ("IN", 262),
-    ("INHERITS", 263),
-    ("LET", 264),
-    ("LOOP", 265),
-    ("POOL", 266),
-    ("THEN", 267),
-    ("WHILE", 268),
-    ("CASE", 269),
-    ("ESAC", 270),
-    ("OF", 271),
-    ("DARROW", 272),
-    ("NEW", 273),
-    ("ISVOID", 274),
-    ("STR_CONST", 275),
-    ("INT_CONST", 276),
-    ("BOOL_CONST", 277),
-    ("TYPEID", 278),
-    ("OBJECTID", 279),
-    ("ASSIGN", 280),
-    ("NOT", 281),
-    ("LE", 282),
-    ("ERROR", 283),
-    ("LET_STMT", 285)
+    ("CLASS", "CLASS"),
+    ("ELSE", "ELSE"),
+    ("FI", "FI"),
+    ("IF", "IF"),
+    ("IN", "IN"),
+    ("INHERITS", "INHERITS"),
+    ("LET", "LET"),
+    ("LOOP", "LOOP"),
+    ("POOL", "POOL"),
+    ("THEN", "THEN"),
+    ("WHILE", "WHILE"),
+    ("CASE", "CASE"),
+    ("ESAC", "ESAC"),
+    ("OF", "OF"),
+    ("=>", "DARROW"),
+    ("NEW", "NEW"),
+    ("ISVOID", "ISVOID"),
+    ("<-", "ASSIGN"),
+    ("NOT", "NOT"),
+    ("LE", "LE"),
+    ("ERROR", "ERROR"),
+    ("LET_STMT", "LET_STMT"),
+    ("<=", "LE")
 )
 
 TOKEN_DICT = dict(TOKEN_TYPES)
@@ -53,6 +49,8 @@ ZERO_CHAR = "^" #chr(0)
 
 INTEGER = "[0-9]+"
 IDENTIFIER = "[A-Za-z0-9_]*"
+TYPE_ID = "[A-Z]" + IDENTIFIER
+OBJECT_ID = "[a-z]" + IDENTIFIER
 
 EOF = "$"#chr(255)
 
@@ -104,13 +102,13 @@ def string_esc_convert(n, *m, **c):
 
 
 def is_operator(n, *m, **c):
-    for k in TOKEN_DICT.keys():
+    for k, v in TOKEN_DICT.iteritems():
         l = len(k)
 
         if len(c["text"]) >= l:
             o = c["text"][:l]
             if o.upper() == k:
-                return k, l
+                return v, l
 
     return False, 0
 
@@ -120,6 +118,19 @@ def is_single_operator(n, *m, **c):
         if len(c["text"]) >= 1:
             if c["text"][0] == op:
                 return "'" + op + "'", 1
+
+    return False, 0
+
+
+def is_boolean(n, *m, **c):
+    if len(c["text"]) >= 4:
+        if c["text"][0] == "t":
+            if c["text"][1:4].upper() == "RUE":
+                return "true", 4
+
+        if c["text"][0] == "f" and len(c["text"]) >= 5:
+            if c["text"][1:5].upper() == "ALSE":
+                return "false", 5
 
     return False, 0
 
@@ -171,12 +182,25 @@ ConditionalRelation(statement, operator, is_single_operator)
 ActionRelation(operator, print_out,
                lambda r, *m, **c: {"update_context": {c_token: c["passed_condition"], c_data: ""}})
 
-# IDs
-identifier = ComplexNotion("id")
-ConditionalRelation(statement, identifier, re.compile(IDENTIFIER))
+# Booleans
+boolean = ComplexNotion("Boolean")
+ConditionalRelation(statement, boolean, is_boolean)
 
-ActionRelation(identifier, print_out,
+ActionRelation(boolean, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "BOOL_CONST", c_data: c["passed_condition"]}})
+
+# IDs
+obj_identifier = ComplexNotion("Object Identifier")
+ConditionalRelation(statement, obj_identifier, re.compile(OBJECT_ID))
+
+ActionRelation(obj_identifier, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "OBJECTID", c_data: c["passed_condition"]}})
+
+type_identifier = ComplexNotion("Type Identifier")
+ConditionalRelation(statement, type_identifier, re.compile(TYPE_ID))
+
+ActionRelation(type_identifier, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "TYPEID", c_data: c["passed_condition"]}})
 
 # Comments
 # Inline
@@ -206,6 +230,7 @@ LoopRelation(multiline_comment, multiline_comment_chars, True)
 
 error_EOF_comment = ActionNotion("EOF in comment", {"error": "EOF in comment"})
 ConditionalRelation(multiline_comment_chars, error_EOF_comment, EOF)  # Error
+#TODO: do not consume EOF?
 
 ConditionalRelation(multiline_comment_chars, eol, re.compile(EOL))  # Increase line counter
 
@@ -341,7 +366,7 @@ s = '''"omg\nsuper"
 222'''
 
 
-s = 'thEn neW 11 aa + - @'
+s = 'thEn neW 11 aa + - @ => <= tRuE fAlSe FALSE True T_T Tt aB1'
 
 
 s += EOF
