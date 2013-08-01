@@ -339,6 +339,13 @@ NextRelation(string_finished, stop_loop)
 
 ConditionalRelation(string_chars, string_add_char, re.compile(ANY_CHAR))
 
+# ERROR
+error = ComplexNotion("Error")
+ConditionalRelation(statement, error, re.compile(ANY_CHAR))
+
+ActionRelation(error, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: c["passed_condition"]},
+                                   "error": c["passed_condition"]})
 
 
 # Test
@@ -366,7 +373,7 @@ s = '''"omg\nsuper"
 222'''
 
 
-s = 'thEn neW 11 aa + - @ => <= tRuE fAlSe FALSE True T_T Tt aB1'
+s = 'thEn NeW 11 aa + - @ => <= tRuE fAlSe FALSE True T_T Tt aB1 >>> <<<'
 
 
 s += EOF
