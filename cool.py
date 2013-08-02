@@ -1,6 +1,9 @@
 # Regex classes
-from ut import *
 import re
+import sys
+
+from ut import *
+
 
 # Global parameters
 c_line = "current_lineno"
@@ -225,7 +228,12 @@ ConditionalRelation(statement, multiline_comment, "(*")
 multiline_comment_chars = SelectiveNotion("Multiline comment chars")
 LoopRelation(multiline_comment, multiline_comment_chars, True)
 
-error_EOF_comment = ActionNotion("EOF in comment", [{"error": "EOF in comment"}, "break"])
+error_EOF_comment = ComplexNotion("EOF in comment")
+ActionRelation(error_EOF_comment, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "EOF in comment"},
+                                   "error": "EOF in comment"})
+NextRelation(error_EOF_comment, stop_loop)
+
 ConditionalRelation(multiline_comment_chars, error_EOF_comment, EOF, 'test')  # Error
 
 ConditionalRelation(multiline_comment_chars, eol, re.compile(EOL))  # Increase line counter
@@ -252,14 +260,20 @@ string_add_char = SelectiveNotion("String Add char")
 string_null_char = ComplexNotion("String Null Char")
 ConditionalRelation(string_add_char, string_null_char, is_0_char, 'test')
 
-NextRelation(string_null_char, ActionNotion("String Null error", {"error": "String contains null character"}))
+ActionRelation(string_null_char, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String contains null character"},
+                                   "error": "String contains null character"})
+
 NextRelation(string_null_char, string_skip)
 
 # Too long test
 string_too_long = ComplexNotion("String Too Long")
 ConditionalRelation(string_add_char, string_too_long, is_long_string, 'test')
 
-NextRelation(string_too_long, ActionNotion("String Too Long error", {"error": "String constant too long"}))
+ActionRelation(string_too_long, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String Too Long error"},
+                                   "error": "String Too Long error"})
+
 NextRelation(string_too_long, string_skip)
 
 # Adding chars
@@ -279,6 +293,7 @@ NextRelation(string_skip_eol, stop_loop)
 ConditionalRelation(string_skip_chars, eol, re.compile(ESC_EOL))
 
 ConditionalRelation(string_skip_chars, stop_loop, '"')
+ConditionalRelation(string_skip_chars, stop_loop, EOF, "test")
 
 ConditionalRelation(string_skip_chars, None, re.compile(ANY_CHAR))
 
@@ -290,11 +305,19 @@ ConditionalRelation(string_chars, string_eol, re.compile(EOL))
 
 NextRelation(string_eol, eol)
 
-string_eol_error = ActionNotion("String EOL error", [{"error": "Unterminated string constant"}, "break"])
-
+string_eol_error = ComplexNotion("String EOL error")
+ActionRelation(string_eol_error, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "Unterminated string constant"},
+                                   "error": "Unterminated string constant"})
+NextRelation(string_eol_error, stop_loop)
 NextRelation(string_eol, string_eol_error)
 
-string_eof = ActionNotion("String EOF error", [{"error": "EOF in string constant"}, "break"])
+string_eof = ComplexNotion("String EOF error")
+ActionRelation(string_eof, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "EOF in string constant"},
+                                   "error": "EOF in string constant"})
+NextRelation(string_eof, stop_loop)
+
 ConditionalRelation(string_chars, string_eof, EOF, 'test')
 
 # Escapes
@@ -343,7 +366,6 @@ ActionRelation(error, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: c["passed_condition"]},
                                    "error": c["passed_condition"]})
 
-
 # Test
 s1 = """
 
@@ -375,20 +397,35 @@ s = '''"omg\nsuper"
 
 s = '"aaa'+ZERO_CHAR + '\n 111'
 
+s = '''111
+(*
+(*
+*)'''
+
+s = '''
+1111
+"aaaaa"'''
+
+
+# Read file if any
+if len(sys.argv) > 2:
+    with open(sys.argv[1]) as f:
+        s = f.read()
+
 s += EOF
-end = ConditionalRelation(statement, None, EOF)  # Done!
+
 
 c = {"text": s, c_data: None, c_token: None, c_line: 1}
 
 
-from test import logger
+#from test import logger
 #logger.add_queries(True)
-logger.debug = debug
+#logger.debug = debug
 
-logger.events.append({"abstract": string_add_char})
+#logger.events.append({"abstract": string_add_char})
 
 p = ParsingProcess()
-p.callback = logger
+#p.callback = logger
 
 
 r = p.parse(root, **c)
