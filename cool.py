@@ -3,6 +3,7 @@ import re
 import sys
 
 from ut import *
+from test import logger
 
 
 # Global parameters
@@ -32,7 +33,6 @@ TOKEN_TYPES = (
     ("ISVOID", "ISVOID"),
     ("<-", "ASSIGN"),
     ("NOT", "NOT"),
-    ("LE", "LE"),
     ("ERROR", "ERROR"),
     ("LET_STMT", "LET_STMT"),
     ("<=", "LE")
@@ -59,19 +59,29 @@ EOF = chr(255)
 
 ESC = "\\"
 
+#TODO: better way to handle buffer; hide globals to local
+out_string = ""
+
 
 # Functions
 def out(notion, *m, **c):
+    global out_string
     o = ''
 
     if c_token in c:
         o = '#' + str(c[c_line]) + " " + c[c_token] + " "
 
     if c_data in c:
-        o += c[c_data]
+        data = c[c_data].replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").replace("\f", r"\f")
+        if c[c_token] == "ERROR" or c[c_token] == "STR_CONST":
+            data = '"' + data + '"'
+        o += data
 
     if o:
-        print o
+        if out_string is None:
+            print o
+        else:
+            out_string += o.strip() + "\n"
 
     return {'update_context': {c_data: ''}}
 
@@ -100,20 +110,24 @@ def is_long_string(n, *m, **c):
 
 def string_esc_convert(n, *m, **c):
     conv = "\\" + c["passed_condition"]
+    if c["passed_condition"] not in ['"', '\\']:
+        conv = conv.decode('string_escape')
 
-    return {"update_context": {"passed_condition": conv.decode('string_escape')}}
+    return {"update_context": {"passed_condition": conv}}
 
 
 def is_operator(n, *m, **c):
+    op = False
+    max_len = 0
     for k, v in TOKEN_DICT.iteritems():
         l = len(k)
 
         if len(c["text"]) >= l:
             o = c["text"][:l]
-            if o.upper() == k:
-                return v, l
+            if o.upper() == k and l > max_len:
+                op, max_len = v, l
 
-    return False, 0
+    return op, max_len
 
 
 def is_single_operator(n, *m, **c):
@@ -219,8 +233,11 @@ NextRelation(inline_comment_end, stop_loop)
 ConditionalRelation(inline_comment_chars, None, re.compile(ANY_CHAR))  # Just consume chars
 
 # Multiline
-error_unmatched_comment = ActionNotion("Unmatched multi-line", {"error": "Unmatched *)"})
+error_unmatched_comment = ComplexNotion("Unmatched multi-line")
 ConditionalRelation(statement, error_unmatched_comment, "*)")  # Closing without opening
+ActionRelation(error_unmatched_comment, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "Unmatched *)"},
+                                   "error": "Unmatched *)"})
 
 multiline_comment = ComplexNotion("Multiline comment")
 ConditionalRelation(statement, multiline_comment, "(*")
@@ -334,6 +351,8 @@ ConditionalRelation(string_esc, string_add_esc, "n")
 ConditionalRelation(string_esc, string_add_esc, "t")
 ConditionalRelation(string_esc, string_add_esc, "b")
 ConditionalRelation(string_esc, string_add_esc, "f")
+ConditionalRelation(string_esc, string_add_esc, "\\")
+ConditionalRelation(string_esc, string_add_esc, '"')
 
 string_esc_eol = ComplexNotion("String ESC EOL")
 
@@ -366,83 +385,39 @@ ActionRelation(error, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: c["passed_condition"]},
                                    "error": c["passed_condition"]})
 
-# Test
-s1 = """
 
-111 alfa_2
-34
-12 --13
-8
-"""
+def get_content(filename):
+    with open(filename) as f:
+        return f.read()
 
-s = """(*(*
-*)*)
-111(*
-&&&*)
-222"""
 
-#s = "*)"
-s = 'thEn NeW 11 aa + - @ => <= tRuE fAlSe FALSE True T_T Tt aB1 >>> <<< -> ' + ZERO_CHAR
+def lex_file(filename):
+    return lex(get_content(filename))
 
-s = r'''
-"aaa'''
-s = "(*"
 
-s = '"sa" 11 "ass"  23'
-s = r' "nnn\o" 11 "omg/n"'
-s = '"t' + ZERO_CHAR + 'oo" 111'
+def lex(s):
+    global out_string
 
-s = '''"omg\nsuper"
-222'''
+    logger.add_queries(True)
 
-s = '"aaa'+ZERO_CHAR + '\n 111'
+    s += EOF
+    out_string = ""
 
-s = '''111
-(*
-(*
-*)'''
+    context = {"text": s, c_data: None, c_token: None, c_line: 1}
 
-s = '''
-1111
-"aaaaa"'''
+    p = ParsingProcess()
+    #p.callback = logger
+
+    r = p.parse(root, **context)
+    #print r
+
+    #if r != "ok":
+    #    print p.errors
+
+    return out_string
 
 
 # Read file if any
 if len(sys.argv) > 2:
-    with open(sys.argv[1]) as f:
-        s = f.read()
-
-s += EOF
-
-
-c = {"text": s, c_data: None, c_token: None, c_line: 1}
-
-
-#from test import logger
-#logger.add_queries(True)
-#logger.debug = debug
-
-#logger.events.append({"abstract": string_add_char})
-
-p = ParsingProcess()
-#p.callback = logger
-
-
-r = p.parse(root, **c)
-
-print r
-
-if r != "ok":
-    print p.errors
-
-exit()
-
-"""
-mycoolc:
-#!/bin/csh -f
-./lexer $* | ./parser $* | ./semant $* | ./cgen $*
-
-compilers@compilers-vm:~/PA2$ ./lexer grading/escapedunprintables.cool
-#name "grading/escapedunprintables.cool"
-#1 STR_CONST "This is a tab:\t"
-"""
+    out_string = None
+    lex_file(sys.argv[1])
