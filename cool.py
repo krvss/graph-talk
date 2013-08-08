@@ -11,7 +11,7 @@ c_line = "current_lineno"
 c_token = "current_token"
 c_data = "current_data"
 
-MAX_STR_CONST = 1025
+MAX_STR_CONST = 1024
 
 TOKEN_TYPES = (
     ("CLASS", "CLASS"),
@@ -45,6 +45,7 @@ SINGLE_CHAR_OP = ['@', '+', '-', '<', '{', '}', '.', ',', ':', ';', '(', ')', '=
 # Regexes
 EOL = r"(\r\n|\n|\r){1}"
 ESC_EOL = r"\\(\r\n|\n|\r){1}"
+STRING_EOL = r"(\n){1}"
 WHITE_SPACE = r"[ \f\t\v]*"
 
 ANY_CHAR = "."
@@ -72,7 +73,13 @@ def out(notion, *m, **c):
         o = '#' + str(c[c_line]) + " " + c[c_token] + " "
 
     if c_data in c:
-        data = c[c_data].replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").replace("\f", r"\f")
+        data = c[c_data]
+        data = data.replace("\\", "\\\\")
+        data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
+               replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+               replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
+               replace('\00', '\\000')
+
         if c[c_token] == "ERROR" or c[c_token] == "STR_CONST":
             data = '"' + data + '"'
         o += data
@@ -83,7 +90,7 @@ def out(notion, *m, **c):
         else:
             out_string += o.strip() + "\n"
 
-    return {'update_context': {c_data: ''}}
+    return {'update_context': {c_data: None}}
 
 
 def debug(a, *m, **c):
@@ -91,7 +98,8 @@ def debug(a, *m, **c):
 
 
 def string_add(n, *m, **c):
-    return {'update_context': {c_data: (c[c_data] or "") + c["passed_condition"]}}
+    char = c["passed_condition"]
+    return {'update_context': {c_data: (c[c_data] or "") + char}}
 
 
 def is_0_char(n, *m, **c):
@@ -109,7 +117,12 @@ def is_long_string(n, *m, **c):
 
 
 def string_esc_convert(n, *m, **c):
-    conv = "\\" + c["passed_condition"]
+    conv = "\\"
+    if c["passed_condition"] == '"':
+        conv = c["passed_condition"]
+    elif c["passed_condition"] != '\\':
+        conv += c["passed_condition"]
+
     if c["passed_condition"] not in ['"', '\\']:
         conv = conv.decode('string_escape')
 
@@ -278,8 +291,8 @@ string_null_char = ComplexNotion("String Null Char")
 ConditionalRelation(string_add_char, string_null_char, is_0_char, 'test')
 
 ActionRelation(string_null_char, print_out,
-               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String contains null character"},
-                                   "error": "String contains null character"})
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String contains null character."},
+                                   "error": "String contains null character."})
 
 NextRelation(string_null_char, string_skip)
 
@@ -288,8 +301,8 @@ string_too_long = ComplexNotion("String Too Long")
 ConditionalRelation(string_add_char, string_too_long, is_long_string, 'test')
 
 ActionRelation(string_too_long, print_out,
-               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String Too Long error"},
-                                   "error": "String Too Long error"})
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String constant too long"},
+                                   "error": "String constant too long"})
 
 NextRelation(string_too_long, string_skip)
 
@@ -318,7 +331,7 @@ NextRelation(string_skip, stop_loop)
 
 # Errors
 string_eol = ComplexNotion("String EOL")
-ConditionalRelation(string_chars, string_eol, re.compile(EOL))
+ConditionalRelation(string_chars, string_eol, re.compile(STRING_EOL))
 
 NextRelation(string_eol, eol)
 
