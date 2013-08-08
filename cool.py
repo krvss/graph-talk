@@ -74,11 +74,14 @@ def out(notion, *m, **c):
 
     if c_data in c:
         data = c[c_data]
-        data = data.replace("\\", "\\\\")
-        data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
-               replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
-               replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
-               replace('\00', '\\000')
+        if data:
+            data = data.replace("\\", "\\\\")
+            data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
+                   replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+                   replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
+                   replace('\00', '\\000')
+        else:
+            data = ""
 
         if c[c_token] == "ERROR" or c[c_token] == "STR_CONST":
             data = '"' + data + '"'
@@ -239,6 +242,7 @@ LoopRelation(inline_comment, inline_comment_chars)
 
 inline_comment_end = ComplexNotion("Inline comment end")
 ConditionalRelation(inline_comment_chars, inline_comment_end, re.compile(EOL))
+ConditionalRelation(inline_comment_chars, inline_comment_end, re.compile(EOF), 'test')
 
 NextRelation(inline_comment_end, eol)
 NextRelation(inline_comment_end, stop_loop)
@@ -284,7 +288,7 @@ string_chars = SelectiveNotion("String chars")
 LoopRelation(string, string_chars, True)
 
 string_skip = ComplexNotion("Skip chars")
-string_add_char = SelectiveNotion("String Add char")
+string_add_char = SelectiveNotion("String Add char")  # TODO context restore if error
 
 # Null character test
 string_null_char = ComplexNotion("String Null Char")
