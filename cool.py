@@ -43,7 +43,7 @@ TOKEN_DICT = dict(TOKEN_TYPES)
 SINGLE_CHAR_OP = ['@', '+', '-', '<', '{', '}', '.', ',', ':', ';', '(', ')', '=', '*', '/', '~']
 
 # Regexes
-EOL = r"(\r\n|\n|\r){1}"
+EOL = r"(\n\r|\r\n|\n){1}"
 ESC_EOL = r"\\(\r\n|\n|\r){1}"
 STRING_EOL = r"(\n){1}"
 WHITE_SPACE = r"[ \f\t\v]*"
@@ -79,7 +79,7 @@ def out(notion, *m, **c):
             data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
                    replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
                    replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
-                   replace('\00', '\\000')
+                   replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
         else:
             data = ""
 
@@ -370,6 +370,14 @@ ConditionalRelation(string_esc, string_add_esc, "b")
 ConditionalRelation(string_esc, string_add_esc, "f")
 ConditionalRelation(string_esc, string_add_esc, "\\")
 ConditionalRelation(string_esc, string_add_esc, '"')
+
+string_esc_null = ComplexNotion("String Escaped Null error")
+ConditionalRelation(string_esc, string_esc_null, ZERO_CHAR)
+ActionRelation(string_esc_null, print_out,
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String contains escaped null character."},
+                                   "error": "String contains escaped null character."})
+NextRelation(string_esc_null, string_skip)
+
 
 string_esc_eol = ComplexNotion("String ESC EOL")
 
