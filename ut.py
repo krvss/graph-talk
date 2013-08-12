@@ -167,11 +167,11 @@ class ActionRelation(NextRelation, Action):
 # It tries all relations and uses the one without errors
 class SelectiveNotion(ComplexNotion):
     def parse(self, *message, **context):
-        if context.get('state') and message and message[0] == 'next':
+        if context.get('state') and message:
             if context.get('errors'):
                 cases = context['state']['cases']
 
-                if cases:
+                if cases and message[0] == 'next':  # TODO test not to go further if error
                     case = cases.pop(0)  # Try another case, if any
 
                     # Pop context and update state, then try another case and come back here

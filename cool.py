@@ -64,6 +64,9 @@ ESC = "\\"
 out_string = ""
 
 
+def new_line(notion, *m, **c):
+    return {'update_context': {c_line: c[c_line] + 1}} if 'state' in c else None
+
 # Functions
 def out(notion, *m, **c):
     global out_string
@@ -174,8 +177,7 @@ def is_boolean(n, *m, **c):
 print_out = ActionNotion("Print out", out)
 
 # EOL
-eol = ActionNotion("EOL",
-                   lambda n, *m, **c: {'update_context': {c_line: c[c_line] + 1}} if 'state' in c else None)
+eol = ActionNotion("EOL", new_line )
 
 # EOF
 eof = ActionNotion("EOF", "break")
@@ -296,7 +298,7 @@ ConditionalRelation(string_add_char, string_null_char, is_0_char, 'test')
 
 ActionRelation(string_null_char, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String contains null character."},
-                                   "error": "String contains null character."})
+                                   })
 
 NextRelation(string_null_char, string_skip)
 
@@ -306,7 +308,7 @@ ConditionalRelation(string_add_char, string_too_long, is_long_string, 'test')
 
 ActionRelation(string_too_long, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String constant too long"},
-                                   "error": "String constant too long"})
+                                   })
 
 NextRelation(string_too_long, string_skip)
 
