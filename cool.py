@@ -256,7 +256,7 @@ error_unmatched_comment = ComplexNotion("Unmatched multi-line")
 ConditionalRelation(statement, error_unmatched_comment, "*)")  # Closing without opening
 ActionRelation(error_unmatched_comment, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "Unmatched *)"},
-                                   "error": "Unmatched *)"})
+                                   })
 
 multiline_comment = ComplexNotion("Multiline comment")
 ConditionalRelation(statement, multiline_comment, "(*")
@@ -267,7 +267,7 @@ LoopRelation(multiline_comment, multiline_comment_chars, True)
 error_EOF_comment = ComplexNotion("EOF in comment")
 ActionRelation(error_EOF_comment, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "EOF in comment"},
-                                   "error": "EOF in comment"})
+                                   })
 NextRelation(error_EOF_comment, stop_loop)
 
 ConditionalRelation(multiline_comment_chars, error_EOF_comment, EOF, 'test')  # Error
@@ -344,14 +344,14 @@ NextRelation(string_eol, eol)
 string_eol_error = ComplexNotion("String EOL error")
 ActionRelation(string_eol_error, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "Unterminated string constant"},
-                                   "error": "Unterminated string constant"})
+                                   })
 NextRelation(string_eol_error, stop_loop)
 NextRelation(string_eol, string_eol_error)
 
 string_eof = ComplexNotion("String EOF error")
 ActionRelation(string_eof, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "EOF in string constant"},
-                                   "error": "EOF in string constant"})
+                                   })
 NextRelation(string_eof, stop_loop)
 
 ConditionalRelation(string_chars, string_eof, EOF, 'test')
@@ -377,7 +377,7 @@ string_esc_null = ComplexNotion("String Escaped Null error")
 ConditionalRelation(string_esc, string_esc_null, ZERO_CHAR)
 ActionRelation(string_esc_null, print_out,
                lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String contains escaped null character."},
-                                   "error": "String contains escaped null character."})
+                                   })
 NextRelation(string_esc_null, string_skip)
 
 
@@ -409,8 +409,7 @@ error = ComplexNotion("Error")
 ConditionalRelation(statement, error, re.compile(ANY_CHAR))
 
 ActionRelation(error, print_out,
-               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: c["passed_condition"]},
-                                   "error": c["passed_condition"]})
+               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: c["passed_condition"]}})
 
 
 def get_content(filename):

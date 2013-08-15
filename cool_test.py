@@ -6,12 +6,11 @@ import sys
 
 #print lex('"sss"')
 
-c = get_content("/Users/skravets/Projects/virtualenvs/ut/ut/grading/wq0607-c4.cool")
-c = r'''"\\-"-"-\-"--\""\\"-"\"\\"-\-"\\"""\--"\""\"
-"\\""\"--\""\-\""\"--\\"\"\\"--""\"\--""\"
-'''
-print lex(c)
-exit()
+#c = get_content("/Users/skravets/Projects/virtualenvs/ut/ut/grading/wq0607-c4.cool")
+#c = r'''\"
+#"\-\""\--"\""\--\""\"\\"\--"\\"""\--"\""\"'''
+#print lex(c)
+#exit()
 
 for f in glob.glob("grading/*.cool"):
     print "Lexing " + f,
