@@ -174,10 +174,10 @@ def is_boolean(n, *m, **c):
 # General purpose notions
 
 # Out
-print_out = ActionNotion("Print out", out)
+print_out = Action(out)
 
 # EOL
-eol = ActionNotion("EOL", new_line )
+eol = ActionNotion("EOL", new_line)
 
 # EOF
 eof = ActionNotion("EOF", "break")
@@ -290,7 +290,7 @@ string_chars = SelectiveNotion("String chars")
 LoopRelation(string, string_chars, True)
 
 string_skip = ComplexNotion("Skip chars")
-string_add_char = SelectiveNotion("String Add char")  # TODO context restore if error
+string_add_char = SelectiveNotion("String Add char")
 
 # Null character test
 string_null_char = ComplexNotion("String Null Char")
@@ -306,11 +306,11 @@ NextRelation(string_null_char, string_skip)
 string_too_long = ComplexNotion("String Too Long")
 ConditionalRelation(string_add_char, string_too_long, is_long_string, 'test')
 
-ActionRelation(string_too_long, print_out,
-               lambda r, *m, **c: {"update_context": {c_token: "ERROR", c_data: "String constant too long"},
-                                   })
-
 NextRelation(string_too_long, string_skip)
+
+ActionRelation(string_too_long, None,
+               lambda r, *m, **c: [{"update_context": {c_token: "ERROR", c_data: "String constant too long"},
+                                    }, print_out])  # TODO: this is a trick to make visit print_out when query = break
 
 # Adding chars
 string_add_to_string = ActionNotion("String Add to string", string_add)
@@ -384,8 +384,8 @@ NextRelation(string_esc_null, string_skip)
 string_esc_eol = ComplexNotion("String ESC EOL")
 
 NextRelation(string_esc_eol, ActionNotion("Add EOL", {"update_context": {"passed_condition": "\n"}}))
-NextRelation(string_esc_eol, string_add_char)
 NextRelation(string_esc_eol, eol)
+NextRelation(string_esc_eol, string_add_char)
 
 ConditionalRelation(string_esc, string_esc_eol, re.compile(EOL))
 ConditionalRelation(string_esc, string_eof, EOF, 'test')
