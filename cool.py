@@ -10,6 +10,7 @@ from test import logger
 c_line = "current_lineno"
 c_token = "current_token"
 c_data = "current_data"
+c_result = "result"
 
 MAX_STR_CONST = 1024
 
@@ -60,16 +61,14 @@ EOF = chr(255)
 
 ESC = "\\"
 
-#TODO: better way to handle buffer; hide globals to local
-out_string = ""
-
 
 def new_line(notion, *m, **c):
     return {'update_context': {c_line: c[c_line] + 1}} if 'state' in c else None
 
+
 # Functions
 def out(notion, *m, **c):
-    global out_string
+    result = c.get(c_result) or ""
     o = ''
 
     if c_token in c:
@@ -91,12 +90,9 @@ def out(notion, *m, **c):
         o += data
 
     if o:
-        if out_string is None:
-            print o
-        else:
-            out_string += o.strip() + "\n"
+        result += o.strip() + "\n"
 
-    return {'update_context': {c_data: None}}
+    return {'update_context': {c_data: None, c_result: result}}
 
 
 def debug(a, *m, **c):
@@ -310,7 +306,7 @@ NextRelation(string_too_long, string_skip)
 
 ActionRelation(string_too_long, None,
                lambda r, *m, **c: [{"update_context": {c_token: "ERROR", c_data: "String constant too long"},
-                                    }, print_out])  # TODO: this is a trick to make visit print_out when query = break
+                                    }, print_out])  # This is a trick to make visit print_out when query = break
 
 # Adding chars
 string_add_to_string = ActionNotion("String Add to string", string_add)
@@ -427,23 +423,17 @@ def lex(s):
     logger.add_queries(True)
 
     s += EOF
-    out_string = ""
 
-    context = {"text": s, c_data: None, c_token: None, c_line: 1}
+    context = {"text": s, c_data: None, c_token: None, c_line: 1, c_result: ""}
 
     p = ParsingProcess()
     #p.callback = logger
 
-    r = p.parse(root, **context)
-    #print r
+    p.parse(root, **context)
 
-    #if r != "ok":
-    #    print p.errors
-
-    return out_string
+    return p.context[c_result]
 
 
 # Read file if any
 if len(sys.argv) > 2:
-    out_string = None
-    lex_file(sys.argv[1])
+    print lex_file(sys.argv[1])

@@ -1134,6 +1134,47 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, root)
 
+        # Error test
+        for relation in root.relations:
+            relation.subject = None
+
+        breaker = ActionNotion("breaker", ["break", "error"])
+        c1 = ConditionalRelation(root, breaker, "a")
+        n1 = NextRelation(root, ActionNotion("adder", add_to_result))
+
+        r = process.parse("new", root, text="a", test="test_selective_6")
+        self.assertTrue(r, "error")
+        self.assertNotIn("result", process.context)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertIn(root, process.errors)
+        self.assertIn(breaker, process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        breaker.action = "break"  # In this case Selective will not offer new cases
+
+        r = process.parse("new", root, text="a", test="test_selective_7")
+        self.assertTrue(r, "ok")
+        self.assertNotIn("result", process.context)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        breaker.action = "error"
+
+        r = process.parse("new", root, text="a", test="test_selective_8")
+        self.assertTrue(r, "error")
+        self.assertEqual(process.context["result"], "adder")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+        self.assertNotIn(root, process.errors)
+        self.assertNotIn(breaker, process.errors)
+        self.assertIn(process, process.errors)
+
     def test_special(self):
         #logger.add_queries()
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

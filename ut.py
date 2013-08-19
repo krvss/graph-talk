@@ -171,7 +171,7 @@ class SelectiveNotion(ComplexNotion):
             if context.get('errors'):
                 cases = context['state']['cases']
 
-                if cases and message[0] == 'next':  # TODO test not to go further if error
+                if cases and message[0] == 'next':
                     case = cases.pop(0)  # Try another case, if any
 
                     # Pop context and update state, then try another case and come back here
@@ -184,7 +184,7 @@ class SelectiveNotion(ComplexNotion):
 
         reply = super(SelectiveNotion, self).parse(*message, **context)
 
-        if not isinstance(reply, list) or (not message or message[0] != 'next'):  # TODO: isinstance of list or tuple
+        if not isinstance(reply, list) or (not message or message[0] != 'next'):
             return reply
 
         # Searching for the longest case
@@ -231,7 +231,7 @@ class ConditionalRelation(Relation):
     def __init__(self, subject, object, checker, mode=None):
         super(ConditionalRelation, self).__init__(subject, object)
         self.checker = checker
-        self.mode = mode  # TODO optional in selective notions
+        self.mode = mode
 
     # Return result and length of check
     def check(self, *message, **context):
