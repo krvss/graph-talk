@@ -45,7 +45,7 @@ SINGLE_CHAR_OP = ['@', '+', '-', '<', '{', '}', '.', ',', ':', ';', '(', ')', '=
 
 # Regexes
 EOL = r"(\n\r|\r\n|\n){1}"
-ESC_EOL = r"\\(\r\n|\n|\r){1}"
+ESC_EOL = r"\\(\r\n|\n|\r){1}" # TODO use same EOLs
 STRING_EOL = r"(\n){1}"
 WHITE_SPACE = r"[ \f\t\v]*"
 
