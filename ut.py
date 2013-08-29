@@ -11,6 +11,79 @@ class Abstract(object):
     def parse(self, *message, **context):
         pass
 
+    # Most convenient way to call
+    def __call__(self, *args, **kwargs):
+        return self.parse(*args, **kwargs)
+
+
+# Entity is a class for a convenient work with parsing calling message handlers
+class Entity(Abstract):
+    def __init__(self):
+        self.handlers = []
+
+    # Adding handlers
+    def on(self, condition, handler):
+        self.handlers.append((condition, handler))
+
+    def on(self, handler):
+        self.handlers.append(handler)
+
+    # Remove first occurrence of the handler
+    def off(self, handler):
+        for p in self.handlers:
+            if (is_list(p) and p[1] == handler) or p == handler:
+                self.handlers.remove(p)
+                break
+
+    # Calling handlers basing on condition
+    def handle(self, message, context):
+        rank, result, handler_found = 0, None, None
+
+        for handler in self.handlers:
+            # Condition check
+            if is_list(handler):
+                condition = handler[0](handle_rank=rank, handle_result=result, *message, **context) \
+                    if callable(handler[0]) else has_first(message, handler[0])
+            else:
+                condition = True
+
+            if not condition:
+                continue
+
+            handler_func = handler if not is_list(handler) else handler[1]
+            new_result = handler_func(handle_rank=rank, handle_result=result, handle_condition=condition,
+                                      *message, **context)
+
+            # Result check
+            if new_result:
+                if is_list(new_result):
+                    new_rank, new_result = new_result
+                elif not rank:
+                    new_rank = 1
+
+                # If there is something new - replace current ones
+                if new_rank > rank:
+                    rank, result, handler_found = new_rank, new_result, handler_func
+
+                if rank == 1:
+                    break  # Nothing to look for anymore
+
+        return result, handler_found
+
+    def parse(self, *message, **context):
+        reply, handler = self.handle(message, context)
+
+        if reply:
+            context["handler"] = handler
+            result_reply = self.handle(["result"] + list(message), context)[0]
+
+            if result_reply:
+                reply = result_reply
+        else:
+            reply = self.handle(["unknown"] + list(message), context)[0]
+
+        return reply
+
 
 # Notion is an abstract with name
 class Notion(Abstract):

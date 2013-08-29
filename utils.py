@@ -1,3 +1,5 @@
+from types import *
+
 # Class to track dict changes: add, change and delete key
 # Operations of the same type are not stacked, latter one replaces earlier of the same type
 class DictChangeOperation(object):
@@ -76,12 +78,12 @@ class DictChangeGroup(object):
 
 
 def is_number(n):
-    try:
-        n + 1
-        return True
-    except TypeError:
-        return False
+    return type(n) in (IntType, LongType)
+
+
+def is_list(l):
+    return hasattr(l, '__getitem__')
 
 
 def has_first(l, value):
-    return l and l[0] == value
+    return is_list(l) and l[0] == value
