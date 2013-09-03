@@ -11,29 +11,48 @@ class Abstract(object):
     def parse(self, *message, **context):
         pass
 
-    # Most convenient way to call
+    # A convenient way to call
     def __call__(self, *args, **kwargs):
         return self.parse(*args, **kwargs)
 
 
-# Entity is a class for a convenient work with parsing calling message handlers
-class Entity(Abstract):
+# Talker is a class for a convenient work with parsing calling message handlers
+class Talker(Abstract):
     def __init__(self):
         self.handlers = []
 
     # Adding handlers
     def on(self, condition, handler):
-        self.handlers.append((condition, handler))
+        if (condition, handler) not in self.handlers:
+            self.handlers.append((condition, handler))
 
-    def on(self, handler):
-        self.handlers.append(handler)
+    def on_all(self, handler):
+        if handler not in self.handlers:
+            self.handlers.append(handler)
 
-    # Remove first occurrence of the handler
-    def off(self, handler):
-        for p in self.handlers:
-            if (is_list(p) and p[1] == handler) or p == handler:
-                self.handlers.remove(p)
-                break
+    # Remove the first occurrence of the handler and condition
+    def off(self, condition, handler):
+        if (condition, handler) in self.handlers:
+            self.handlers.remove((condition, handler))
+
+    def off_all(self, handler):
+        if handler in self.handlers:
+            self.handlers.remove(handler)
+
+    # Checking for handling possibility
+    def can_handle(self, condition, message, context, rank=None, result=None):
+        if callable(condition):
+            return condition(handle_rank=rank, handle_result=result, *message, **context)
+
+        if is_regex(condition):
+            return condition.match(message[0])
+
+        if not is_list(condition):
+            condition = [condition]
+
+        for c in condition:
+            if has_first(message, c):
+                return True
 
     # Calling handlers basing on condition
     def handle(self, message, context):
@@ -41,11 +60,7 @@ class Entity(Abstract):
 
         for handler in self.handlers:
             # Condition check
-            if is_list(handler):
-                condition = handler[0](handle_rank=rank, handle_result=result, *message, **context) \
-                    if callable(handler[0]) else has_first(message, handler[0])
-            else:
-                condition = True
+            condition = self.can_handle(handler[0], message, context, rank, result) if is_list(handler) else True
 
             if not condition:
                 continue
@@ -74,16 +89,168 @@ class Entity(Abstract):
         reply, handler = self.handle(message, context)
 
         if reply:
-            context["handler"] = handler
-            result_reply = self.handle(["result"] + list(message), context)[0]
+            context['handler'] = handler
+            result_reply = self.handle(['result'] + list(message), context)[0]
 
             if result_reply:
                 reply = result_reply
         else:
-            reply = self.handle(["unknown"] + list(message), context)[0]
+            reply = self.handle(['unknown'] + list(message), context)[0]
 
         return reply
 
+    def notify(self, *message, **context):
+        context['from'] = self
+        return self.handle(message, context)
+
+
+# Element is a part of something bigger
+class Element(Talker):
+
+    FORWARD = ['next']
+    BACKWARD = ['break']
+    MOVE = FORWARD + BACKWARD
+
+    def __init__(self, owner=None):
+        super(Element, self).__init__()
+        self._owner, self.owner = None, owner
+
+    def get_event_name(self, name, pre=False):
+        p = '' if not pre else 'pre_'
+
+        return p + name + '_'
+
+    def set_property(self, name, value, attach=True, silent=False):
+        old_value = getattr(self, name)
+
+        if old_value == value:
+            return False
+
+        event = 'change_' + name
+
+        if not silent and self.notify(self.get_event_name(event, True), old=old_value, new=value):
+            return False  # Something stops us
+
+        setattr(self, '_%s' % name, value)
+
+        if attach and value:
+            self.on(event, value)
+
+        if not silent:
+            self.notify(self.get_event_name(event), old=old_value, new=value)  # Notify when both old and new present
+
+        if attach and old_value:
+            self.off(event, old_value)
+
+        return True
+
+    def on_forward(self, handler):
+        self.on(Element.FORWARD, handler)
+
+    def on_backward(self, handler):
+        self.on(Element.BACKWARD, handler)
+
+    def on_move(self, handler):
+        self.on(Element.MOVE, handler)
+
+    @property
+    def owner(self):
+        return self._owner
+
+    @owner.setter
+    def owner(self, value):
+        self.set_property('owner', value)
+
+
+# Notion is an element with name
+class Notion2(Element):
+    def __init__(self, name, owner=None):
+        super(Notion2, self).__init__(owner)
+        self._name, self.name = None, name
+
+    def __str__(self):
+        return '"%s"' % self.name
+
+    def __repr__(self):
+        return '<Notion("%s", %s)>' % (self.name, self.owner)
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    def name(self, value):
+        self.set_property('name', value)
+
+
+# Relation is a connection between one or more elements: subject -> object
+class Relation2(Element):
+    def __init__(self, subject, object, owner=None):
+        super(Relation2, self).__init__(owner)
+        self._object = self._subject = None
+        self.subject, self.object = subject, object
+
+    @property
+    def subject(self):
+        return self._subject
+
+    @subject.setter
+    def subject(self, value):
+        self.set_property(value, 'subject')
+
+    @property
+    def object(self):
+        return self._object
+
+    @object.setter
+    def object(self, value):
+        self.set_property(value, 'object')
+
+    def __str__(self):
+        return '<%s - %s>' % (self.subject, self.object)
+
+    def __repr__(self):
+        return self.__str__()
+
+
+# Complex notion is a notion that relates with other notions (objects)
+class ComplexNotion2(Notion2):
+    def __init__(self, name, owner=None):
+        super(ComplexNotion2, self).__init__(name, owner)
+        self._relations = []
+
+        self.on('change_subject', self.relate)
+        self.on_forward(self.next)
+
+    def relate(self, *message, **context):
+        relation = context.get('from')
+
+        if context['old'] == self and relation in self._relations:
+            self._relations.remove(relation)
+            return True
+
+        elif context['new'] == self and relation not in self._relations:
+            self._relations.append(relation)
+            return True
+
+    def next(self, *message, **context):
+        if self._relations:
+            return self._relations[0] if len(self._relations) == 1 else self.relations
+
+    @property
+    def relations(self):
+        return tuple(self._relations)
+
+
+# Next relation is just a simple sequence relation
+class NextRelation2(Relation2):
+    def __init__(self, subject, object, owner=None):
+        super(NextRelation2, self).__init__(subject, object, owner)
+
+        self.on_forward(lambda *m, **c: self.object)
+
+
+# Borderline between new and old
 
 # Notion is an abstract with name
 class Notion(Abstract):
