@@ -16,33 +16,36 @@ class Abstract(object):
         return self.parse(*args, **kwargs)
 
 
-# Handler is a class for a convenient work with parsing calling message handlers
+# Handler is a class for the routing of messages to processing functions (handlers) basing on specified conditions
 class Handler(Abstract):
     def __init__(self):
         self.handlers = []
 
-    # Adding handlers
+    # Adding the condition and handler pair
     def on(self, condition, handler):
         if (condition, handler) not in self.handlers:
             self.handlers.append((condition, handler))
 
+    # Adding the handler, without condition it will trigger on any message
     def on_any(self, handler):
         if handler not in self.handlers:
             self.handlers.append(handler)
 
-    # Remove handlers
+    # Remove condition and handler pair
     def off(self, condition, handler):
         if (condition, handler) in self.handlers:
             self.handlers.remove((condition, handler))
 
+    # Remove handler
     def off_any(self, handler):
         if handler in self.handlers:
             self.handlers.remove(handler)
 
+    # Remove all occurrences of the handler
     def off_all(self, handler):
         self.handlers = filter(lambda x: not ((is_list(x) and x[1] == handler) or x == handler), self.handlers)
 
-    # Checking for handling possibility
+    # Checking the condition to satisfy the message and context
     def can_handle(self, condition, *message, **context):
         if callable(condition):
             return condition(*message, **context)
@@ -57,50 +60,52 @@ class Handler(Abstract):
             if has_first(message, c):
                 return True
 
-    # Running selected handler
+    # Running the specified handler
     def run_handler(self, handler, *message, **context):
         return handler(*message, **context)
 
     # Calling handlers basing on condition
     def handle(self, *message, **context):
-        rank, result, handler_found = 0, None, None
+        rank, result, handler_found = -1, None, None
 
         for handler in self.handlers:
-            # Condition check
-            context.update({'handle_rank': rank, 'handle_result': result})
+            # Condition check, if no condition the result is true
             condition = self.can_handle(handler[0], *message, **context) if is_list(handler) else True
 
             if not condition:
                 continue
 
-            # Call handler
+            # Call handler, add the condition result to the context
             handler_func = handler if not is_list(handler) else handler[1]
-            context['handle_condition'] = condition
-            new_result = self.run_handler(handler, *message, **context)
+            new_result = self.run_handler(handler, condition=condition, *message, **context)
 
             # Result check
             if new_result:
                 if is_list(new_result):
                     new_rank, new_result = new_result
-                elif not rank:
-                    new_rank = 1
+                elif rank < 0:
+                    new_rank = 0
 
-                # If there is something new - replace current ones
+                # If there is something new - replace the current one
                 if new_rank > rank:
                     rank, result, handler_found = new_rank, new_result, handler_func
 
+                if new_rank == 0:  # Single reply has highest priority
+                    break
+
         return result, handler_found
 
+    # Notify handlers with the message, sender is this object
     def notify(self, *message, **context):
-        context['from'] = self
-        return self.handle(*message, **context)
+        return self.handle(*message, sender=self, **context)
 
+    # Parse means search for a handler
     def parse(self, *message, **context):
         reply, handler = self.handle(*message, **context)
 
+        # There is a way to override result and handle unknown message
         if reply:
-            context['handler'] = handler
-            final_reply = self.notify('result', message=message, context=context)
+            final_reply = self.notify('result', handler=handler, message=message, context=context)
         else:
             final_reply = self.notify('unknown', message=message, context=context)
 
