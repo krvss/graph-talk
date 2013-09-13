@@ -91,3 +91,10 @@ def has_first(l, value):
 
 def is_regex(r):
     return type(r).__name__ == 'SRE_Pattern'
+
+
+def get_callable(c):
+    if callable(c):
+        return c
+
+    raise TypeError('%s is not callable' % type(c))

@@ -21,29 +21,36 @@ class Handler(Abstract):
     def __init__(self):
         self.handlers = []
 
-    # Adding the condition and handler pair
+    # Adding the condition - handler pair
     def on(self, condition, handler):
-        if (condition, handler) not in self.handlers:
+        if (condition, get_callable(handler)) not in self.handlers:
             self.handlers.append((condition, handler))
 
     # Adding the handler, without condition it will trigger on any message
     def on_any(self, handler):
-        if handler not in self.handlers:
+        if get_callable(handler) not in self.handlers:
             self.handlers.append(handler)
 
-    # Remove condition and handler pair
+    # Removing the condition - handler pair
     def off(self, condition, handler):
         if (condition, handler) in self.handlers:
             self.handlers.remove((condition, handler))
 
-    # Remove handler
+    # Removing the handler
     def off_any(self, handler):
         if handler in self.handlers:
             self.handlers.remove(handler)
 
     # Remove all occurrences of the handler
     def off_all(self, handler):
-        self.handlers = filter(lambda x: not ((is_list(x) and x[1] == handler) or x == handler), self.handlers)
+        self.handlers = filter(lambda h: not ((is_list(h) and h[1] == handler) or h == handler), self.handlers)
+
+    # Getting the handlers for the specified condition
+    def get_handlers(self, condition=None):
+        if condition:
+            return [h for h in self.handlers if has_first(h, condition)]
+        else:
+            return [h for h in self.handlers if not is_list(h)]
 
     # Checking the condition to satisfy the message and context
     def can_handle(self, condition, *message, **context):
@@ -58,7 +65,7 @@ class Handler(Abstract):
 
         for c in condition:
             if has_first(message, c):
-                return True
+                return c
 
     # Running the specified handler
     def run_handler(self, handler, *message, **context):
@@ -66,91 +73,138 @@ class Handler(Abstract):
 
     # Calling handlers basing on condition
     def handle(self, *message, **context):
-        rank, result, handler_found = -1, None, None
+        result, handler_found, rank = None, None, -1
 
         for handler in self.handlers:
             # Condition check, if no condition the result is true
-            condition = self.can_handle(handler[0], *message, **context) if is_list(handler) else True
+            condition = self.can_handle(handler[0], sender=self, *message, **context) if is_list(handler) else True
 
             if not condition:
                 continue
 
             # Call handler, add the condition result to the context
             handler_func = handler if not is_list(handler) else handler[1]
-            new_result = self.run_handler(handler, condition=condition, *message, **context)
+            new_result = self.run_handler(handler, sender=self, condition=condition, *message, **context)
 
             # Result check
             if new_result:
                 if is_list(new_result):
-                    new_rank, new_result = new_result
+                    new_result, new_rank = new_result
                 elif rank < 0:
                     new_rank = 0
 
                 # If there is something new - replace the current one
                 if new_rank > rank:
-                    rank, result, handler_found = new_rank, new_result, handler_func
+                    result, handler_found, rank = new_result, handler_func, new_rank
 
-                if new_rank == 0:  # Single reply has highest priority
+                if new_rank == 0:  # Single reply has the highest priority
                     break
 
-        return result, handler_found
+        return result, handler_found, rank
 
-    # Notify handlers with the message, sender is this object
-    def notify(self, *message, **context):
-        return self.handle(*message, sender=self, **context)
+    def handle_result(self, *message, **context):
+        return self.handle(*message, **context)[0]
 
     # Parse means search for a handler
     def parse(self, *message, **context):
-        reply, handler = self.handle(*message, **context)
+        return self.handle_result(*message, **context)
+
+
+# Handler which uses notifications
+class Talker(Handler):
+    PRE_SUFFIX = 'pre'
+    POST_SUFFIX = 'post'
+    RESULT = 'result'
+    UNKNOWN = 'unknown'
+
+    SEP = '_'
+    SILENT = (RESULT, UNKNOWN)
+
+    # Get readable event name
+    def get_event_name(self, event, suffix=None):
+        if event:
+            event_name = event.__name__ if hasattr(event, '__name__') else str(event)
+        else:
+            event_name = ''
+
+        if suffix:
+            event_name = '%s%s%s' % (suffix, Talker.SEP, event_name)
+
+        return event_name
+
+    # Should message go silent or not, useful to avoid recursions
+    def is_silent(self, *message):
+        first_str = str(message[0])
+
+        return first_str.startswith(self.get_event_name(Talker.PRE_SUFFIX)) or \
+            first_str.startswith(self.get_event_name(Talker.POST_SUFFIX)) or \
+            first_str in Talker.SILENT
+
+    # Runs the handler with pre and post notifications
+    def run_handler(self, handler, *message, **context):
+        event_name = context.get('event_name') or handler
+
+        if not self.is_silent(*message):
+            pre_result = self.handle(self.get_event_name(event_name, Talker.PRE_SUFFIX),
+                                     handler=handler, *message, **context)
+            if pre_result[0]:
+                return pre_result
+
+        result = super(Talker, self).run_handler(self.get_event_name(event_name), *message, **context)
+
+        if not self.is_silent(*message):
+            post_result = self.handle(self.get_event_name(event_name, Talker.POST_SUFFIX),
+                                      handler=handler, result=result[0] if is_list(result) else result,
+                                      rank=result[1] if is_list(result) else None, *message, **context)
+            if post_result[0]:
+                result = post_result
+
+        return result
+
+    # Parse means search for a handler
+    def parse(self, *message, **context):
+        result, handler, rank = self.handle(*message, **context)
 
         # There is a way to override result and handle unknown message
-        if reply:
-            final_reply = self.notify('result', handler=handler, message=message, context=context)
+        if result:
+            result = self.handle_result(Talker.RESULT, result=result, handler=handler, rank=rank, *message, **context) \
+                or result  # override has priority
         else:
-            final_reply = self.notify('unknown', message=message, context=context)
+            result = self.handle_result(Talker.UNKNOWN, *message, **context)  # None is a worst case, but this is ok
 
-        return final_reply[0] if final_reply else reply
+        return result
 
 
-# Element is a part of something bigger
-class Element(Handler):
+# Element is a part of a bigger system
+class Element(Talker):
+    NEXT = 'next'
+    BREAK = 'break'
+    SET_PREFIX = 'set'
 
-    FORWARD = ['next']
-    BACKWARD = ['break']
+    FORWARD = NEXT,
+    BACKWARD = BREAK,
     MOVE = FORWARD + BACKWARD
 
     def __init__(self, owner=None):
         super(Element, self).__init__()
         self._owner, self.owner = None, owner
 
-    def get_event_name(self, name, pre=False):
-        p = '' if not pre else 'pre_'
+    def set_property(self, name, old_value, new_value, event_name):
+        setattr(self, '_%s' % name, new_value)
 
-        return p + name + '_'
+        if isinstance(new_value, Abstract):
+            new_value(event_name, sender=self, old=old_value, new=new_value)
 
-    def set_property(self, name, value, attach=True, silent=False):
+        return True
+
+    def change_property(self, name, value):
         old_value = getattr(self, name)
 
         if old_value == value:
             return False
 
-        event = 'change_' + name
-
-        if not silent and self.notify(self.get_event_name(event, True), old=old_value, new=value):
-            return False  # Something stops us
-
-        setattr(self, '_%s' % name, value)
-
-        if attach and value:
-            self.on(event, value)
-
-        if not silent:
-            self.notify(self.get_event_name(event), old=old_value, new=value)  # Notify when both old and new present
-
-        if attach and old_value:
-            self.off(event, old_value)
-
-        return True
+        return self.run_handler(self.set_property, name=name, old_value=old_value, new_value=value,
+                                event_name=self.get_event_name(name, Element.SET_PREFIX),)[0]
 
     def on_forward(self, handler):
         self.on(Element.FORWARD, handler)
@@ -167,7 +221,7 @@ class Element(Handler):
 
     @owner.setter
     def owner(self, value):
-        self.set_property('owner', value)
+        self.change_property('owner', value)
 
 
 # Notion is an element with name
@@ -188,7 +242,7 @@ class Notion2(Element):
 
     @name.setter
     def name(self, value):
-        self.set_property('name', value)
+        self.change_property('name', value)
 
 
 # Relation is a connection between one or more elements: subject -> object
@@ -204,7 +258,7 @@ class Relation2(Element):
 
     @subject.setter
     def subject(self, value):
-        self.set_property(value, 'subject')
+        self.change_property(value, 'subject')
 
     @property
     def object(self):
@@ -212,7 +266,7 @@ class Relation2(Element):
 
     @object.setter
     def object(self, value):
-        self.set_property(value, 'object')
+        self.change_property(value, 'object')
 
     def __str__(self):
         return '<%s - %s>' % (self.subject, self.object)
@@ -227,7 +281,7 @@ class ComplexNotion2(Notion2):
         super(ComplexNotion2, self).__init__(name, owner)
         self._relations = []
 
-        self.on('change_subject', self.relate)
+        self.on(('pre_set_subject', 'post_set_subject'), self.relate)
         self.on_forward(self.next)
 
     def relate(self, *message, **context):
@@ -235,11 +289,11 @@ class ComplexNotion2(Notion2):
 
         if context['old'] == self and relation in self._relations:
             self._relations.remove(relation)
-            return True
+            return
 
         elif context['new'] == self and relation not in self._relations:
             self._relations.append(relation)
-            return True
+            return
 
     def next(self, *message, **context):
         if self._relations:
@@ -258,6 +312,7 @@ class NextRelation2(Relation2):
         self.on_forward(lambda *m, **c: self.object)
 
 
+# TODO
 class Process2(Handler):
     def __init__(self):
         super(Process2, self).__init__()
@@ -299,7 +354,7 @@ class Process2(Handler):
 
     # Queue processing
     def _queueing_properties(self):
-        return {'message': [], 'context': {}, 'current': None, 'reply': None}
+        return {'message': [], 'context': {}, 'current': None, 'reply': None}  # todo defaultdict?
 
     def _to_queue(self, update, **update_dict):
         top = dict([(p, getattr(self, p)) for p in self._queueing_properties().keys()])
