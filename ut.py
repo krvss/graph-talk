@@ -189,6 +189,7 @@ class Element(Talker):
         super(Element, self).__init__()
         self._owner, self.owner = None, owner
 
+    # Set the property to the new value
     def set_property(self, name, old_value, new_value, event_name):
         setattr(self, '_%s' % name, new_value)
 
@@ -203,8 +204,9 @@ class Element(Talker):
         if old_value == value:
             return False
 
+        # We change property via handler to allow notifications
         return self.run_handler(self.set_property, name=name, old_value=old_value, new_value=value,
-                                event_name=self.get_event_name(name, Element.SET_PREFIX),)[0]
+                                event_name=self.get_event_name(name, Element.SET_PREFIX),)[0] is None  # None means OK
 
     def on_forward(self, handler):
         self.on(Element.FORWARD, handler)
@@ -281,7 +283,7 @@ class ComplexNotion2(Notion2):
         super(ComplexNotion2, self).__init__(name, owner)
         self._relations = []
 
-        self.on(('pre_set_subject', 'post_set_subject'), self.relate)
+        self.on('set_subject', self.relate)
         self.on_forward(self.next)
 
     def relate(self, *message, **context):
@@ -289,10 +291,12 @@ class ComplexNotion2(Notion2):
 
         if context['old'] == self and relation in self._relations:
             self._relations.remove(relation)
+            relation.off('pre_set_subject', self)
             return
 
         elif context['new'] == self and relation not in self._relations:
             self._relations.append(relation)
+            relation.on('pre_set_subject', self)
             return
 
     def next(self, *message, **context):
