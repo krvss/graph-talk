@@ -99,6 +99,60 @@ def stop_infinite(notion, *message, **context):
 
 class UtTests(unittest.TestCase):
 
+    def test_abstract(self):
+        a = Abstract()
+        self.assertEqual(a.parse(), a())
+
+    def test_handler(self):
+        h = Handler()
+
+        handler1 = lambda *m, **c: (True, 1)
+
+        # Generic "on"
+        h.on('event', handler1)
+
+        self.assertIn(('event', handler1), h.handlers)
+
+        # Cannot add duplicates
+        h.on('event', handler1)
+
+        self.assertEqual(len(h.handlers), 1)
+
+        # Cannot add non-callable
+        self.assertRaises(TypeError, h.on, condition='event', handler=1)
+
+        # On any
+        h.on_any(handler1)
+
+        self.assertEqual(len(h.handlers), 2)
+        self.assertIn(handler1, h.handlers)
+
+        # No duplicates on on_any too
+        h.on_any(handler1)
+
+        self.assertEqual(len(h.handlers), 2)
+
+        # No non-callables on on_any too
+        self.assertRaises(TypeError, h.on_any, handler=1)
+
+        # Generic off
+        h.off('event', handler1)
+
+        self.assertNotIn(('event', handler1), h.handlers)
+
+        # Off-any
+        h.on('event', handler1)
+        h.off_any(handler1)
+
+        self.assertNotIn(handler1, h.handlers)
+        self.assertIn(('event', handler1), h.handlers)
+
+        # Off-all
+        h.on_any(handler1)
+
+        h.off_all(handler1)
+        self.assertEqual(len(h.handlers), 0)
+
     # General objects test
     def test_objects(self):
         n1 = Notion("n1")

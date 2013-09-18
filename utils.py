@@ -98,3 +98,11 @@ def get_callable(c):
         return c
 
     raise TypeError('%s is not callable' % type(c))
+
+
+def tuples(*args):
+    res = ()
+    for arg in args:
+        res += tuple(arg) if is_list(args) else (arg, )
+
+    return res
