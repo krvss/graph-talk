@@ -53,7 +53,7 @@ class Handler(Abstract):
     # Getting the handlers for the specified condition
     def get_handlers(self, condition=None):
         if condition:
-            return [h for h in self.handlers if has_first(h, condition)]
+            return [h[1] for h in self.handlers if has_first(h, condition)]
         else:
             return [h for h in self.handlers if not is_list(h)]
 
@@ -92,7 +92,7 @@ class Handler(Abstract):
 
             # Call handler, add the condition result to the context
             handler_func = handler if not is_list(handler) else handler[1]
-            new_result = self.run_handler(handler, message, context)
+            new_result = self.run_handler(handler_func, message, context)
 
             # Result check
             if new_result:
@@ -105,9 +105,6 @@ class Handler(Abstract):
                 if new_rank > rank:
                     result, handler_found, rank = new_result, handler_func, new_rank
 
-                if new_rank == 0:  # Single reply has the highest priority
-                    break
-
         return result, handler_found, rank
 
     def handle_result(self, message, context):
@@ -115,7 +112,7 @@ class Handler(Abstract):
 
     # Parse means search for a handler
     def parse(self, *message, **context):
-        return self.handle_result(*message, **context)
+        return self.handle_result(message, context)
 
 
 # Handler which uses notifications

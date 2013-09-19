@@ -82,7 +82,7 @@ def is_number(n):
 
 
 def is_list(l):
-    return hasattr(l, '__getitem__')
+    return isinstance(l, list) or isinstance(l, tuple)
 
 
 def has_first(l, value):

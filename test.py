@@ -97,6 +97,14 @@ def stop_infinite(notion, *message, **context):
     return {"update_context": {"infinite": counter}, "error": "trying to break"}
 
 
+class TestCalls:
+    def returnFalse(self, *m, **c):
+        return False
+
+    def returnTrue(self, *m, **c):
+        return True
+
+
 class UtTests(unittest.TestCase):
 
     def test_abstract(self):
@@ -107,6 +115,7 @@ class UtTests(unittest.TestCase):
         h = Handler()
 
         handler1 = lambda *m, **c: (True, 1)
+        handler2 = lambda *m, **c: (True, 2)
 
         # Generic "on"
         h.on('event', handler1)
@@ -152,6 +161,80 @@ class UtTests(unittest.TestCase):
 
         h.off_all(handler1)
         self.assertEqual(len(h.handlers), 0)
+
+        # Get handlers
+        h.on('event', handler1)
+        h.on('event', handler2)
+
+        h.on_any(handler2)
+
+        self.assertEqual(h.get_handlers('event'), [handler1, handler2])
+        self.assertEqual(h.get_handlers(), [handler2])
+
+        # Conditions
+        condition1 = lambda *m, **c: m[0] == 1
+
+        t = TestCalls()
+
+        conditionR = re.compile("a+")
+
+        self.assertTrue(h.can_handle(condition1, [1], {}))
+        self.assertFalse(h.can_handle(condition1, [2], {}))
+
+        self.assertFalse(h.can_handle(t.returnFalse, [], {}))
+
+        self.assertTrue(h.can_handle(conditionR, ["a"], {}))
+        self.assertTrue(h.can_handle(conditionR, ["ab"], {}))
+        self.assertFalse(h.can_handle(conditionR, ["b"], {}))
+
+        self.assertTrue(h.can_handle("aa", ["aa"], {}))
+        self.assertFalse(h.can_handle("b", ["aa"], {}))
+
+        self.assertTrue(h.can_handle(("aa", "bb"), ["bb"], {}))
+        self.assertFalse(h.can_handle(("aa", "bb"), ["c"], {}))
+
+        # Run handler
+        self.assertFalse(h.run_handler(t.returnFalse, [], {}))
+        self.assertTrue(h.run_handler(handler1, [], {})[0])
+
+        # Handle itself
+        del h.handlers[:]
+        h.on('event', handler1)
+        h.on('event', handler2)
+
+        # Specified event - highest rank wins
+        handler3 = lambda *m, **c: 2 if (c[Handler.SENDER] == h and c[Handler.CONDITION] is True) else 0
+
+        r = h.handle(['event'], {})
+
+        self.assertTrue(r[0])
+        self.assertEqual(r[1], handler2)
+        self.assertEqual(r[2], 2)
+
+        self.assertFalse(h.parse('eve'))
+
+        # Any event - no-condition wins
+        h.on_any(handler3)
+
+        r = h.handle(['even'], {})
+        self.assertEqual(r[0], 2)
+        self.assertEqual(r[1], handler3)
+        self.assertEqual(r[2], 0)
+
+        # Specific event beats any handler
+        r = h.handle(['event'], {})
+        self.assertEqual(r[0], True)
+        self.assertEqual(r[1], handler2)
+        self.assertEqual(r[2], 2)
+
+        # For any events first default wins wins
+        h.on_any(t.returnTrue)
+
+        r = h.handle(['even'], {})
+        self.assertEqual(r[0], 2)
+        self.assertEqual(r[1], handler3)
+        self.assertEqual(r[2], 0)
+
 
     # General objects test
     def test_objects(self):
