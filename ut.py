@@ -74,11 +74,16 @@ class Handler(Abstract):
 
     # Running the specified handler
     def run_handler(self, handler, message, context):
-        return handler(*message, **context)
+        result = handler(*message, **context)
+
+        if not is_list(result):
+            result = result, 0
+
+        return tuples(result, handler)
 
     # Calling handlers basing on condition
     def handle(self, message, context):
-        result, handler_found, rank = None, None, -1
+        result, rank, handler_found = None, -1, None
         context[self.SENDER] = self
 
         for handler in self.handlers:
@@ -92,20 +97,17 @@ class Handler(Abstract):
 
             # Call handler, add the condition result to the context
             handler_func = handler if not is_list(handler) else handler[1]
-            new_result = self.run_handler(handler_func, message, context)
+            handle_result = self.run_handler(handler_func, message, context)
 
             # Result check
-            if new_result:
-                if is_list(new_result):
-                    new_result, new_rank = new_result
-                elif rank < 0:
-                    new_rank = 0
+            if handle_result[0]:
+                new_result, new_rank, handler_func = handle_result
 
                 # If there is something new - replace the current one
                 if new_rank > rank:
-                    result, handler_found, rank = new_result, handler_func, new_rank
+                    result, rank, handler_found = new_result, new_rank, handler_func
 
-        return result, handler_found, rank
+        return result, rank, handler_found
 
     def handle_result(self, message, context):
         return self.handle(message, context)[0]
@@ -149,33 +151,33 @@ class Talker(Handler):
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
         event_name = context.get(self.EVENT_NAME) or handler
-        context[self.HANDLER] = handler
 
         if not self.is_silent(message):
+            context[self.HANDLER] = handler
+
             pre_result = self.handle(tuples(self.get_event_name(event_name, self.PRE_PREFIX), message), context)
             if pre_result[0]:
-                return pre_result[0], pre_result[2]  # Ignoring the handler
+                return pre_result
 
-        result = super(Talker, self).run_handler(handler, tuples(self.get_event_name(event_name), message), context)
+        result = super(Talker, self).run_handler(handler, tuples(self.get_event_name(event_name), message), context)  # TODO spoiling context
 
         if not self.is_silent(message):
-            context.update({self.RESULT: result[0] if is_list(result) else result,
-                            self.RANK: result[1] if is_list(result) else None})
+            context.update({self.RESULT: result[0], self.RANK: result[1], self.HANDLER: handler})
 
             post_result = self.handle(tuples(self.get_event_name(event_name, self.POST_PREFIX), message), context)
 
             if post_result[0]:
-                result = post_result[0], post_result[2]
+                return post_result
 
         return result
 
     # Parse means search for a handler
     def parse(self, *message, **context):
-        result, handler, rank = self.handle(message, context)
+        result, rank, handler = self.handle(message, context)
 
         # There is a way to override result and handle unknown message
         if result:
-            context.update({self.RESULT: result, self.HANDLER: handler, self.RANK: rank})
+            context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler})
 
             result = self.handle_result(tuples(self.RESULT, message), context) or result  # override has priority
         else:

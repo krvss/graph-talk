@@ -194,7 +194,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(h.can_handle(("aa", "bb"), ["c"], {}))
 
         # Run handler
-        self.assertFalse(h.run_handler(tc.returnFalse, [], {}))
+        self.assertFalse(h.run_handler(tc.returnFalse, [], {})[0])
         self.assertTrue(h.run_handler(handler1, [], {})[0])
 
         # Handle itself
@@ -208,8 +208,8 @@ class UtTests(unittest.TestCase):
         r = h.handle(['event'], {})
 
         self.assertTrue(r[0])
-        self.assertEqual(r[1], handler2)
-        self.assertEqual(r[2], 2)
+        self.assertEqual(r[1], 2)
+        self.assertEqual(r[2], handler2)
 
         self.assertFalse(h.parse('eve'))
 
@@ -218,22 +218,22 @@ class UtTests(unittest.TestCase):
 
         r = h.handle(['even'], {})
         self.assertEqual(r[0], 2)
-        self.assertEqual(r[1], handler3)
-        self.assertEqual(r[2], 0)
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], handler3)
 
         # Specific event beats any handler
         r = h.handle(['event'], {})
         self.assertEqual(r[0], True)
-        self.assertEqual(r[1], handler2)
-        self.assertEqual(r[2], 2)
+        self.assertEqual(r[1], 2)
+        self.assertEqual(r[2], handler2)
 
         # For any events first default wins wins
         h.on_any(tc.returnTrue)
 
         r = h.handle(['even'], {})
         self.assertEqual(r[0], 2)
-        self.assertEqual(r[1], handler3)
-        self.assertEqual(r[2], 0)
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], handler3)
 
     def test_talker(self):
         t = Talker()
@@ -256,10 +256,41 @@ class UtTests(unittest.TestCase):
         # Handling
         handler1 = lambda *m, **c: 'handler1'
 
+        # Stopping before return
         t.on('event', tc.returnTrue)
         t.on('pre_returnTrue', handler1)
 
-        self.assertEqual(t.parse('event'), 'handler1')
+        r = t.handle(['event'], {})
+        self.assertEqual(r[0], 'handler1')
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], handler1)
+
+        # Overriding result
+        t.off('pre_returnTrue', handler1)
+
+        handler2 = lambda *m, **c: 'handler2' if (c.get('result') and c.get('rank') == 0
+                                                  and c.get('handler') == tc.returnTrue) else None
+        t.on('post_returnTrue', handler2)
+
+        r = t.handle(['event'], {})
+        self.assertEqual(r[0], 'handler2')
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], handler2)
+
+        # Now clean run
+        t.off('post_returnTrue', handler2)
+
+        r = t.handle(['event'], {})
+        self.assertTrue(r[0])
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], tc.returnTrue)
+
+        # Result test
+        t.on(t.RESULT, handler2)
+        self.assertEqual(t.parse('event'), 'handler2')
+
+        t.on(t.UNKNOWN, handler1)
+        self.assertEqual(t.parse('event2'), 'handler1')
 
     # General objects test
     def test_objects(self):
