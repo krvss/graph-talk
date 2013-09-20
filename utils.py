@@ -103,6 +103,6 @@ def get_callable(c):
 def tuples(*args):
     res = ()
     for arg in args:
-        res += tuple(arg) if is_list(args) else (arg, )
+        res += tuple(arg) if is_list(arg) else (arg, )
 
     return res

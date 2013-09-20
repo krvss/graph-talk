@@ -174,14 +174,14 @@ class UtTests(unittest.TestCase):
         # Conditions
         condition1 = lambda *m, **c: m[0] == 1
 
-        t = TestCalls()
+        tc = TestCalls()
 
         conditionR = re.compile("a+")
 
         self.assertTrue(h.can_handle(condition1, [1], {}))
         self.assertFalse(h.can_handle(condition1, [2], {}))
 
-        self.assertFalse(h.can_handle(t.returnFalse, [], {}))
+        self.assertFalse(h.can_handle(tc.returnFalse, [], {}))
 
         self.assertTrue(h.can_handle(conditionR, ["a"], {}))
         self.assertTrue(h.can_handle(conditionR, ["ab"], {}))
@@ -194,7 +194,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(h.can_handle(("aa", "bb"), ["c"], {}))
 
         # Run handler
-        self.assertFalse(h.run_handler(t.returnFalse, [], {}))
+        self.assertFalse(h.run_handler(tc.returnFalse, [], {}))
         self.assertTrue(h.run_handler(handler1, [], {})[0])
 
         # Handle itself
@@ -228,13 +228,38 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], 2)
 
         # For any events first default wins wins
-        h.on_any(t.returnTrue)
+        h.on_any(tc.returnTrue)
 
         r = h.handle(['even'], {})
         self.assertEqual(r[0], 2)
         self.assertEqual(r[1], handler3)
         self.assertEqual(r[2], 0)
 
+    def test_talker(self):
+        t = Talker()
+        tc = TestCalls()
+
+        # Names
+        self.assertEqual(t.get_event_name('event'), 'event')
+        self.assertEqual(t.get_event_name('event', '1', '2'), Talker.SEP.join(['1', '2', 'event']))
+        self.assertEqual(t.get_event_name(t.get_event_name), 'get_event_name')
+        self.assertEqual(t.get_event_name(None, t.PRE_PREFIX), t.PRE_PREFIX + t.SEP)
+
+        # Silent
+        self.assertTrue(t.is_silent([t.PRE_PREFIX]))
+        self.assertTrue(t.is_silent([t.POST_PREFIX]))
+        for s in t.SILENT:
+            self.assertTrue(t.is_silent([s]))
+
+        self.assertFalse(t.is_silent('loud'))
+
+        # Handling
+        handler1 = lambda *m, **c: 'handler1'
+
+        t.on('event', tc.returnTrue)
+        t.on('pre_returnTrue', handler1)
+
+        self.assertEqual(t.parse('event'), 'handler1')
 
     # General objects test
     def test_objects(self):

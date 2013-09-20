@@ -79,7 +79,7 @@ class Handler(Abstract):
     # Calling handlers basing on condition
     def handle(self, message, context):
         result, handler_found, rank = None, None, -1
-        context[Handler.SENDER] = self
+        context[self.SENDER] = self
 
         for handler in self.handlers:
             # Condition check, if no condition the result is true
@@ -88,7 +88,7 @@ class Handler(Abstract):
             if not condition:
                 continue
             else:
-                context[Handler.CONDITION] = condition
+                context[self.CONDITION] = condition
 
             # Call handler, add the condition result to the context
             handler_func = handler if not is_list(handler) else handler[1]
@@ -134,7 +134,7 @@ class Talker(Handler):
             event_name = ''
 
         if prefixes:
-            event_name = Talker.SEP.join(prefixes) + event_name
+            event_name = Talker.SEP.join(tuples(prefixes, event_name))
 
         return event_name
 
@@ -142,44 +142,44 @@ class Talker(Handler):
     def is_silent(self, message):
         first_str = str(message[0])
 
-        return first_str.startswith(self.get_event_name(Talker.PRE_PREFIX)) or \
-            first_str.startswith(self.get_event_name(Talker.POST_PREFIX)) or \
-            first_str in Talker.SILENT
+        return first_str.startswith(self.get_event_name(self.PRE_PREFIX)) or \
+            first_str.startswith(self.get_event_name(self.POST_PREFIX)) or \
+            first_str in self.SILENT
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
-        event_name = context.get(Talker.EVENT_NAME) or handler
-        context[Talker.HANDLER] = handler
+        event_name = context.get(self.EVENT_NAME) or handler
+        context[self.HANDLER] = handler
 
         if not self.is_silent(message):
-            pre_result = self.handle(tuples(self.get_event_name(event_name, Talker.PRE_PREFIX), message), context)
+            pre_result = self.handle(tuples(self.get_event_name(event_name, self.PRE_PREFIX), message), context)
             if pre_result[0]:
-                return pre_result
+                return pre_result[0], pre_result[2]  # Ignoring the handler
 
         result = super(Talker, self).run_handler(handler, tuples(self.get_event_name(event_name), message), context)
 
-        if not self.is_silent(*message):
-            context.update({Talker.RESULT: result[0] if is_list(result) else result,
-                            Talker.RANK: result[1] if is_list(result) else None})
+        if not self.is_silent(message):
+            context.update({self.RESULT: result[0] if is_list(result) else result,
+                            self.RANK: result[1] if is_list(result) else None})
 
-            post_result = self.handle(tuples(self.get_event_name(event_name, Talker.POST_PREFIX), message), context)
+            post_result = self.handle(tuples(self.get_event_name(event_name, self.POST_PREFIX), message), context)
 
             if post_result[0]:
-                result = post_result
+                result = post_result[0], post_result[2]
 
         return result
 
     # Parse means search for a handler
     def parse(self, *message, **context):
-        result, handler, rank = self.handle(*message, **context)
+        result, handler, rank = self.handle(message, context)
 
         # There is a way to override result and handle unknown message
         if result:
-            context.update({Talker.RESULT: result, Talker.HANDLER: handler, Talker.RANK: rank})
+            context.update({self.RESULT: result, self.HANDLER: handler, self.RANK: rank})
 
-            result = self.handle_result(tuples(Talker.RESULT, message), context) or result  # override has priority
+            result = self.handle_result(tuples(self.RESULT, message), context) or result  # override has priority
         else:
-            result = self.handle_result(tuples(Talker.UNKNOWN, message), context)
+            result = self.handle_result(tuples(self.UNKNOWN, message), context)
 
         return result
 
@@ -218,19 +218,19 @@ class Element(Talker):
             return False
 
         # We change property via handler to allow notifications
-        context = {Element.NAME: name, Element.OLD_VALUE: old_value, Element.NEW_VALUE: value,
-                   Element.EVENT_NAME: self.get_event_name(name, Element.SET_PREFIX)}
+        context = {self.NAME: name, self.OLD_VALUE: old_value, self.NEW_VALUE: value,
+                   self.EVENT_NAME: self.get_event_name(name, self.SET_PREFIX)}
 
         return self.run_handler(self.set_property, **context)[0] is None  # If no reply that means everything's OK
 
     def on_forward(self, handler):
-        self.on(Element.FORWARD, handler)
+        self.on(self.FORWARD, handler)
 
     def on_backward(self, handler):
-        self.on(Element.BACKWARD, handler)
+        self.on(self.BACKWARD, handler)
 
     def on_move(self, handler):
-        self.on(Element.MOVE, handler)
+        self.on(self.MOVE, handler)
 
     @property
     def owner(self):
@@ -259,7 +259,7 @@ class Notion2(Element):
 
     @name.setter
     def name(self, value):
-        self.change_property(Notion2.NAME, value)
+        self.change_property(self.NAME, value)
 
 
 # Relation is a connection between one or more elements: subject -> object
@@ -278,7 +278,7 @@ class Relation2(Element):
 
     @subject.setter
     def subject(self, value):
-        self.change_property(value, Relation2.SUBJECT)
+        self.change_property(value, self.SUBJECT)
 
     @property
     def object(self):
@@ -286,7 +286,7 @@ class Relation2(Element):
 
     @object.setter
     def object(self, value):
-        self.change_property(value, Relation2.OBJECT)
+        self.change_property(value, self.OBJECT)
 
     def __str__(self):
         return '<%s - %s>' % (self.subject, self.object)
@@ -301,19 +301,19 @@ class ComplexNotion2(Notion2):
         super(ComplexNotion2, self).__init__(name, owner)
         self._relations = []
 
-        self.on(self.get_event_name(Relation2.SUBJECT, ComplexNotion2.SET_PREFIX), self.relate)
+        self.on(self.get_event_name(Relation2.SUBJECT, self.SET_PREFIX), self.relate)
         self.on_forward(self.next)
 
     def relate(self, *message, **context):
-        relation = context.get(ComplexNotion2.SENDER)
-        event_name = self.get_event_name(Relation2.SUBJECT, ComplexNotion2.PRE_PREFIX, ComplexNotion2.SET_PREFIX)
+        relation = context.get(self.SENDER)
+        event_name = self.get_event_name(Relation2.SUBJECT, self.PRE_PREFIX, self.SET_PREFIX)
 
-        if context[ComplexNotion2.OLD_VALUE] == self and relation in self._relations:
+        if context[self.OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
             relation.off(event_name, self)
             return
 
-        elif context[ComplexNotion2.NEW_VALUE] == self and relation not in self._relations:
+        elif context[self.NEW_VALUE] == self and relation not in self._relations:
             self._relations.append(relation)
             relation.on(event_name, self)
             return
