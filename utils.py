@@ -100,9 +100,13 @@ def get_callable(c):
     raise TypeError('%s is not callable' % type(c))
 
 
-def tuples(*args):
+def tupled(*args):
     res = ()
     for arg in args:
         res += tuple(arg) if is_list(arg) else (arg, )
 
     return res
+
+
+def get_object_name(obj):
+    return obj.__name__ if hasattr(obj, '__name__') else str(obj)

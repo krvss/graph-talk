@@ -205,7 +205,7 @@ class UtTests(unittest.TestCase):
         # Specified event - highest rank wins
         handler3 = lambda *m, **c: 2 if (c[Handler.SENDER] == h and c[Handler.CONDITION] is True) else 0
 
-        r = h.handle(['event'], {})
+        r = h.handle('event')
 
         self.assertTrue(r[0])
         self.assertEqual(r[1], 2)
@@ -216,13 +216,13 @@ class UtTests(unittest.TestCase):
         # Any event - no-condition wins
         h.on_any(handler3)
 
-        r = h.handle(['even'], {})
+        r = h.handle('even')
         self.assertEqual(r[0], 2)
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
         # Specific event beats any handler
-        r = h.handle(['event'], {})
+        r = h.handle('event')
         self.assertEqual(r[0], True)
         self.assertEqual(r[1], 2)
         self.assertEqual(r[2], handler2)
@@ -230,7 +230,7 @@ class UtTests(unittest.TestCase):
         # For any events first default wins wins
         h.on_any(tc.returnTrue)
 
-        r = h.handle(['even'], {})
+        r = h.handle('even')
         self.assertEqual(r[0], 2)
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
@@ -240,16 +240,16 @@ class UtTests(unittest.TestCase):
         tc = TestCalls()
 
         # Names
-        self.assertEqual(t.get_event_name('event'), 'event')
-        self.assertEqual(t.get_event_name('event', '1', '2'), Talker.SEP.join(['1', '2', 'event']))
-        self.assertEqual(t.get_event_name(t.get_event_name), 'get_event_name')
-        self.assertEqual(t.get_event_name(None, t.PRE_PREFIX), t.PRE_PREFIX + t.SEP)
+        self.assertEqual(t.add_prefix('event'), 'event')
+        self.assertEqual(t.add_prefix('event', '1', '2'), Talker.SEP.join(['1', '2', 'event']))
+        self.assertEqual(get_object_name(t.add_prefix), 'add_prefix')
+        self.assertEqual(t.add_prefix(None, t.PRE_PREFIX), t.PRE_PREFIX + t.SEP)
 
         # Silent
-        self.assertTrue(t.is_silent([t.PRE_PREFIX]))
-        self.assertTrue(t.is_silent([t.POST_PREFIX]))
+        self.assertTrue(t.is_silent(t.PRE_PREFIX))
+        self.assertTrue(t.is_silent(t.POST_PREFIX))
         for s in t.SILENT:
-            self.assertTrue(t.is_silent([s]))
+            self.assertTrue(t.is_silent(s))
 
         self.assertFalse(t.is_silent('loud'))
 
@@ -260,7 +260,7 @@ class UtTests(unittest.TestCase):
         t.on('event', tc.returnTrue)
         t.on('pre_returnTrue', handler1)
 
-        r = t.handle(['event'], {})
+        r = t.handle('event')
         self.assertEqual(r[0], 'handler1')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler1)
@@ -272,7 +272,7 @@ class UtTests(unittest.TestCase):
                                                   and c.get('handler') == tc.returnTrue) else None
         t.on('post_returnTrue', handler2)
 
-        r = t.handle(['event'], {})
+        r = t.handle('event')
         self.assertEqual(r[0], 'handler2')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler2)
@@ -280,7 +280,7 @@ class UtTests(unittest.TestCase):
         # Now clean run
         t.off('post_returnTrue', handler2)
 
-        r = t.handle(['event'], {})
+        r = t.handle('event')
         self.assertTrue(r[0])
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], tc.returnTrue)
@@ -291,6 +291,16 @@ class UtTests(unittest.TestCase):
 
         t.on(t.UNKNOWN, handler1)
         self.assertEqual(t.parse('event2'), 'handler1')
+
+    def test_element(self):
+        e = Element()
+        tc = TestCalls()
+
+        e.on('pre_set_owner', tc.returnTrue)
+        e.owner = tc
+        self.assertIsNone(e.owner)
+
+
 
     # General objects test
     def test_objects(self):
