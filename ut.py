@@ -133,6 +133,23 @@ class Talker(Handler):
 
         return name
 
+    # Add event to message, if it is absent there
+    def add_event(self, event, message, prefix=None):
+        if not event:
+            return message
+
+        name = self.add_prefix(event, prefix) if prefix else event
+
+        if not message:
+            message = name,
+        elif not event in str(message[0]):
+            message = tupled(name, message)
+        else:
+            if not str(message[0]).endswith(name):
+                message = tupled(name, message[1:])
+
+        return message
+
     # Should message go silent or not, useful to avoid recursions
     def is_silent(self, event):
         return event.startswith(self.PRE_PREFIX) or event.startswith(self.POST_PREFIX) or event in self.SILENT
@@ -141,42 +158,46 @@ class Talker(Handler):
     def run_handler(self, handler, message, context):
         event = context.get(self.EVENT)
         handler_name = get_object_name(handler)
+        silent = message and self.is_silent(message[0])
 
-        if message and not self.is_silent(message[0]):
+        if not silent:
             context[self.HANDLER] = handler
 
             # Pre-processing, adding prefix to event or handler name
-            pre_result = self.handle(*tupled(self.add_prefix(event or handler_name, self.PRE_PREFIX), message),
-                                     **context)
+            pre_result = self.handle(*self.add_event(event or handler_name, message, self.PRE_PREFIX), **context)
+
             if pre_result[0]:
                 return pre_result
 
-        result = super(Talker, self).run_handler(handler, (event, ) or message, context)
+        result = super(Talker, self).run_handler(handler, self.add_event(event, message), context)
 
-        if message and not self.is_silent(message[0]):
+        if not silent:
             context.update({self.RESULT: result[0], self.RANK: result[1]})
 
             # Post-processing, adding postfix and results
-            post_result = self.handle(*tupled(self.add_prefix(event or handler_name, self.POST_PREFIX), message),
-                                      **context)
+            post_result = self.handle(*self.add_event(event or handler_name, message, self.POST_PREFIX), **context)
 
             if post_result[0]:
                 return post_result
 
         return result
 
+    def handle(self, *message, **context):
+        # We need to make sure that event presents in the message for correct parsing
+        message = self.add_event(context.get(self.EVENT), message)
+        return super(Talker, self).handle(*message, **context)
+
     # Parse means search for a handler
     def parse(self, *message, **context):
         result, rank, handler = self.handle(*message, **context)
 
-        # TODO: events?
         # There is a way to override result and handle unknown message
         if result:
-            context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler})
-
-            result = self.handle_result(*tupled(self.RESULT, message), **context) or result  # override has priority
+            context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler, self.EVENT: self.RESULT})
+            result = self.handle_result(*message, **context) or result  # override has priority
         else:
-            result = self.handle_result(*tupled(self.UNKNOWN, message), **context)
+            context[self.EVENT] = self.UNKNOWN
+            result = self.handle_result(*message, **context)
 
         return result
 
@@ -201,7 +222,7 @@ class Element(Talker):
 
     # Set the property to the new value
     def set_property(self, message, **context):
-        new_value = context.get(context.get(self.NEW_VALUE))
+        new_value = context.get(self.NEW_VALUE)
         setattr(self, '_%s' % context.get(self.NAME), new_value)
 
         if isinstance(new_value, Abstract):
@@ -219,7 +240,7 @@ class Element(Talker):
         context = {self.NAME: name, self.OLD_VALUE: old_value, self.NEW_VALUE: value,
                    self.EVENT: self.add_prefix(name, self.SET_PREFIX)}
 
-        # If no reply that means everything's OK
+        # If no reply that means everything is OK
         return self.run_handler(self.set_property, None, context)[0] is None
 
     def on_forward(self, handler):
@@ -305,6 +326,7 @@ class ComplexNotion2(Notion2):
 
     def relate(self, *message, **context):
         relation = context.get(self.SENDER)
+        # TODO: do we need pre here?
         event_name = self.add_prefix(Relation2.SUBJECT, self.PRE_PREFIX, self.SET_PREFIX)
 
         if context[self.OLD_VALUE] == self and relation in self._relations:

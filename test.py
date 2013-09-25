@@ -97,12 +97,13 @@ def stop_infinite(notion, *message, **context):
     return {"update_context": {"infinite": counter}, "error": "trying to break"}
 
 
-class TestCalls:
+class TestCalls(Abstract):
     def returnFalse(self, *m, **c):
         return False
 
     def returnTrue(self, *m, **c):
         return True
+
 
 
 class UtTests(unittest.TestCase):
@@ -245,6 +246,12 @@ class UtTests(unittest.TestCase):
         self.assertEqual(get_object_name(t.add_prefix), 'add_prefix')
         self.assertEqual(t.add_prefix(None, t.PRE_PREFIX), t.PRE_PREFIX + t.SEP)
 
+        self.assertEqual(t.add_event('event', []), ('event', ))
+        self.assertEqual(t.add_event('event', [1]), ('event', 1))
+        self.assertEqual(t.add_event('event', ['event']), ['event'])
+        self.assertEqual(t.add_event('event', ['pre_event']), ['pre_event'])
+        self.assertEqual(t.add_event('event', ['event', 1], t.PRE_PREFIX), ('pre_event', 1))
+
         # Silent
         self.assertTrue(t.is_silent(t.PRE_PREFIX))
         self.assertTrue(t.is_silent(t.POST_PREFIX))
@@ -268,13 +275,13 @@ class UtTests(unittest.TestCase):
         # Overriding result
         t.off('pre_returnTrue', handler1)
 
-        handler2 = lambda *m, **c: 'handler2' if (c.get('result') and c.get('rank') == 0
-                                                  and c.get('handler') == tc.returnTrue) else None
+        handler2 = lambda *m, **c: ('handler2', 1) if (c.get('result') and c.get('rank') == 0
+                                                       and c.get('handler') == tc.returnTrue) else None
         t.on('post_returnTrue', handler2)
 
         r = t.handle('event')
         self.assertEqual(r[0], 'handler2')
-        self.assertEqual(r[1], 0)
+        self.assertEqual(r[1], 1)
         self.assertEqual(r[2], handler2)
 
         # Now clean run
@@ -286,6 +293,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], tc.returnTrue)
 
         # Result test
+        t.on('pre_result', tc.returnTrue)
         t.on(t.RESULT, handler2)
         self.assertEqual(t.parse('event'), 'handler2')
 
@@ -300,7 +308,23 @@ class UtTests(unittest.TestCase):
         e.owner = tc
         self.assertIsNone(e.owner)
 
+        e.off_all(tc.returnTrue)
+        e.owner = tc
+        self.assertEqual(e.owner, tc)
 
+        handler1 = lambda *m, **c: m[0] if m[0] in e.MOVE else None
+
+        e.on_forward(handler1)
+        e.on_backward(handler1)
+
+        self.assertEqual(e.parse(e.NEXT), e.NEXT)
+        self.assertEqual(e.parse(e.BREAK), e.BREAK)
+
+        e.off_all(handler1)
+        e.on_move(handler1)
+
+        self.assertEqual(e.parse(e.NEXT), e.NEXT)
+        self.assertEqual(e.parse(e.BREAK), e.BREAK)
 
     # General objects test
     def test_objects(self):
