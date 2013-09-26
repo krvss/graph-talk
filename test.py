@@ -177,22 +177,22 @@ class UtTests(unittest.TestCase):
 
         tc = TestCalls()
 
-        condition_r = re.compile("a+")
+        condition_r = re.compile('a+')
 
         self.assertTrue(h.can_handle(condition1, [1], {}))
         self.assertFalse(h.can_handle(condition1, [2], {}))
 
         self.assertFalse(h.can_handle(tc.returnFalse, [], {}))
 
-        self.assertTrue(h.can_handle(condition_r, ["a"], {}))
-        self.assertTrue(h.can_handle(condition_r, ["ab"], {}))
-        self.assertFalse(h.can_handle(condition_r, ["b"], {}))
+        self.assertTrue(h.can_handle(condition_r, ['a'], {}))
+        self.assertTrue(h.can_handle(condition_r, ['ab'], {}))
+        self.assertFalse(h.can_handle(condition_r, ['b'], {}))
 
-        self.assertTrue(h.can_handle("aa", ["aa"], {}))
-        self.assertFalse(h.can_handle("b", ["aa"], {}))
+        self.assertTrue(h.can_handle('aa', ['aa'], {}))
+        self.assertFalse(h.can_handle('b', ['aa'], {}))
 
-        self.assertTrue(h.can_handle(("aa", "bb"), ["bb"], {}))
-        self.assertFalse(h.can_handle(("aa", "bb"), ["c"], {}))
+        self.assertTrue(h.can_handle(('aa', 'bb'), ['bb'], {}))
+        self.assertFalse(h.can_handle(('aa', 'bb'), ['c'], {}))
 
         # Run handler
         self.assertFalse(h.run_handler(tc.returnFalse, [], {})[0])
@@ -325,6 +325,48 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(e.parse(e.NEXT), e.NEXT)
         self.assertEqual(e.parse(e.BREAK), e.BREAK)
+
+    def test_5_objects(self):
+        # Notions test
+        n1 = Notion2('n1')
+        n2 = Notion2('n2')
+        n1.owner = n2
+
+        self.assertEqual(n1.name, 'n1')
+        self.assertEqual(n1.__str__(), '"' + n1.name + '"')
+        self.assertEqual(n1.__repr__(), '<' + get_object_name(n1.__class__) + '("' + n1.name + '", "' + n2.name + '")>')
+
+        n1.owner = None
+
+        # Relations test
+        r1 = Relation2(n1, n2)
+
+        # Generic relation test
+        self.assertEqual(r1.subject, n1)
+        self.assertEqual(r1.object, n2)
+
+        self.assertEqual(r1.__str__(), '<"n1" - "n2">')
+        self.assertEqual(r1.__str__(), r1.__repr__())
+
+        # Complex notion test
+        cn = ComplexNotion2('cn')
+        r1.subject = cn
+
+        # If relation is only one ComplexNotion should return it, not a list
+        self.assertEqual(cn.parse(cn.NEXT), r1)
+
+        r2 = Relation2(n2, n1)
+        r2.subject = cn
+
+        # If there is more than 1 relation ComplexNotion should return the list
+        self.assertEqual(cn.parse(cn.NEXT), (r1, r2))
+
+        r2.subject = n2
+        self.assertEqual(len(cn.relations), 1)
+
+        # Next test
+        nr = NextRelation2(n1, n2)
+        self.assertEqual(nr.parse(nr.NEXT), n2)
 
     # General objects test
     def test_objects(self):

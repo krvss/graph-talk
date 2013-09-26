@@ -76,7 +76,7 @@ class Handler(Abstract):
     def run_handler(self, handler, message, context):
         result = handler(*message, **context)
 
-        if not is_list(result):
+        if not is_list(result) or len(result) != 2 or not is_number(result[1]):
             result = result, 0
 
         return tupled(result, handler)
@@ -84,7 +84,8 @@ class Handler(Abstract):
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
         result, rank, handler_found = None, -1, None
-        context[self.SENDER] = self
+        if not self.SENDER in context:
+            context[self.SENDER] = self
 
         for handler in self.handlers:
             # Condition check, if no condition the result is true
@@ -222,7 +223,7 @@ class Element(Talker):
         self._owner, self.owner = None, owner
 
     def can_set_property(self, *message, **context):
-        if not first_as_string(message).startswith(self.SET_PREFIX):
+        if not first_as_string(message).startswith(self.SET_PREFIX) or not self.EVENT in context:
             return False
 
         property_name = context.get(self.EVENT)
@@ -231,19 +232,19 @@ class Element(Talker):
     # Set the property to the new value
     def set_property(self, *message, **context):
         name = context.get(self.EVENT)
-        new_value, old_value = context.get(self.NEW_VALUE), getattr(self, name)
+        new_value = context.get(self.NEW_VALUE)
 
         setattr(self, '_%s' % name, new_value)
 
         if isinstance(new_value, Abstract):
-            new_value(*message, sender=self, old=old_value, new=new_value)
+            new_value(*message, **context)
 
         return True
 
     def change_property(self, name, value):
         # We change property via handler to allow notifications
         return self.handle_result(self.add_prefix(name, self.SET_PREFIX),
-                                  **{self.NEW_VALUE: value, self.EVENT: name})
+                                  **{self.NEW_VALUE: value, self.OLD_VALUE: getattr(self, name), self.EVENT: name})
 
     def on_forward(self, handler):
         self.on(self.FORWARD, handler)
@@ -273,7 +274,7 @@ class Notion2(Element):
         return '"%s"' % self.name
 
     def __repr__(self):
-        return '<Notion("%s", %s)>' % (self.name, self.owner)
+        return '<%s(%s, %s)>' % (get_object_name(self.__class__), self.__str__(), self.owner)
 
     @property
     def name(self):
@@ -300,7 +301,7 @@ class Relation2(Element):
 
     @subject.setter
     def subject(self, value):
-        self.change_property(value, self.SUBJECT)
+        self.change_property(self.SUBJECT, value)
 
     @property
     def object(self):
@@ -308,7 +309,7 @@ class Relation2(Element):
 
     @object.setter
     def object(self, value):
-        self.change_property(value, self.OBJECT)
+        self.change_property(self.OBJECT, value)
 
     def __str__(self):
         return '<%s - %s>' % (self.subject, self.object)
@@ -328,8 +329,7 @@ class ComplexNotion2(Notion2):
 
     def relate(self, *message, **context):
         relation = context.get(self.SENDER)
-        # TODO: do we need pre here?
-        event_name = self.add_prefix(Relation2.SUBJECT, self.PRE_PREFIX, self.SET_PREFIX)
+        event_name = self.add_prefix(Relation2.SUBJECT, self.SET_PREFIX)
 
         if context[self.OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
