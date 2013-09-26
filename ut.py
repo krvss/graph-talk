@@ -146,7 +146,7 @@ class Talker(Handler):
             message = tupled(name, message)
         else:
             if not str(message[0]).endswith(name):
-                message = tupled(name, message[1:])
+                message = tupled(name, message[1:])  # Discarding the old message in favor of the new one
 
         return message
 
@@ -169,7 +169,7 @@ class Talker(Handler):
             if pre_result[0]:
                 return pre_result
 
-        result = super(Talker, self).run_handler(handler, self.add_event(event, message), context)
+        result = super(Talker, self).run_handler(handler, self.add_event(event, message), context)  # No handler name!
 
         if not silent:
             context.update({self.RESULT: result[0], self.RANK: result[1]})
@@ -206,7 +206,6 @@ class Talker(Handler):
 class Element(Talker):
     NEXT = 'next'
     BREAK = 'break'
-
     SET_PREFIX = 'set'
     NAME = 'name'
     OLD_VALUE = 'old_value'
@@ -218,30 +217,33 @@ class Element(Talker):
 
     def __init__(self, owner=None):
         super(Element, self).__init__()
+        self.on(self.can_set_property, self.set_property)
+
         self._owner, self.owner = None, owner
 
+    def can_set_property(self, *message, **context):
+        if not first_as_string(message).startswith(self.SET_PREFIX):
+            return False
+
+        property_name = context.get(self.EVENT)
+        return hasattr(self, property_name) and getattr(self, property_name) != context.get(self.NEW_VALUE)
+
     # Set the property to the new value
-    def set_property(self, message, **context):
-        new_value = context.get(self.NEW_VALUE)
-        setattr(self, '_%s' % context.get(self.NAME), new_value)
+    def set_property(self, *message, **context):
+        name = context.get(self.EVENT)
+        new_value, old_value = context.get(self.NEW_VALUE), getattr(self, name)
+
+        setattr(self, '_%s' % name, new_value)
 
         if isinstance(new_value, Abstract):
-            new_value(message, sender=self, old=context.get(self.OLD_VALUE), new=new_value)
+            new_value(*message, sender=self, old=old_value, new=new_value)
 
         return True
 
     def change_property(self, name, value):
-        old_value = getattr(self, name)
-
-        if old_value == value:
-            return False
-
         # We change property via handler to allow notifications
-        context = {self.NAME: name, self.OLD_VALUE: old_value, self.NEW_VALUE: value,
-                   self.EVENT: self.add_prefix(name, self.SET_PREFIX)}
-
-        # If no reply that means everything is OK
-        return self.run_handler(self.set_property, None, context)[0] is None
+        return self.handle_result(self.add_prefix(name, self.SET_PREFIX),
+                                  **{self.NEW_VALUE: value, self.EVENT: name})
 
     def on_forward(self, handler):
         self.on(self.FORWARD, handler)

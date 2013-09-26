@@ -108,11 +108,11 @@ class TestCalls(Abstract):
 
 class UtTests(unittest.TestCase):
 
-    def test_abstract(self):
+    def test_1_abstract(self):
         a = Abstract()
         self.assertEqual(a.parse(), a())
 
-    def test_handler(self):
+    def test_2_handler(self):
         h = Handler()
 
         handler1 = lambda *m, **c: (True, 1)
@@ -177,16 +177,16 @@ class UtTests(unittest.TestCase):
 
         tc = TestCalls()
 
-        conditionR = re.compile("a+")
+        condition_r = re.compile("a+")
 
         self.assertTrue(h.can_handle(condition1, [1], {}))
         self.assertFalse(h.can_handle(condition1, [2], {}))
 
         self.assertFalse(h.can_handle(tc.returnFalse, [], {}))
 
-        self.assertTrue(h.can_handle(conditionR, ["a"], {}))
-        self.assertTrue(h.can_handle(conditionR, ["ab"], {}))
-        self.assertFalse(h.can_handle(conditionR, ["b"], {}))
+        self.assertTrue(h.can_handle(condition_r, ["a"], {}))
+        self.assertTrue(h.can_handle(condition_r, ["ab"], {}))
+        self.assertFalse(h.can_handle(condition_r, ["b"], {}))
 
         self.assertTrue(h.can_handle("aa", ["aa"], {}))
         self.assertFalse(h.can_handle("b", ["aa"], {}))
@@ -236,7 +236,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
-    def test_talker(self):
+    def test_3_talker(self):
         t = Talker()
         tc = TestCalls()
 
@@ -300,11 +300,11 @@ class UtTests(unittest.TestCase):
         t.on(t.UNKNOWN, handler1)
         self.assertEqual(t.parse('event2'), 'handler1')
 
-    def test_element(self):
+    def test_4_element(self):
         e = Element()
         tc = TestCalls()
 
-        e.on('pre_set_owner', tc.returnTrue)
+        e.on('pre_owner', tc.returnTrue)
         e.owner = tc
         self.assertIsNone(e.owner)
 
