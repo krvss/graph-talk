@@ -86,7 +86,7 @@ def is_list(l):
 
 
 def has_first(l, value):
-    return is_list(l) and l[0] == value
+    return is_list(l) and l and l[0] == value
 
 
 def first_as_string(l):

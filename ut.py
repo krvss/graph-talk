@@ -72,7 +72,7 @@ class Handler(Abstract):
             if has_first(message, c):
                 return c
 
-    # Running the specified handler
+    # Running the specified handler, returns result as result, rank, handler
     def run_handler(self, handler, message, context):
         result = handler(*message, **context)
 
@@ -84,6 +84,7 @@ class Handler(Abstract):
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
         result, rank, handler_found = None, -1, None
+
         if not self.SENDER in context:
             context[self.SENDER] = self
 
@@ -120,36 +121,27 @@ class Talker(Handler):
     POST_PREFIX = 'post'
     RESULT = 'result'
     UNKNOWN = 'unknown'
-    EVENT = 'event'
 
     SEP = '_'
     SILENT = (RESULT, UNKNOWN)
 
-    # Add prefix to the event name
-    def add_prefix(self, event, *prefixes):
-        name = event or ''
+    # Add prefix to the message
+    def add_prefix(self, message, prefix):
+        event = str(message[0] if is_list(message) else message)
 
-        if prefixes:
-            name = Talker.SEP.join(tupled(prefixes, name))
+        if not event.startswith(prefix):
+            event = self.SEP.join([prefix, event])
 
-        return name
+        return tupled(event, message[1:]) if is_list(message) else event
 
-    # Add event to message, if it is absent there
-    def add_event(self, event, message, prefix=None):
-        if not event:
-            return message
+    # Remove prefix from the message
+    def remove_prefix(self, message, prefix=None):
+        event = str(message[0] if is_list(message) else message)
 
-        name = self.add_prefix(event, prefix) if prefix else event
+        if not self.SEP in event or (prefix and not event.startswith(prefix)):
+            return None
 
-        if not message:
-            message = name,
-        elif not event in str(message[0]):
-            message = tupled(name, message)
-        else:
-            if not str(message[0]).endswith(name):
-                message = tupled(name, message[1:])  # Discarding the old message in favor of the new one
-
-        return message
+        return event.split(self.SEP, 2)[-1]
 
     # Should message go silent or not, useful to avoid recursions
     def is_silent(self, event):
@@ -157,36 +149,30 @@ class Talker(Handler):
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
-        event = context.get(self.EVENT)
-        handler_name = get_object_name(handler)
-        silent = message and self.is_silent(message[0])
+        event = (get_object_name(handler), ) if not message else message
+        silent = self.is_silent(event[0])
 
         if not silent:
             context[self.HANDLER] = handler
 
             # Pre-processing, adding prefix to event or handler name
-            pre_result = self.handle(*self.add_event(event or handler_name, message, self.PRE_PREFIX), **context)
+            pre_result = self.handle(*self.add_prefix(event, self.PRE_PREFIX), **context)
 
             if pre_result[0]:
                 return pre_result
 
-        result = super(Talker, self).run_handler(handler, self.add_event(event, message), context)  # No handler name!
+        result = super(Talker, self).run_handler(handler, message, context)
 
         if not silent:
             context.update({self.RESULT: result[0], self.RANK: result[1]})
 
             # Post-processing, adding postfix and results
-            post_result = self.handle(*self.add_event(event or handler_name, message, self.POST_PREFIX), **context)
+            post_result = self.handle(*self.add_prefix(event, self.POST_PREFIX), **context)
 
             if post_result[0]:
                 return post_result
 
         return result
-
-    def handle(self, *message, **context):
-        # We need to make sure that event presents in the message for correct parsing
-        message = self.add_event(context.get(self.EVENT), message)
-        return super(Talker, self).handle(*message, **context)
 
     # Parse means search for a handler
     def parse(self, *message, **context):
@@ -194,11 +180,10 @@ class Talker(Handler):
 
         # There is a way to override result and handle unknown message
         if result:
-            context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler, self.EVENT: self.RESULT})
-            result = self.handle_result(*message, **context) or result  # override has priority
+            context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler})
+            result = self.handle_result(*tupled(self.RESULT, message), **context) or result  # override has priority
         else:
-            context[self.EVENT] = self.UNKNOWN
-            result = self.handle_result(*message, **context)
+            result = self.handle_result(*tupled(self.UNKNOWN, message), **context)
 
         return result
 
@@ -223,15 +208,15 @@ class Element(Talker):
         self._owner, self.owner = None, owner
 
     def can_set_property(self, *message, **context):
-        if not first_as_string(message).startswith(self.SET_PREFIX) or not self.EVENT in context:
-            return False
+        property_name = self.remove_prefix(message, self.SET_PREFIX)
 
-        property_name = context.get(self.EVENT)
-        return hasattr(self, property_name) and getattr(self, property_name) != context.get(self.NEW_VALUE)
+        if property_name and hasattr(self, property_name) and \
+                getattr(self, property_name) != context.get(self.NEW_VALUE):
+                return property_name
 
     # Set the property to the new value
     def set_property(self, *message, **context):
-        name = context.get(self.EVENT)
+        name = context[self.CONDITION]
         new_value = context.get(self.NEW_VALUE)
 
         setattr(self, '_%s' % name, new_value)
@@ -244,7 +229,7 @@ class Element(Talker):
     def change_property(self, name, value):
         # We change property via handler to allow notifications
         return self.handle_result(self.add_prefix(name, self.SET_PREFIX),
-                                  **{self.NEW_VALUE: value, self.OLD_VALUE: getattr(self, name), self.EVENT: name})
+                                  **{self.NEW_VALUE: value, self.OLD_VALUE: getattr(self, name)})
 
     def on_forward(self, handler):
         self.on(self.FORWARD, handler)

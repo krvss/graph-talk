@@ -241,16 +241,15 @@ class UtTests(unittest.TestCase):
         tc = TestCalls()
 
         # Names
-        self.assertEqual(t.add_prefix('event'), 'event')
-        self.assertEqual(t.add_prefix('event', '1', '2'), Talker.SEP.join(['1', '2', 'event']))
+        self.assertEqual(t.add_prefix('event', '1'), Talker.SEP.join(['1', 'event']))
         self.assertEqual(get_object_name(t.add_prefix), 'add_prefix')
-        self.assertEqual(t.add_prefix(None, t.PRE_PREFIX), t.PRE_PREFIX + t.SEP)
+        self.assertEqual(t.add_prefix(['event', 1], t.POST_PREFIX), ('post_event', 1))
+        self.assertEqual(t.add_prefix('post_event', t.POST_PREFIX), 'post_event')
+        self.assertEqual(t.add_prefix(['post_event'], t.POST_PREFIX), ('post_event', ))
 
-        self.assertEqual(t.add_event('event', []), ('event', ))
-        self.assertEqual(t.add_event('event', [1]), ('event', 1))
-        self.assertEqual(t.add_event('event', ['event']), ['event'])
-        self.assertEqual(t.add_event('event', ['pre_event']), ['pre_event'])
-        self.assertEqual(t.add_event('event', ['event', 1], t.PRE_PREFIX), ('pre_event', 1))
+        self.assertEqual(t.remove_prefix('e', 'p'), None)
+        self.assertEqual(t.remove_prefix('p_e', 'p'), 'e')
+        self.assertEqual(t.remove_prefix(['p_e']), 'e')
 
         # Silent
         self.assertTrue(t.is_silent(t.PRE_PREFIX))
@@ -265,19 +264,28 @@ class UtTests(unittest.TestCase):
 
         # Stopping before return
         t.on('event', tc.returnTrue)
-        t.on('pre_returnTrue', handler1)
+        t.on('pre_event', handler1)
 
         r = t.handle('event')
         self.assertEqual(r[0], 'handler1')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler1)
 
+        # Empty message
+        t.on(lambda *m, **c: len(m) == 0, tc.returnTrue)
+        t.on('pre_returnTrue', handler1)
+
+        r = t.handle()
+        self.assertEqual(r[0], 'handler1')
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], handler1)
+
         # Overriding result
-        t.off('pre_returnTrue', handler1)
+        t.off('pre_event', handler1)
 
         handler2 = lambda *m, **c: ('handler2', 1) if (c.get('result') and c.get('rank') == 0
                                                        and c.get('handler') == tc.returnTrue) else None
-        t.on('post_returnTrue', handler2)
+        t.on('post_event', handler2)
 
         r = t.handle('event')
         self.assertEqual(r[0], 'handler2')
@@ -285,7 +293,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], handler2)
 
         # Now clean run
-        t.off('post_returnTrue', handler2)
+        t.off('post_event', handler2)
 
         r = t.handle('event')
         self.assertTrue(r[0])
@@ -304,7 +312,7 @@ class UtTests(unittest.TestCase):
         e = Element()
         tc = TestCalls()
 
-        e.on('pre_owner', tc.returnTrue)
+        e.on('pre_set_owner', tc.returnTrue)
         e.owner = tc
         self.assertIsNone(e.owner)
 
