@@ -89,12 +89,12 @@ def has_first(l, value):
     return is_list(l) and l and l[0] == value
 
 
-def first_as_string(l):
-    if not is_list(l) or len(l) < 1:
-        return ''
-    else:
-        return str(l[0])
+def has_keys(dictionary, *keys):
+    for key in keys:
+        if not key in dictionary:
+            return False
 
+    return True
 
 def is_regex(r):
     return type(r).__name__ == 'SRE_Pattern'

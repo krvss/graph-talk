@@ -115,7 +115,7 @@ class Handler(Abstract):
         return self.handle_result(*message, **context)
 
 
-# Handler which uses events with pre and post event notifications
+# Handler which uses pre and post handling notifications
 class Talker(Handler):
     PRE_PREFIX = 'pre'
     POST_PREFIX = 'post'
@@ -138,18 +138,18 @@ class Talker(Handler):
     def remove_prefix(self, message, prefix=None):
         event = str(message[0] if is_list(message) else message)
 
-        if not self.SEP in event or (prefix and not event.startswith(prefix)):
+        if not self.SEP in event or (prefix and not event.startswith(prefix + self.SEP)):
             return None
 
-        return event.split(self.SEP, 2)[-1]
+        return event.split(self.SEP, 1)[-1]
 
     # Should message go silent or not, useful to avoid recursions
-    def is_silent(self, event):
-        return event.startswith(self.PRE_PREFIX) or event.startswith(self.POST_PREFIX) or event in self.SILENT
+    def is_silent(self, message):
+        return message.startswith(self.PRE_PREFIX) or message.startswith(self.POST_PREFIX) or message in self.SILENT
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
-        event = (get_object_name(handler), ) if not message else message
+        event = message or (get_object_name(handler), )
         silent = self.is_silent(event[0])
 
         if not silent:
@@ -181,9 +181,9 @@ class Talker(Handler):
         # There is a way to override result and handle unknown message
         if result:
             context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler})
-            result = self.handle_result(*tupled(self.RESULT, message), **context) or result  # override has priority
+            result = self.handle_result(self.RESULT, *message, **context) or result  # override has priority
         else:
-            result = self.handle_result(*tupled(self.UNKNOWN, message), **context)
+            result = self.handle_result(self.UNKNOWN, *message, **context)
 
         return result
 
@@ -194,8 +194,8 @@ class Element(Talker):
     BREAK = 'break'
     SET_PREFIX = 'set'
     NAME = 'name'
-    OLD_VALUE = 'old_value'
-    NEW_VALUE = 'new_value'
+    OLD_VALUE = 'old-value'
+    NEW_VALUE = 'new-value'
 
     FORWARD = NEXT,
     BACKWARD = BREAK,
@@ -210,16 +210,15 @@ class Element(Talker):
     def can_set_property(self, *message, **context):
         property_name = self.remove_prefix(message, self.SET_PREFIX)
 
-        if property_name and hasattr(self, property_name) and \
+        if property_name and hasattr(self, property_name) and has_keys(context, self.OLD_VALUE, self.NEW_VALUE) and \
                 getattr(self, property_name) != context.get(self.NEW_VALUE):
                 return property_name
 
     # Set the property to the new value
     def set_property(self, *message, **context):
-        name = context[self.CONDITION]
         new_value = context.get(self.NEW_VALUE)
 
-        setattr(self, '_%s' % name, new_value)
+        setattr(self, '_%s' % context[self.CONDITION], new_value)
 
         if isinstance(new_value, Abstract):
             new_value(*message, **context)
@@ -275,10 +274,10 @@ class Relation2(Element):
     SUBJECT = 'subject'
     OBJECT = 'object'
 
-    def __init__(self, subject, object, owner=None):
+    def __init__(self, subj, obj, owner=None):
         super(Relation2, self).__init__(owner)
         self._object = self._subject = None
-        self.subject, self.object = subject, object
+        self.subject, self.object = subj, obj
 
     @property
     def subject(self):
@@ -307,38 +306,39 @@ class Relation2(Element):
 class ComplexNotion2(Notion2):
     def __init__(self, name, owner=None):
         super(ComplexNotion2, self).__init__(name, owner)
-        self._relations = []
 
-        self.on(self.add_prefix(Relation2.SUBJECT, self.SET_PREFIX), self.relate)
+        self._relations = []
+        self._relate_event = self.add_prefix(Relation2.SUBJECT, self.SET_PREFIX)
+
+        self.on(self._relate_event, self.relate)
         self.on_forward(self.next)
 
     def relate(self, *message, **context):
         relation = context.get(self.SENDER)
-        event_name = self.add_prefix(Relation2.SUBJECT, self.SET_PREFIX)
 
         if context[self.OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
-            relation.off(event_name, self)
-            return
+            relation.off(self._relate_event, self)
+            return True
 
         elif context[self.NEW_VALUE] == self and relation not in self._relations:
             self._relations.append(relation)
-            relation.on(event_name, self)
-            return
+            relation.on(self._relate_event, self)
+            return True
 
     def next(self, *message, **context):
         if self._relations:
-            return self._relations[0] if len(self._relations) == 1 else self.relations
+            return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
     @property
     def relations(self):
-        return tuple(self._relations)
+        return self._relations
 
 
 # Next relation is just a simple sequence relation
 class NextRelation2(Relation2):
-    def __init__(self, subject, object, owner=None):
-        super(NextRelation2, self).__init__(subject, object, owner)
+    def __init__(self, subj, obj, owner=None):
+        super(NextRelation2, self).__init__(subj, obj, owner)
 
         self.on_forward(lambda *m, **c: self.object)
 
