@@ -103,10 +103,10 @@ class TestCalls(Abstract):
         self.last_message = None
         self.last_context = None
 
-    def return_false(self, *m, **c):
+    def return_false(self):
         return False
 
-    def return_true(self, *m, **c):
+    def return_true(self):
         return True
 
     def parse(self, *message, **context):
@@ -125,8 +125,8 @@ class UtTests(unittest.TestCase):
     def test_2_handler(self):
         h = Handler()
 
-        handler1 = lambda *m, **c: (True, 1)
-        handler2 = lambda *m, **c: (True, 2)
+        handler1 = lambda: (True, 1) # TODO - not callable handler?
+        handler2 = lambda: (True, 2)
 
         # Generic "on"
         h.on('event', handler1)
@@ -183,7 +183,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h.get_handlers(), [handler2])
 
         # Conditions
-        condition1 = lambda *m, **c: m[0] == 1
+        condition1 = lambda *m: m[0] == 1
 
         tc = TestCalls()
 
@@ -208,10 +208,10 @@ class UtTests(unittest.TestCase):
         self.assertFalse(h.run_handler(tc.return_false, [], {})[0])
         self.assertTrue(h.run_handler(handler1, [], {})[0])
 
-        handler4 = lambda *m, **c: (1, 2, 3)
+        handler4 = lambda: (1, 2, 3)
         self.assertEqual(h.run_handler(handler4, [], {}), ((1, 2, 3), 0, handler4))
 
-        handler4 = lambda *m, **c: (1, 2)
+        handler4 = lambda: (1, 2)
         self.assertEqual(h.run_handler(handler4, [], {}), (1, 2, handler4))
 
         # Handle itself
@@ -276,7 +276,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(t.is_silent('loud'))
 
         # Handling
-        handler1 = lambda *m, **c: 'handler1'
+        handler1 = lambda: 'handler1'
 
         # Stopping before return
         t.on('event', tc.return_true)
@@ -288,7 +288,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], handler1)
 
         # Empty message - checking handler name
-        t.on(lambda *m, **c: len(m) == 0, tc.return_true)
+        t.on(lambda *m: len(m) == 0, tc.return_true)
         t.on('pre_return_true', handler1)
 
         r = t.handle()
@@ -367,7 +367,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(e.owner, 1)
 
         # Move test
-        handler1 = lambda *m, **c: m[0] if m[0] in e.MOVE else None
+        handler1 = lambda *m: m[0] if m[0] in e.MOVE else None
 
         e.on_forward(handler1)
         e.on_backward(handler1)

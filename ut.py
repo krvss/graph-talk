@@ -57,10 +57,21 @@ class Handler(Abstract):
         else:
             return [h for h in self.handlers if not is_list(h)]
 
+    # Smart call to the function with message and context: feeds only the number of arguments function ready to accept
+    def get_call_result(self, func, message, context):
+        c = var_arg_count(func)
+
+        if c == 0:
+            return func()
+        elif c == 1:
+            return func(*message)
+
+        return func(*message, **context)
+
     # Checking the condition to satisfy the message and context
     def can_handle(self, condition, message, context):
         if callable(condition):
-            return condition(*message, **context)
+            return self.get_call_result(condition, message, context)
 
         if is_regex(condition):
             return condition.match(message[0])
@@ -74,7 +85,7 @@ class Handler(Abstract):
 
     # Running the specified handler, returns result as result, rank, handler
     def run_handler(self, handler, message, context):
-        result = handler(*message, **context)
+        result = self.get_call_result(handler, message, context)
 
         if not is_list(result) or len(result) != 2 or not is_number(result[1]):
             result = result, 0
@@ -343,232 +354,57 @@ class NextRelation2(Relation2):
         self.on_forward(lambda *m, **c: self.object)
 
 
-# TODO
-class Process2(Handler):
+class Process2(Talker):
+    CURRENT = 'current'
+    MESSAGE = 'message'
+
     def __init__(self):
         super(Process2, self).__init__()
-        self.result = None
 
-        self._queue = []
+        self._queue = [self.new_queue_item()]
+        self._context = {}
 
-    # Ask callback regarding event happening
-    def callback_event(self, info):
-        if self.current != self._callback and self._callback:  # We do not need infinite asking loops
-            reply = self._callback.parse(info, **{'from': self, 'message': self.message, 'context': self.context})
+        self.query = Element.NEXT
 
-            if reply:  # No need to store empty replies
-                self._to_queue(False, current=self._callback, reply=reply)
+    def new_queue_item(self, **values):
+        return {self.CURRENT: values.get(self.CURRENT),
+                self.MESSAGE: [] or values.get(self.MESSAGE)}
 
-                return True
-
-        return False
-
-    def _run_event_func(self, event):
-        # We need to check should we pass self to event trigger or not, no need to do if for lambdas
-        return event(self) if not hasattr(event, '__self__') else event()
-
-    # Run event if conditions are appropriate
-    def run_event(self, event):
-        # Event [1] is a condition checker
-        can_run = self._run_event_func(event[1]) if event[1] else True
-        result = None
-
-        if can_run:
-            # We need to check can we call event or not
-            if not self.callback_event(event[0] + '_pre'):
-                result = self._run_event_func(event[2])
-
-                # Now we do a post-event call
-                self.callback_event(event[0] + '_post')
-
-        return can_run, result
-
-    # Queue processing
-    def _queueing_properties(self):
-        return {'message': [], 'context': {}, 'current': None, 'reply': None}  # todo defaultdict?
-
-    def _to_queue(self, update, **update_dict):
-        top = dict([(p, getattr(self, p)) for p in self._queueing_properties().keys()])
-        top.update(update_dict)
-
-        if not update:
-            self._queue.append(top)
+    def set_message(self, message, insert=False):
+        if insert:
+            self._queue[-1][self.MESSAGE][0:1] = message
         else:
-            self._queue[-1].update(top)
+            self._queue[-1][self.MESSAGE] = message
 
-    # Get the field from queue top (or lower), if no field or so default is returned
-    def _queue_top_get(self, field, offset=-1):
-        if self._queue and field in self._queue[offset]:
-            return self._queue[offset].get(field)
-
-        return self._queueing_properties().get(field)
-
-    # Get command string from reply or message, remove it if pull is true
-    def get_command(self, command, pull=False):
-        data = None
-
-        if isinstance(self.reply, dict) and command in self.reply:
-            data = self.reply[command]
-
-            if pull:
-                del self.reply[command]
-
-        elif command == self.reply:
-            data = command
-
-            if pull:
-                self._to_queue(True, reply=None)
-
-        elif command in self.message:
-            data = command
-
-            if pull:
-                self.message.remove(command)
-
-        elif self.message and isinstance(self.message[0], dict) and command in self.message[0]:
-            data = self.message[0][command]
-
-            if pull:
-                del self.message[0][command]
-
-        return data
-
-    # Events
-    def get_events(self):
-        return [('new',  # Name
-                 lambda self: self.get_command('new', True),  # Run condition
-                 self.event_new  # Handler if condition is ok
-                 ),
-                ('pull_message',
-                 lambda self: not self.reply and self.message and
-                 isinstance(self.message[0], Abstract),
-                 self.event_pull_message
-                 ),
-                ('stop',
-                 lambda self: self.get_command('stop', True),
-                 self.event_stop
-                 ),
-                ('skip',
-                 lambda self: self.get_command('skip', True),
-                 self.event_skip
-                 ),
-                ('queue_pop',
-                 lambda self: not self.reply and len(self._queue) > 1,
-                 self.event_pop
-                 ),
-                ('ok',
-                 lambda self: not self.reply and len(self._queue) <= 1,
-                 self.event_ok
-                 ),
-                ('query',
-                 lambda self: isinstance(self.reply, Abstract),
-                 self.event_query
-                 ),
-                ('queue_push',
-                 lambda self: isinstance(self.reply, list) and len(self.reply) > 0,
-                 self.event_push
-                 )]
-
-    def event_start(self):
-        return None
-
-    def event_new(self):
-        if len(self._queue) > 1:
-            self._queue_top_get('context', -2).clear()  # Old context should be gone
-
-        del self._queue[:-1]  # Removing previous elements from queue
-
-    def event_pull_message(self):
-        self._to_queue(True, current=self.message[0], reply=self.message[0])
-        del self.message[0]
-
-    def event_stop(self):
-        return 'stop'    # Just stop at once where we are if callback does not care
-
-    def event_skip(self):
-        del self._queue[-2:]  # Removing current and previous elements from queue
-
-    def event_pop(self):
-        self._queue.pop()  # Let's move on
-
-    def event_push(self):
-        # We update the queue if this is a last item
-        self._to_queue(len(self.reply) == 1, reply=self.reply.pop(0))  # First one is ready to be processed
-
-    def event_ok(self):
-        return 'ok'  # We're done if nothing in the queue
-
-    def get_query(self):
-        return 'next'
-
-    def event_query(self):
-        self._to_queue(True, current=self.reply,
-                       reply=self.reply.parse(self.get_query(), **self.context))
-
-    def event_unknown(self):
-        return 'unknown'
-
-    def event_result(self):
-        return self.result
+    def set_current(self, current):
+        if not self.current:
+            self._queue[-1][self.CURRENT] = current
+        else:
+            self._queue.append(self.new_queue_item(**{self.CURRENT: current}))
 
     def parse(self, *message, **context):
-        if message or context:
-            # If there is only a last fake item in queue we can just update it
-            update = len(self._queue) == 1 and not self.message and not self.reply
-            self._to_queue(update,
-                           message=list(message) if message else self.message,
-                           context=context or self.context,
-                           current=None, reply=None)
+        self._context.update(context)
+        self.set_message(message, True)
+        result = None
 
-        events = self.get_events()
-        self.result = self.run_event(('start', None, self.event_start))[1]
+        while self.message:
+            result = super(Process2, self).parse(*self.message, **self._context)
 
-        while True:
-            event_found = False
-
-            for event in events:
-                result = self.run_event(event)
-                if result[0]:
-                    event_found = True
-
-                    if result[1]:
-                        self.result = result[1]
-                        break
-
-            # If we are here we've entered an uncharted territory
-            if not event_found:
-                self.result = self.run_event(('unknown', None, self.event_unknown))[1]
-
-            # If there was a reply we need to ask callback before stopping
-            if self.result and self.run_event(('result', None, self.event_result))[1]:
+            if result:
+                self.set_message([result])
+            else:
                 break
 
-        return self.result
-
-    @property
-    def callback(self):
-        return self._callback
-
-    @callback.setter
-    def callback(self, value):
-        if not value or (value and callable(value.parse)) and self._callback != value:
-            self._callback = value
+        return result
 
     @property
     def message(self):
-        return self._queue_top_get('message')
-
-    @property
-    def context(self):
-        return self._queue_top_get('context')
+        return self._queue[-1].get(self.MESSAGE)
 
     @property
     def current(self):
-        return self._queue_top_get('current')
+        return self._queue[-1].get(self.CURRENT)
 
-    @property
-    def reply(self):
-        return self._queue_top_get('reply')
 
 ### Borderline between new and old ###
 
