@@ -452,6 +452,23 @@ class UtTests(unittest.TestCase):
         nr = NextRelation2(n1, n2)
         self.assertEqual(nr.parse(nr.NEXT), n2)
 
+    def test_6_process(self):
+        p = Process2()
+
+        cn = ComplexNotion2('CN')
+        n1 = Notion2('N1')
+        n2 = Notion2('N2')
+
+        n2.on_forward(p.STOP)
+
+        Relation2(cn, n1)
+        Relation2(cn, n2)
+
+        r = p.parse(cn)
+        self.assertEqual(r, p.STOP)
+
+    '''
+
     # Old style
     # General objects test
     def test_objects(self):
@@ -1562,7 +1579,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.errors)
         self.assertNotIn(root, process.states)
         self.assertFalse(process.context_stack)
-
+    '''
     def test_analyzer(self):
         global _acc
 

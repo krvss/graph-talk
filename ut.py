@@ -360,20 +360,29 @@ class NextRelation2(Relation2):
 
 
 class Process2(Talker):
+    STOP = 'stop'
+    OK = 'ok'
+
     CURRENT = 'current'
     MESSAGE = 'message'
 
     def __init__(self):
         super(Process2, self).__init__()
 
-        self._queue = [self.new_queue_item()]
+        self._queue = []
+        self.new_queue_item()
+
         self._context = {}
 
         self.query = Element.NEXT
 
+        self.setup()
+
     def new_queue_item(self, **values):
-        return {self.CURRENT: values.get(self.CURRENT),
-                self.MESSAGE: [] or values.get(self.MESSAGE)}
+        item = {self.CURRENT: values.get(self.CURRENT) or None, self.MESSAGE: values.get(self.MESSAGE) or []}
+        self._queue.append(item)
+
+        return item
 
     def set_message(self, message, insert=False):
         if insert:
@@ -385,7 +394,34 @@ class Process2(Talker):
         if not self.current:
             self._queue[-1][self.CURRENT] = current
         else:
-            self._queue.append(self.new_queue_item(**{self.CURRENT: current}))
+            self.new_queue_item(**{self.CURRENT: current})
+
+    # Events
+    def is_new_current(self, *message, **context):  # TODO: why context?
+        return message and isinstance(message[0], Abstract)
+
+    def new_current(self):
+        self.set_current(self.message.pop(0))
+        self.message.append(self.query)
+
+        return True
+
+    def can_pop(self):
+        return len(self._queue) > 1 and not self.message
+
+    def queue_pop(self):
+        self._queue.pop()
+
+    def can_next(self, *message, **context):
+        return self.current and has_first(message, Element.NEXT)
+
+    def next(self):
+        return self.current.parse(*self.message, **self._context)
+
+    def setup(self):
+        self.on(self.is_new_current, self.new_current)
+        self.on(self.can_pop, self.queue_pop)
+        self.on(self.can_next, self.next)
 
     def parse(self, *message, **context):
         self._context.update(context)
@@ -396,7 +432,16 @@ class Process2(Talker):
             result = super(Process2, self).parse(*self.message, **self._context)
 
             if result:
-                self.set_message([result])
+                if result in (self.OK, self.STOP):
+                    break
+
+                if result is True:
+                    continue
+
+                if not isinstance(result, list):
+                    result = list(result)
+
+                self.set_message(result, True)
             else:
                 break
 
