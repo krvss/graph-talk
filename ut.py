@@ -28,12 +28,12 @@ class Handler(Abstract):
 
     # Adding the condition - handler pair
     def on(self, condition, handler):
-        if (condition, get_callable(handler)) not in self.handlers:
+        if (condition, handler) not in self.handlers:
             self.handlers.append((condition, handler))
 
     # Adding the handler, without condition it will trigger on any message
     def on_any(self, handler):
-        if get_callable(handler) not in self.handlers:
+        if handler not in self.handlers:
             self.handlers.append(handler)
 
     # Removing the condition - handler pair
@@ -57,8 +57,8 @@ class Handler(Abstract):
         else:
             return [h for h in self.handlers if not is_list(h)]
 
-    # Smart call to the function with message and context: feeds only the number of arguments function ready to accept
-    def get_call_result(self, func, message, context):
+    # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
+    def smart_call_result(self, func, message, context):
         c = var_arg_count(func)
 
         if c == 0:
@@ -71,7 +71,7 @@ class Handler(Abstract):
     # Checking the condition to satisfy the message and context
     def can_handle(self, condition, message, context):
         if callable(condition):
-            return self.get_call_result(condition, message, context)
+            return self.smart_call_result(condition, message, context)
 
         if is_regex(condition):
             return condition.match(message[0])
@@ -85,12 +85,14 @@ class Handler(Abstract):
 
     # Running the specified handler, returns result as result, rank, handler
     def run_handler(self, handler, message, context):
-        result = self.get_call_result(handler, message, context)
+        result = self.smart_call_result(handler, message, context) if callable(handler) else handler
 
-        if not is_list(result) or len(result) != 2 or not is_number(result[1]):
-            result = result, 0
+        if is_list(result) and len(result) == 2 and is_number(result[1]):
+            result, rank = result
+        else:
+            rank = 0
 
-        return tupled(result, handler)
+        return result, rank, handler
 
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
@@ -156,6 +158,9 @@ class Talker(Handler):
 
     # Should message go silent or not, useful to avoid recursions
     def is_silent(self, message):
+        if not isinstance(message, basestring):
+            message = str(message)
+
         return message.startswith(self.PRE_PREFIX) or message.startswith(self.POST_PREFIX) or message in self.SILENT
 
     # Runs the handler with pre and post notifications

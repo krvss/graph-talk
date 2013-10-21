@@ -125,7 +125,7 @@ class UtTests(unittest.TestCase):
     def test_2_handler(self):
         h = Handler()
 
-        handler1 = lambda: (True, 1) # TODO - not callable handler?
+        handler1 = True, 1
         handler2 = lambda: (True, 2)
 
         # Generic "on"
@@ -138,22 +138,20 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(len(h.handlers), 1)
 
-        # Cannot add non-callable
-        self.assertRaises(TypeError, h.on, condition='event', handler=1)
+        # Can add non-callable
+        h.on('1', 1)
+        self.assertEqual(h.get_handlers('1'), [1])
 
         # On any
         h.on_any(handler1)
 
-        self.assertEqual(len(h.handlers), 2)
+        self.assertEqual(len(h.handlers), 3)
         self.assertIn(handler1, h.handlers)
 
         # No duplicates on on_any too
         h.on_any(handler1)
 
-        self.assertEqual(len(h.handlers), 2)
-
-        # No non-callables on on_any too
-        self.assertRaises(TypeError, h.on_any, handler=1)
+        self.assertEqual(len(h.handlers), 3)
 
         # Generic off
         h.off('event', handler1)
@@ -171,6 +169,7 @@ class UtTests(unittest.TestCase):
         h.on_any(handler1)
 
         h.off_all(handler1)
+        h.off_all(1)
         self.assertEqual(len(h.handlers), 0)
 
         # Get handlers
@@ -181,6 +180,11 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(h.get_handlers('event'), [handler1, handler2])
         self.assertEqual(h.get_handlers(), [handler2])
+
+        # Smart calls
+        self.assertEqual(h.smart_call_result(lambda: 1, [], {}), 1)
+        self.assertEqual(h.smart_call_result(lambda *m: m[0], [2], {}), 2)
+        self.assertEqual(h.smart_call_result(lambda *m, **c: c[m[0]], ["3"], {"3": 3}), 3)
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
@@ -208,10 +212,10 @@ class UtTests(unittest.TestCase):
         self.assertFalse(h.run_handler(tc.return_false, [], {})[0])
         self.assertTrue(h.run_handler(handler1, [], {})[0])
 
-        handler4 = lambda: (1, 2, 3)
+        handler4 = 1, 2, 3
         self.assertEqual(h.run_handler(handler4, [], {}), ((1, 2, 3), 0, handler4))
 
-        handler4 = lambda: (1, 2)
+        handler4 = 1, 2
         self.assertEqual(h.run_handler(handler4, [], {}), (1, 2, handler4))
 
         # Handle itself
@@ -276,7 +280,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(t.is_silent('loud'))
 
         # Handling
-        handler1 = lambda: 'handler1'
+        handler1 = 'handler1'
 
         # Stopping before return
         t.on('event', tc.return_true)
@@ -302,6 +306,21 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[0], True)
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], tc.return_true)
+
+        # Non-callable handler - checking name
+        t.on(1, 1)
+        t.on('pre_1', 2)
+
+        r = t.handle(1)
+        self.assertEqual(r[0], 2)
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], 2)
+
+        t.off_all(2)
+        r = t.handle(1)
+        self.assertEqual(r[0], 1)
+        self.assertEqual(r[1], 0)
+        self.assertEqual(r[2], 1)
 
         # Overriding result
         t.off('pre_event', handler1)
