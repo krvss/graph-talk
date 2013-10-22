@@ -101,13 +101,6 @@ def is_regex(r):
     return type(r).__name__ == 'SRE_Pattern'
 
 
-def get_callable(c):
-    if callable(c):
-        return c
-
-    raise TypeError('%s is not callable' % type(c))
-
-
 def tupled(*args):
     res = ()
     for arg in args:
@@ -129,9 +122,9 @@ def var_arg_count(func):
     spec = getargspec(func)
 
     if spec.varargs:
-        count += len(spec.varargs)
+        count += len(spec.varargs) if is_list(spec.varargs) else 1
 
     if spec.keywords:
-        count += len(spec.keywords)
+        count += len(spec.keywords) if is_list(spec.keywords) else 1
 
     return count

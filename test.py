@@ -256,6 +256,9 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
+        # Args count test
+        self.assertEqual(var_arg_count(tc.parse), 2)
+
     def test_3_talker(self):
         t = Talker()
         tc = TestCalls()
@@ -341,6 +344,10 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r[0])
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], tc.return_true)
+
+        # Recursion test
+        t.on('r', lambda *m, **c: c[t.SENDER].handle('r', **c))
+        self.assertTrue(t.handle('r'))
 
         # Result test
         t.on('pre_result', tc.return_true)  # Will not be called

@@ -102,6 +102,12 @@ class Handler(Abstract):
             context[self.SENDER] = self
 
         for handler in self.handlers:
+            handler_func = handler if not is_list(handler) else handler[1]
+
+            # Avoiding recursive calls
+            if context.get(self.HANDLER) == handler_func:
+                continue
+
             # Condition check, if no condition the result is true
             condition = self.can_handle(handler[0], message, context) if is_list(handler) else True
 
@@ -110,8 +116,10 @@ class Handler(Abstract):
             else:
                 context[self.CONDITION] = condition
 
+            if not self.HANDLER in context:
+                context[self.HANDLER] = handler_func
+
             # Call handler, add the condition result to the context
-            handler_func = handler if not is_list(handler) else handler[1]
             handle_result = self.run_handler(handler_func, message, context)
 
             # If there is something new - replace the current one
@@ -397,7 +405,7 @@ class Process2(Talker):
             self.new_queue_item(**{self.CURRENT: current})
 
     # Events
-    def is_new_current(self, *message, **context):  # TODO: why context?
+    def is_new_current(self, *message):
         return message and isinstance(message[0], Abstract)
 
     def new_current(self):
@@ -412,7 +420,7 @@ class Process2(Talker):
     def queue_pop(self):
         self._queue.pop()
 
-    def can_next(self, *message, **context):
+    def can_next(self, *message):
         return self.current and has_first(message, Element.NEXT)
 
     def next(self):
