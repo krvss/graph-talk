@@ -373,6 +373,7 @@ class Process2(Talker):
 
     CURRENT = 'current'
     MESSAGE = 'message'
+    QUERY = 'query'
 
     def __init__(self):
         super(Process2, self).__init__()
@@ -394,7 +395,8 @@ class Process2(Talker):
 
     def set_message(self, message, insert=False):
         if insert:
-            self._queue[-1][self.MESSAGE][0:1] = message
+            message.extend(self.message)
+            self._queue[-1][self.MESSAGE] = message
         else:
             self._queue[-1][self.MESSAGE] = message
 
@@ -405,53 +407,60 @@ class Process2(Talker):
             self.new_queue_item(**{self.CURRENT: current})
 
     # Events
+    # Current
     def is_new_current(self, *message):
         return message and isinstance(message[0], Abstract)
 
     def new_current(self):
         self.set_current(self.message.pop(0))
-        self.message.append(self.query)
+        self.message.append(self.QUERY)
 
         return True
 
-    def can_pop(self):
-        return len(self._queue) > 1 and not self.message
+    # Pop
+    def can_pop(self, *message):
+        if len(self._queue) > 1 and not self.message:
+            return not message
 
-    def queue_pop(self):
+    def queue_pop(self, *message):
         self._queue.pop()
+        return True
 
-    def can_next(self, *message):
-        return self.current and has_first(message, Element.NEXT)
+    # Query
+    def can_query(self, *message):
+        return self.current and has_first(message, self.QUERY)
 
-    def next(self):
-        return self.current.parse(*self.message, **self._context)
+    def ask_query(self):
+        self.message.pop(0)
+        reply = self.current.parse(self.query, **self._context)
+        return reply or True
 
     def setup(self):
+        self.on(self.can_query, self.ask_query)
         self.on(self.is_new_current, self.new_current)
         self.on(self.can_pop, self.queue_pop)
-        self.on(self.can_next, self.next)
 
     def parse(self, *message, **context):
         self._context.update(context)
-        self.set_message(message, True)
+        self.set_message(list(message), True)
         result = None
 
-        while self.message:
+        while self.message or self._queue:
             result = super(Process2, self).parse(*self.message, **self._context)
 
-            if result:
-                if result in (self.OK, self.STOP):
-                    break
-
-                if result is True:
-                    continue
-
-                if not isinstance(result, list):
-                    result = list(result)
-
-                self.set_message(result, True)
-            else:
+            if result in (self.OK, self.STOP):
                 break
+
+            if result is None or result is True:
+                continue
+
+            if isinstance(result, tuple):
+                result = list(result)
+
+            elif not is_list(result):
+                result = [result]
+
+            self.set_message(result, True)
 
         return result
 

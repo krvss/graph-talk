@@ -468,8 +468,8 @@ class UtTests(unittest.TestCase):
 
         n2.on_forward(p.STOP)
 
-        Relation2(cn, n1)
-        Relation2(cn, n2)
+        NextRelation2(cn, n1)
+        NextRelation2(cn, n2)
 
         r = p.parse(cn)
         self.assertEqual(r, p.STOP)
