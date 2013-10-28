@@ -70,37 +70,54 @@ class Handler(Abstract):
 
     # Checking the condition to satisfy the message and context
     def can_handle(self, condition, message, context):
+        rank, check = -1, None
+
         if callable(condition):
-            return self.smart_call_result(condition, message, context)
+            check = self.smart_call_result(condition, message, context)
 
-        if is_regex(condition):
-            return condition.match(message[0])
+            # Do we work with (rank, check) format?
+            if is_list(check) and len(check) == 2 and is_number(check[0]):
+                rank, check = check
+            elif check:
+                rank = check if is_number(check) else 0  # If check result is numeric - this is a rank
 
-        if not is_list(condition):
-            condition = [condition]
+        elif is_regex(condition):
+            check = condition.match(message[0]) if message else None
 
-        for c in condition:
-            if has_first(message, c):
-                return c
+            if check:
+                rank = check.end() - check.start()  # Match length is the rank
+
+        else:
+            if not is_list(condition):
+                condition = [condition]
+
+            for c in condition:
+                if is_string(c) and message:
+                    if str(message[0]).startswith(c):
+                        rank, check = len(c), c
+
+                elif has_first(message, c):
+                    rank, check = max(get_len(c), 0), c
+
+        if rank < 0:
+            check = None  # Little cleanup
+
+        return rank, check
 
     # Running the specified handler, returns result as result, rank, handler
     def run_handler(self, handler, message, context):
         result = self.smart_call_result(handler, message, context) if callable(handler) else handler
 
-        if is_list(result) and len(result) == 2 and is_number(result[1]):
-            result, rank = result
-        else:
-            rank = 0
-
-        return result, rank, handler
+        return result, handler
 
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
-        result, rank, handler_found = None, -1, None
+        check, rank, handler_found = None, -1, None
 
         if not self.SENDER in context:
             context[self.SENDER] = self
 
+        # Searching for the best handler
         for handler in self.handlers:
             handler_func = handler if not is_list(handler) else handler[1]
 
@@ -108,23 +125,25 @@ class Handler(Abstract):
             if context.get(self.HANDLER) == handler_func:
                 continue
 
-            # Condition check, if no condition the result is true
-            condition = self.can_handle(handler[0], message, context) if is_list(handler) else True
+            # Condition check, if no condition the result is true with zero rank
+            condition = self.can_handle(handler[0], message, context) if is_list(handler) else (0, True)
 
-            if not condition:
+            if condition[0] <= rank:
                 continue
             else:
-                context[self.CONDITION] = condition
+                rank, check, handler_found = condition[0], condition[1], handler_func
 
+        # Running the best handler
+        if rank >= 0:
             if not self.HANDLER in context:
-                context[self.HANDLER] = handler_func
+                context[self.HANDLER] = handler_found
+
+            context.update({self.RANK: rank, self.CONDITION: check})
 
             # Call handler, add the condition result to the context
-            handle_result = self.run_handler(handler_func, message, context)
-
-            # If there is something new - replace the current one
-            if handle_result[0] and handle_result[1] > rank:
-                result, rank, handler_found = handle_result
+            result, handler_found = self.run_handler(handler_found, message, context)
+        else:
+            result = False
 
         return result, rank, handler_found
 
@@ -166,7 +185,7 @@ class Talker(Handler):
 
     # Should message go silent or not, useful to avoid recursions
     def is_silent(self, message):
-        if not isinstance(message, basestring):
+        if not is_string(message):
             message = str(message)
 
         return message.startswith(self.PRE_PREFIX) or message.startswith(self.POST_PREFIX) or message in self.SILENT
@@ -183,7 +202,7 @@ class Talker(Handler):
             pre_result = self.handle(*self.add_prefix(event, self.PRE_PREFIX), **context)
 
             if pre_result[0]:
-                return pre_result
+                return pre_result[0], pre_result[2]
 
         result = super(Talker, self).run_handler(handler, message, context)
 
@@ -194,7 +213,7 @@ class Talker(Handler):
             post_result = self.handle(*self.add_prefix(event, self.POST_PREFIX), **context)
 
             if post_result[0]:
-                return post_result
+                return post_result[0], post_result[2]
 
         return result
 

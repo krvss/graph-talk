@@ -125,8 +125,8 @@ class UtTests(unittest.TestCase):
     def test_2_handler(self):
         h = Handler()
 
-        handler1 = True, 1
-        handler2 = lambda: (True, 2)
+        handler1 = lambda: True
+        handler2 = True
 
         # Generic "on"
         h.on('event', handler1)
@@ -188,73 +188,106 @@ class UtTests(unittest.TestCase):
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
+        condition2 = lambda *m, **c: (m[0], len(c))
+        condition3 = lambda: 4
 
         tc = TestCalls()
 
+        cant_handle = (-1, None)
+
+        self.assertEquals(h.can_handle(condition1, [1], {}), (0, True))
+        self.assertEquals(h.can_handle(condition1, [2], {}), cant_handle)
+
+        self.assertEquals(h.can_handle(condition2, [3], {"1": 1}), (3, 1))
+        self.assertEquals(h.can_handle(condition3, [], {}), (4, 4))
+
+        self.assertEquals(h.can_handle(tc.return_true, [], {}), (0, True))
+        self.assertEquals(h.can_handle(tc.return_false, [], {}), cant_handle)
+
         condition_r = re.compile('a+')
 
-        self.assertTrue(h.can_handle(condition1, [1], {}))
-        self.assertFalse(h.can_handle(condition1, [2], {}))
+        self.assertEquals(h.can_handle(condition_r, ['a'], {})[0], 1)
+        self.assertEquals(h.can_handle(condition_r, ['ab'], {})[0], 1)
+        self.assertEquals(h.can_handle(condition_r, ['b'], {}), cant_handle)
 
-        self.assertFalse(h.can_handle(tc.return_false, [], {}))
+        self.assertEquals(h.can_handle('aa', ['aa'], {}), (2, 'aa'))
+        self.assertEquals(h.can_handle('aa', ['aaa'], {}), (2, 'aa'))
+        self.assertEquals(h.can_handle('b', ['aa'], {}), cant_handle)
 
-        self.assertTrue(h.can_handle(condition_r, ['a'], {}))
-        self.assertTrue(h.can_handle(condition_r, ['ab'], {}))
-        self.assertFalse(h.can_handle(condition_r, ['b'], {}))
+        self.assertEquals(h.can_handle(('aa', 'bb'), ['bb'], {}), (2, 'bb'))
+        self.assertEquals(h.can_handle(('aa', 'bb'), ['c'], {}), cant_handle)
 
-        self.assertTrue(h.can_handle('aa', ['aa'], {}))
-        self.assertFalse(h.can_handle('b', ['aa'], {}))
+        self.assertEquals(h.can_handle(1, [1], {}), (0, 1))
+        self.assertEquals(h.can_handle(1, [0], {}), cant_handle)
 
-        self.assertTrue(h.can_handle(('aa', 'bb'), ['bb'], {}))
-        self.assertFalse(h.can_handle(('aa', 'bb'), ['c'], {}))
+        self.assertEquals(h.can_handle(lambda: (1, 2, 3), [], {}), (0, (1, 2, 3)))
 
         # Run handler
-        self.assertFalse(h.run_handler(tc.return_false, [], {})[0])
+        self.assertEquals(h.run_handler(tc.return_false, [], {}), (False, tc.return_false))
         self.assertTrue(h.run_handler(handler1, [], {})[0])
-
-        handler4 = 1, 2, 3
-        self.assertEqual(h.run_handler(handler4, [], {}), ((1, 2, 3), 0, handler4))
-
-        handler4 = 1, 2
-        self.assertEqual(h.run_handler(handler4, [], {}), (1, 2, handler4))
+        self.assertEqual(h.run_handler((1, 2), [], {}), ((1, 2), (1, 2)))
+        self.assertEquals(h.run_handler(1, [], {}), (1, 1))
 
         # Handle itself
+        # Longest wins
         del h.handlers[:]
         h.on('event', handler1)
-        h.on('event', handler2)
-
-        # Specified event - highest rank wins
-        handler3 = lambda *m, **c: 2 if (c[Handler.SENDER] == h and c[Handler.CONDITION] is True) else 0
-
+        h.on('event1', handler2)
         r = h.handle('event')
 
         self.assertTrue(r[0])
-        self.assertEqual(r[1], 2)
+        self.assertEqual(r[1], len('event'))
+        self.assertEqual(r[2], handler1)
+
+        r = h.handle('event1')
+
+        self.assertTrue(r[0])
+        self.assertEqual(r[1], len('event1'))
         self.assertEqual(r[2], handler2)
 
         self.assertFalse(h.parse('eve'))
 
         # Any event - no-condition wins
+        handler3 = lambda *m, **c: 'handler3'
         h.on_any(handler3)
 
         r = h.handle('even')
-        self.assertEqual(r[0], 2)
+        self.assertEqual(r[0], 'handler3')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
-        # Specific event beats any handler
+        # Specific event beats "any" handler
         r = h.handle('event')
         self.assertEqual(r[0], True)
-        self.assertEqual(r[1], 2)
-        self.assertEqual(r[2], handler2)
+        self.assertEqual(r[1], len('event'))
+        self.assertEqual(r[2], handler1)
 
-        # For any events first default wins wins
+        # For any events first default wins
         h.on_any(tc.return_true)
 
         r = h.handle('even')
-        self.assertEqual(r[0], 2)
+        self.assertEqual(r[0], 'handler3')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
+
+        # Call parameters check
+        # Sender
+        handler4 = lambda *m, **c: c[h.SENDER]
+        h.on(h.SENDER, handler4)
+
+        r = h.handle(h.SENDER)
+        self.assertEquals(r, (h, len(h.SENDER), handler4))
+
+        r = h.handle(h.SENDER, **{h.SENDER: 'test'})
+        self.assertEquals(r, ('test', len(h.SENDER), handler4))
+
+        # Condition & rank
+        handler5 = lambda *m, **c: (c[h.RANK], c[h.CONDITION])
+
+        h.on(h.CONDITION, handler5)
+
+        r = h.handle(h.CONDITION)
+        self.assertEquals(r, ((len(h.CONDITION), h.CONDITION), len(h.CONDITION), handler5))
 
         # Args count test
         self.assertEqual(var_arg_count(tc.parse), 2)
@@ -291,7 +324,7 @@ class UtTests(unittest.TestCase):
 
         r = t.handle('event')
         self.assertEqual(r[0], 'handler1')
-        self.assertEqual(r[1], 0)
+        self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], handler1)
 
         # Empty message - checking handler name

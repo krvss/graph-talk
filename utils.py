@@ -101,6 +101,19 @@ def is_regex(r):
     return type(r).__name__ == 'SRE_Pattern'
 
 
+def is_string(s):
+    return isinstance(s, basestring)
+
+
+def get_len(o):
+    l = -1
+    try:
+        if hasattr(o, 'len') or hasattr(o, '__len__'):
+            l = len(o)
+    finally:
+        return l
+
+
 def tupled(*args):
     res = ()
     for arg in args:
