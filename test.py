@@ -182,9 +182,9 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h.get_handlers(), [handler2])
 
         # Smart calls
-        self.assertEqual(h.smart_call_result(lambda: 1, [], {}), 1)
-        self.assertEqual(h.smart_call_result(lambda *m: m[0], [2], {}), 2)
-        self.assertEqual(h.smart_call_result(lambda *m, **c: c[m[0]], ["3"], {"3": 3}), 3)
+        self.assertEqual(h.var_call_result(lambda: 1, [], {}), 1)
+        self.assertEqual(h.var_call_result(lambda *m: m[0], [2], {}), 2)
+        self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ["3"], {"3": 3}), 3)
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
@@ -361,13 +361,13 @@ class UtTests(unittest.TestCase):
         # Overriding result
         t.off('pre_event', handler1)
 
-        handler2 = lambda *m, **c: ('handler2', 1) if (c.get(Talker.RESULT) and c.get(Talker.RANK) == 0
+        handler2 = lambda *m, **c: 'handler2' if (c.get(Talker.RESULT) and c.get(Talker.RANK) == len('post_event')
                                                        and c.get(Talker.HANDLER) == tc.return_true) else None
         t.on('post_event', handler2)
 
         r = t.handle('event')
         self.assertEqual(r[0], 'handler2')
-        self.assertEqual(r[1], 1)
+        self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], handler2)
 
         # Now clean run
@@ -375,7 +375,7 @@ class UtTests(unittest.TestCase):
 
         r = t.handle('event')
         self.assertTrue(r[0])
-        self.assertEqual(r[1], 0)
+        self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], tc.return_true)
 
         # Recursion test
@@ -383,12 +383,12 @@ class UtTests(unittest.TestCase):
         self.assertTrue(t.handle('r'))
 
         # Result test
-        t.on('pre_result', tc.return_true)  # Will not be called
-        t.on(t.RESULT, handler2)
-        self.assertEqual(t.parse('event'), 'handler2')
+        t.on('pre_result', 'handler3')  # Will not be called
+        t.on(t.RESULT, 'handler4')
+        self.assertEqual(t.parse('event'), 'handler4')
 
         t.on(t.UNKNOWN, handler1)
-        self.assertEqual(t.parse('event2'), 'handler1')
+        self.assertEqual(t.parse('strange'), 'handler1')
 
     def test_4_element(self):
         e = Element()

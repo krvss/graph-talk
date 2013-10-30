@@ -58,7 +58,7 @@ class Handler(Abstract):
             return [h for h in self.handlers if not is_list(h)]
 
     # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
-    def smart_call_result(self, func, message, context):
+    def var_call_result(self, func, message, context):
         c = var_arg_count(func)
 
         if c == 0:
@@ -73,7 +73,7 @@ class Handler(Abstract):
         rank, check = -1, None
 
         if callable(condition):
-            check = self.smart_call_result(condition, message, context)
+            check = self.var_call_result(condition, message, context)
 
             # Do we work with (rank, check) format?
             if is_list(check) and len(check) == 2 and is_number(check[0]):
@@ -106,7 +106,7 @@ class Handler(Abstract):
 
     # Running the specified handler, returns result as result, rank, handler
     def run_handler(self, handler, message, context):
-        result = self.smart_call_result(handler, message, context) if callable(handler) else handler
+        result = self.var_call_result(handler, message, context) if callable(handler) else handler
 
         return result, handler
 
@@ -222,7 +222,7 @@ class Talker(Handler):
         result, rank, handler = self.handle(*message, **context)
 
         # There is a way to override result and handle unknown message
-        if result:
+        if result is not False:
             context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler})
             result = self.handle_result(self.RESULT, *message, **context) or result  # override has priority
         else:
