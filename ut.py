@@ -253,7 +253,8 @@ class Element(Talker):
     def can_set_property(self, *message, **context):
         property_name = self.remove_prefix(message, self.SET_PREFIX)
 
-        if property_name and hasattr(self, property_name) and has_keys(context, self.OLD_VALUE, self.NEW_VALUE) and \
+        if property_name and hasattr(self, property_name) and \
+                has_keys(context, self.OLD_VALUE, self.NEW_VALUE) and \
                 getattr(self, property_name) != context.get(self.NEW_VALUE):
                 return property_name
 

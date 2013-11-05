@@ -245,7 +245,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[1], len('event1'))
         self.assertEqual(r[2], handler2)
 
-        self.assertFalse(h.parse('eve'))
+        self.assertFalse(h('eve'))
 
         # Any event - no-condition wins
         handler3 = lambda *m, **c: 'handler3'
@@ -385,10 +385,10 @@ class UtTests(unittest.TestCase):
         # Result test
         t.on('pre_result', 'handler3')  # Will not be called
         t.on(t.RESULT, 'handler4')
-        self.assertEqual(t.parse('event'), 'handler4')
+        self.assertEqual(t('event'), 'handler4')
 
         t.on(t.UNKNOWN, handler1)
-        self.assertEqual(t.parse('strange'), 'handler1')
+        self.assertEqual(t('strange'), 'handler1')
 
     def test_4_element(self):
         e = Element()
@@ -431,14 +431,14 @@ class UtTests(unittest.TestCase):
         e.on_forward(handler1)
         e.on_backward(handler1)
 
-        self.assertEqual(e.parse(e.NEXT), e.NEXT)
-        self.assertEqual(e.parse(e.BREAK), e.BREAK)
+        self.assertEqual(e(e.NEXT), e.NEXT)
+        self.assertEqual(e(e.BREAK), e.BREAK)
 
         e.off_all(handler1)
         e.on_move(handler1)
 
-        self.assertEqual(e.parse(e.NEXT), e.NEXT)
-        self.assertEqual(e.parse(e.BREAK), e.BREAK)
+        self.assertEqual(e(e.NEXT), e.NEXT)
+        self.assertEqual(e(e.BREAK), e.BREAK)
 
     def test_5_objects(self):
         # Notions test
@@ -468,13 +468,13 @@ class UtTests(unittest.TestCase):
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it, not a list
-        self.assertEqual(cn.parse(cn.NEXT), r1)
+        self.assertEqual(cn(cn.NEXT), r1)
 
         r2 = Relation2(n2, n1)
         r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
-        self.assertEqual(cn.parse(cn.NEXT), (r1, r2))
+        self.assertEqual(cn(cn.NEXT), (r1, r2))
 
         r2.subject = n2
         self.assertEqual(len(cn.relations), 1)
@@ -490,7 +490,7 @@ class UtTests(unittest.TestCase):
 
         # Next test
         nr = NextRelation2(n1, n2)
-        self.assertEqual(nr.parse(nr.NEXT), n2)
+        self.assertEqual(nr(nr.NEXT), n2)
 
     def test_6_process(self):
         p = Process2()
@@ -504,7 +504,7 @@ class UtTests(unittest.TestCase):
         NextRelation2(cn, n1)
         NextRelation2(cn, n2)
 
-        r = p.parse(cn)
+        r = p(cn)
         self.assertEqual(r, p.STOP)
 
     '''
