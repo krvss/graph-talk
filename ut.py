@@ -256,7 +256,8 @@ class Element(Talker):
         if property_name and hasattr(self, property_name) and \
                 has_keys(context, self.OLD_VALUE, self.NEW_VALUE) and \
                 getattr(self, property_name) != context.get(self.NEW_VALUE):
-                return property_name
+
+                return len(property_name), property_name
 
     # Set the property to the new value
     def set_property(self, *message, **context):
@@ -387,9 +388,14 @@ class NextRelation2(Relation2):
         self.on_forward(lambda *m, **c: self.object)
 
 
+# Process is a walker from abstract to abstract, asking them for the next one with a query
+# It has the current abstract and the message to process; when new abstract appears
+# the new queue with current and message is created
 class Process2(Talker):
     STOP = 'stop'
     OK = 'ok'
+    SKIP = 'skip'
+    NEW = 'new'
 
     CURRENT = 'current'
     MESSAGE = 'message'
@@ -401,80 +407,78 @@ class Process2(Talker):
         self._queue = []
         self.new_queue_item()
 
-        self._context = {}
-
+        self.context = {}
         self.query = Element.NEXT
 
         self.setup()
 
     def new_queue_item(self, **values):
-        item = {self.CURRENT: values.get(self.CURRENT) or None, self.MESSAGE: values.get(self.MESSAGE) or []}
+        item = {self.CURRENT: values.get(self.CURRENT) or None,
+                self.MESSAGE: values.get(self.MESSAGE) or []}
+
         self._queue.append(item)
 
         return item
 
+    def set_current(self, current):
+        if not self.current:
+            self._queue[-1][self.CURRENT] = current  # Just update the current if it was None
+        else:
+            self.new_queue_item(**{self.CURRENT: current})  # Make the new queue item for the new current
+
     def set_message(self, message, insert=False):
         if insert:
             message.extend(self.message)
-            self._queue[-1][self.MESSAGE] = message
-        else:
-            self._queue[-1][self.MESSAGE] = message
 
-    def set_current(self, current):
-        if not self.current:
-            self._queue[-1][self.CURRENT] = current
-        else:
-            self.new_queue_item(**{self.CURRENT: current})
+        self._queue[-1][self.MESSAGE] = message
 
     # Events
-    # Current
+    # Current: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def is_new_current(self, *message):
         return message and isinstance(message[0], Abstract)
 
-    def new_current(self):
+    def do_new_current(self):
         self.set_current(self.message.pop(0))
-        self.message.append(self.QUERY)
+        self.set_message([self.QUERY], True)
 
-        return True
+    # Queue pop: when current queue item is empty we can remove it
+    def can_pop_queue(self, *message):
+        return len(self._queue) > 1 and not message
 
-    # Pop
-    def can_pop(self, *message):
-        if len(self._queue) > 1 and not self.message:
-            return not message
-
-    def queue_pop(self, *message):
+    def do_queue_pop(self):
         self._queue.pop()
-        return True
 
-    # Query
+    # Query: should we ask the query to the current current
     def can_query(self, *message):
         return self.current and has_first(message, self.QUERY)
 
-    def ask_query(self):
+    def do_query(self):
         self.message.pop(0)
-        reply = self.current.parse(self.query, **self._context)
+        reply = self.current.parse(self.query, **self.context)
         return reply or True
 
+    # Init handlers
     def setup(self):
-        self.on(self.can_query, self.ask_query)
-        self.on(self.is_new_current, self.new_current)
-        self.on(self.can_pop, self.queue_pop)
+        self.on(self.can_query, self.do_query)
+        self.on(self.is_new_current, self.do_new_current)
+        self.on(self.can_pop_queue, self.do_queue_pop)
 
+    # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
-        self._context.update(context)
+        self.context.update(context)
         self.set_message(list(message), True)
         result = None
 
         while self.message or self._queue:
-            result = super(Process2, self).parse(*self.message, **self._context)
+            result = super(Process2, self).parse(*self.message, **self.context)
 
-            if result in (self.OK, self.STOP):
+            if result in (self.OK, self.STOP) or result is False:
                 break
 
-            if result is None or result is True:
-                continue
+            elif result is None or result is True:
+                continue  # No need to put it into the message
 
-            if isinstance(result, tuple):
+            elif isinstance(result, tuple):
                 result = list(result)
 
             elif not is_list(result):
@@ -972,7 +976,7 @@ class Process(Abstract):
                  lambda self: self.get_command('skip', True),
                  self.event_skip
                  ),
-                ('queue_pop',
+                ('do_queue_pop',
                  lambda self: not self.reply and len(self._queue) > 1,
                  self.event_pop
                  ),
