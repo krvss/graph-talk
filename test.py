@@ -495,6 +495,35 @@ class UtTests(unittest.TestCase):
     def test_6_process(self):
         p = Process2()
 
+        # Testing the default
+        n = Notion2('N')
+
+        r = p(n, test='process_default')
+        self.assertTrue(r)
+        self.assertEquals(p.current, n)
+        self.assertEquals(len(p._queue), 1)
+
+        # Testing the unknown
+        n.on_forward('strange')
+
+        r = p('new', n, test='process_unknown')
+        self.assertTrue(r is False)
+        self.assertEquals(p.current, n)
+        self.assertEquals(len(p._queue), 1)
+
+        # We really stuck
+        r = p(test='process_unknown_2')
+        self.assertTrue(r is False)
+        self.assertEquals(p.current, n)
+        self.assertEquals(len(p._queue), 1)
+
+        # Now we are good
+        r = p('new', test='process_new')
+        self.assertTrue(r is None)
+        self.assertEquals(p.current, None)
+        self.assertEquals(len(p._queue), 1)
+
+        # Testing the correct processing of list replies
         cn = ComplexNotion2('CN')
         n1 = Notion2('N1')
         n2 = Notion2('N2')
@@ -504,8 +533,47 @@ class UtTests(unittest.TestCase):
         NextRelation2(cn, n1)
         NextRelation2(cn, n2)
 
-        r = p(cn)
+        # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
+        r = p('new', cn, test='process_list')
         self.assertEqual(r, p.STOP)
+        self.assertEquals(p.current, n2)
+        self.assertEquals(len(p._queue), 3)
+
+        return
+
+
+        # Simple next test: root -> a
+        root = ComplexNotion("root")
+        a = ActionNotion("a", showstopper)
+
+        f = ActionRelation(root, a, accumulate_false)
+
+        process = Process()
+        process.callback = logger
+
+        _acc = 0
+        r = process.parse(root, test="test_next_1")
+
+        self.assertEqual(process.reply, "a")
+        self.assertEqual(process.current, a)
+        self.assertEqual(r, "unknown")
+        self.assertEqual(_acc, 1)
+
+        # Now function will not confuse process
+        a.action = None
+        r = process.parse("new", root, test="test_next_2")
+
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, a)
+        self.assertEqual(r, "ok")
+
+        # Now we will stop at the relation
+        f.action = lambda a, *m, **c: 'stop' if has_first(m, 'next') else False
+        r = process.parse(root, test="test_next_3")
+
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, f)
+        self.assertEqual(r, "stop")
 
     '''
 

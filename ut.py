@@ -405,7 +405,6 @@ class Process2(Talker):
         super(Process2, self).__init__()
 
         self._queue = []
-        self.new_queue_item()
 
         self.context = {}
         self.query = Element.NEXT
@@ -433,6 +432,12 @@ class Process2(Talker):
         self._queue[-1][self.MESSAGE] = message
 
     # Events
+    # New: cleaning up the queue
+    def do_new(self):
+        self.message.pop(0)
+        del self._queue[:-1]
+        self._queue[-1][self.CURRENT] = None
+
     # Current: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def is_new_current(self, *message):
         return message and isinstance(message[0], Abstract)
@@ -455,10 +460,11 @@ class Process2(Talker):
     def do_query(self):
         self.message.pop(0)
         reply = self.current.parse(self.query, **self.context)
-        return reply or True
+        return reply or True  # if it is False, we just continue to the next
 
     # Init handlers
     def setup(self):
+        self.on(self.NEW, self.do_new)
         self.on(self.can_query, self.do_query)
         self.on(self.is_new_current, self.do_new_current)
         self.on(self.can_pop_queue, self.do_queue_pop)
@@ -466,10 +472,12 @@ class Process2(Talker):
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
         self.context.update(context)
+        self.new_queue_item(**{self.CURRENT: self.current})  # Keep the current
         self.set_message(list(message), True)
+
         result = None
 
-        while self.message or self._queue:
+        while self.message or len(self._queue) > 1:
             result = super(Process2, self).parse(*self.message, **self.context)
 
             if result in (self.OK, self.STOP) or result is False:
@@ -494,7 +502,7 @@ class Process2(Talker):
 
     @property
     def current(self):
-        return self._queue[-1].get(self.CURRENT)
+        return self._queue[-1].get(self.CURRENT) if self._queue else None
 
 
 ### Borderline between new and old ###
