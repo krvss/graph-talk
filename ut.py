@@ -182,7 +182,7 @@ class Talker(Handler):
             return None
 
         return event.split(self.SEP, 1)[-1]
-
+    # TODO no_pre_post for can_handle attribute
     # Should message go silent or not, useful to avoid recursions
     def is_silent(self, message):
         if not is_string(message):
@@ -234,19 +234,17 @@ class Talker(Handler):
 # Element is a part of a bigger system
 class Element(Talker):
     NEXT = 'next'
-    BREAK = 'break'
+
     SET_PREFIX = 'set'
     NAME = 'name'
     OLD_VALUE = 'old-value'
     NEW_VALUE = 'new-value'
 
     FORWARD = NEXT,
-    BACKWARD = BREAK,
-    MOVE = FORWARD + BACKWARD
 
     def __init__(self, owner=None):
         super(Element, self).__init__()
-        self.on(self.can_set_property, self.set_property)
+        self.on(self.can_set_property, self.do_set_property)
 
         self._owner, self.owner = None, owner
 
@@ -260,7 +258,7 @@ class Element(Talker):
                 return len(property_name), property_name
 
     # Set the property to the new value
-    def set_property(self, *message, **context):
+    def do_set_property(self, *message, **context):
         new_value = context.get(self.NEW_VALUE)
 
         setattr(self, '_%s' % context[self.CONDITION], new_value)
@@ -277,12 +275,6 @@ class Element(Talker):
 
     def on_forward(self, handler):
         self.on(self.FORWARD, handler)
-
-    def on_backward(self, handler):
-        self.on(self.BACKWARD, handler)
-
-    def on_move(self, handler):
-        self.on(self.MOVE, handler)
 
     @property
     def owner(self):
@@ -393,8 +385,8 @@ class NextRelation2(Relation2):
 # the new queue with current and message is created
 class Process2(Talker):
     NEW = 'new'
-    STOP = 'stop'
     OK = 'ok'
+    STOP = 'stop'
     SKIP = 'skip'
 
     CURRENT = 'current'
@@ -425,6 +417,7 @@ class Process2(Talker):
         else:
             self.new_queue_item(**{self.CURRENT: current})  # Make the new queue item for the new current
 
+    # Set the current message or inserts in the front of current message if insert = True
     def set_message(self, message, insert=False):
         if insert:
             message.extend(self.message)
@@ -439,11 +432,11 @@ class Process2(Talker):
 
         self._queue[-1][self.CURRENT] = None
 
-    # Current: if the head of the message is an Abstract - we make the new queue item and get ready to query it
-    def is_new_current(self, *message):
+    # New level: if the head of the message is an Abstract - we make the new queue item and get ready to query it
+    def is_new_level(self, *message):
         return message and isinstance(message[0], Abstract)
 
-    def do_new_current(self):
+    def do_new_level(self):
         self.new_queue_current(self.message.pop(0))
         self.set_message([self.QUERY], True)  # Adding query command to start from asking
 
@@ -466,6 +459,8 @@ class Process2(Talker):
     # Skip: remove current and the next item from the queue
     def do_skip(self):
         self.message.pop(0)
+
+        # It is ok if message is empty to ignore skip
         if self.message:
             self.message.pop(0)
 
@@ -475,24 +470,25 @@ class Process2(Talker):
         self.on(self.SKIP, self.do_skip)
 
         self.on(self.can_query, self.do_query)
-        self.on(self.is_new_current, self.do_new_current)
+        self.on(self.is_new_level, self.do_new_level)
         self.on(self.can_pop_queue, self.do_queue_pop)
 
+    # TODO: parse_step, new_level
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
         self.context.update(context)
-        self.new_queue_item(**{self.CURRENT: self.current})  # Keep the current
-        self.set_message(list(message), True)
+        self.new_queue_item(**{self.CURRENT: self.current,
+                               self.MESSAGE: list(message)})
 
         result = None
 
         while self.message or len(self._queue) > 1:
             result = super(Process2, self).parse(*self.message, **self.context)
 
-            if result in (self.OK, self.STOP) or result is False:
+            if result in (self.OK, self.STOP, False):
                 break
 
-            elif result is None or result is True:
+            elif result in (None, True):
                 continue  # No need to put it into the message
 
             elif isinstance(result, tuple):

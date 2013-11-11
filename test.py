@@ -414,7 +414,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(e.owner, tc)
         self.assertEqual(tc.last_message, ('set_owner', ))
         self.assertEqual(tc.last_context[e.CONDITION], 'owner')
-        self.assertEqual(tc.last_context[e.HANDLER], e.set_property)
+        self.assertEqual(tc.last_context[e.HANDLER], e.do_set_property)
         self.assertEqual(tc.last_context[e.OLD_VALUE], None)
         self.assertEqual(tc.last_context[e.NEW_VALUE], tc)
         self.assertEqual(tc.last_context[e.SENDER], e)
@@ -426,19 +426,15 @@ class UtTests(unittest.TestCase):
         self.assertEqual(e.owner, 1)
 
         # Move test
-        handler1 = lambda *m: m[0] if m[0] in e.MOVE else None
+        handler1 = lambda *m: m[0] if m[0] in e.FORWARD else None
 
         e.on_forward(handler1)
-        e.on_backward(handler1)
 
         self.assertEqual(e(e.NEXT), e.NEXT)
-        self.assertEqual(e(e.BREAK), e.BREAK)
 
         e.off_all(handler1)
-        e.on_move(handler1)
 
-        self.assertEqual(e(e.NEXT), e.NEXT)
-        self.assertEqual(e(e.BREAK), e.BREAK)
+        self.assertTrue(e(e.NEXT) is False)
 
     def test_5_objects(self):
         # Notions test
