@@ -506,7 +506,7 @@ class UtTests(unittest.TestCase):
         # Testing the unknown
         n.on_forward('strange')
 
-        r = p('new', n, test='process_unknown')
+        r = p(p.NEW, n, test='process_unknown')
         self.assertTrue(r is False)
         self.assertEquals(p.current, n)
         self.assertEquals(len(p._queue), 1)
@@ -518,7 +518,7 @@ class UtTests(unittest.TestCase):
         self.assertEquals(len(p._queue), 1)
 
         # Now we are good
-        r = p('new', test='process_new')
+        r = p(p.NEW, test='process_new')
         self.assertTrue(r is None)
         self.assertEquals(p.current, None)
         self.assertEquals(len(p._queue), 1)
@@ -534,10 +534,17 @@ class UtTests(unittest.TestCase):
         NextRelation2(cn, n2)
 
         # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
-        r = p('new', cn, test='process_list')
+        r = p(p.NEW, cn, test='process_list')
         self.assertEqual(r, p.STOP)
         self.assertEquals(p.current, n2)
         self.assertEquals(len(p._queue), 3)
+
+        # Skip test
+        r = p(p.NEW, 'blah')
+        self.assertTrue(r is False)
+
+        r = p(p.NEW, p.SKIP, 'blah')
+        self.assertTrue(r is None)
 
         return
 

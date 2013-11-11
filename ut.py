@@ -392,10 +392,10 @@ class NextRelation2(Relation2):
 # It has the current abstract and the message to process; when new abstract appears
 # the new queue with current and message is created
 class Process2(Talker):
+    NEW = 'new'
     STOP = 'stop'
     OK = 'ok'
     SKIP = 'skip'
-    NEW = 'new'
 
     CURRENT = 'current'
     MESSAGE = 'message'
@@ -409,7 +409,7 @@ class Process2(Talker):
         self.context = {}
         self.query = Element.NEXT
 
-        self.setup()
+        self.setup_handlers()
 
     def new_queue_item(self, **values):
         item = {self.CURRENT: values.get(self.CURRENT) or None,
@@ -419,7 +419,7 @@ class Process2(Talker):
 
         return item
 
-    def set_current(self, current):
+    def new_queue_current(self, current):
         if not self.current:
             self._queue[-1][self.CURRENT] = current  # Just update the current if it was None
         else:
@@ -436,6 +436,7 @@ class Process2(Talker):
     def do_new(self):
         self.message.pop(0)
         del self._queue[:-1]
+
         self._queue[-1][self.CURRENT] = None
 
     # Current: if the head of the message is an Abstract - we make the new queue item and get ready to query it
@@ -443,8 +444,8 @@ class Process2(Talker):
         return message and isinstance(message[0], Abstract)
 
     def do_new_current(self):
-        self.set_current(self.message.pop(0))
-        self.set_message([self.QUERY], True)
+        self.new_queue_current(self.message.pop(0))
+        self.set_message([self.QUERY], True)  # Adding query command to start from asking
 
     # Queue pop: when current queue item is empty we can remove it
     def can_pop_queue(self, *message):
@@ -460,11 +461,19 @@ class Process2(Talker):
     def do_query(self):
         self.message.pop(0)
         reply = self.current.parse(self.query, **self.context)
-        return reply or True  # if it is False, we just continue to the next
+        return reply or True  # if it is False, we just continue to the next one
+
+    # Skip: remove current and the next item from the queue
+    def do_skip(self):
+        self.message.pop(0)
+        if self.message:
+            self.message.pop(0)
 
     # Init handlers
-    def setup(self):
+    def setup_handlers(self):
         self.on(self.NEW, self.do_new)
+        self.on(self.SKIP, self.do_skip)
+
         self.on(self.can_query, self.do_query)
         self.on(self.is_new_current, self.do_new_current)
         self.on(self.can_pop_queue, self.do_queue_pop)
