@@ -533,7 +533,7 @@ class UtTests(unittest.TestCase):
         r = p(p.NEW, cn, test='process_list')
         self.assertEqual(r, p.STOP)
         self.assertEquals(p.current, n2)
-        self.assertEquals(len(p._queue), 3)
+        self.assertEquals(len(p._queue), 1)
 
         # Skip test
         r = p(p.NEW, 'blah')
@@ -542,41 +542,7 @@ class UtTests(unittest.TestCase):
         r = p(p.NEW, p.SKIP, 'blah')
         self.assertTrue(r is None)
 
-        return
 
-
-        # Simple next test: root -> a
-        root = ComplexNotion("root")
-        a = ActionNotion("a", showstopper)
-
-        f = ActionRelation(root, a, accumulate_false)
-
-        process = Process()
-        process.callback = logger
-
-        _acc = 0
-        r = process.parse(root, test="test_next_1")
-
-        self.assertEqual(process.reply, "a")
-        self.assertEqual(process.current, a)
-        self.assertEqual(r, "unknown")
-        self.assertEqual(_acc, 1)
-
-        # Now function will not confuse process
-        a.action = None
-        r = process.parse("new", root, test="test_next_2")
-
-        self.assertEqual(process.reply, None)
-        self.assertEqual(process.current, a)
-        self.assertEqual(r, "ok")
-
-        # Now we will stop at the relation
-        f.action = lambda a, *m, **c: 'stop' if has_first(m, 'next') else False
-        r = process.parse(root, test="test_next_3")
-
-        self.assertEqual(process.reply, None)
-        self.assertEqual(process.current, f)
-        self.assertEqual(r, "stop")
 
     '''
 

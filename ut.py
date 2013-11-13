@@ -182,7 +182,7 @@ class Talker(Handler):
             return None
 
         return event.split(self.SEP, 1)[-1]
-    # TODO no_pre_post for can_handle attribute
+
     # Should message go silent or not, useful to avoid recursions
     def is_silent(self, message):
         if not is_string(message):
@@ -397,13 +397,15 @@ class Process2(Talker):
         super(Process2, self).__init__()
 
         self._queue = []
+        self.new_queue_item({})
 
         self.context = {}
         self.query = Element.NEXT
 
         self.setup_handlers()
 
-    def new_queue_item(self, **values):
+    # Generate the new queue item and add it to the queue updated with values
+    def new_queue_item(self, values):
         item = {self.CURRENT: values.get(self.CURRENT) or None,
                 self.MESSAGE: values.get(self.MESSAGE) or []}
 
@@ -411,18 +413,28 @@ class Process2(Talker):
 
         return item
 
-    def new_queue_current(self, current):
-        if not self.current:
-            self._queue[-1][self.CURRENT] = current  # Just update the current if it was None
+    # Put the new item in the queue, updating the empty one, if presents
+    def to_queue(self, values):
+        if not self.message:
+            self.queue_top.update(values)  # No need to keep the empty one in the queue
         else:
-            self.new_queue_item(**{self.CURRENT: current})  # Make the new queue item for the new current
+            if not self.CURRENT in values:
+                values[self.CURRENT] = self.current  # It is better to keep the current current
+
+            self.new_queue_item(values)
 
     # Set the current message or inserts in the front of current message if insert = True
     def set_message(self, message, insert=False):
+
+        if isinstance(message, tuple):
+            message = list(message)
+        elif not is_list(message):
+            message = [message]
+
         if insert:
             message.extend(self.message)
 
-        self._queue[-1][self.MESSAGE] = message
+        self.queue_top[self.MESSAGE] = message
 
     # Events
     # New: cleaning up the queue
@@ -430,15 +442,15 @@ class Process2(Talker):
         self.message.pop(0)
         del self._queue[:-1]
 
-        self._queue[-1][self.CURRENT] = None
+        self.queue_top[self.CURRENT] = None
 
     # New level: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def is_new_level(self, *message):
-        return message and isinstance(message[0], Abstract)
+        return self.message and isinstance(message[0], Abstract)
 
     def do_new_level(self):
-        self.new_queue_current(self.message.pop(0))
-        self.set_message([self.QUERY], True)  # Adding query command to start from asking
+        self.to_queue({self.CURRENT: self.message.pop(0),
+                       self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
 
     # Queue pop: when current queue item is empty we can remove it
     def can_pop_queue(self, *message):
@@ -473,12 +485,10 @@ class Process2(Talker):
         self.on(self.is_new_level, self.do_new_level)
         self.on(self.can_pop_queue, self.do_queue_pop)
 
-    # TODO: parse_step, new_level
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
         self.context.update(context)
-        self.new_queue_item(**{self.CURRENT: self.current,
-                               self.MESSAGE: list(message)})
+        self.to_queue({self.MESSAGE: list(message)})
 
         result = None
 
@@ -491,23 +501,21 @@ class Process2(Talker):
             elif result in (None, True):
                 continue  # No need to put it into the message
 
-            elif isinstance(result, tuple):
-                result = list(result)
-
-            elif not is_list(result):
-                result = [result]
-
             self.set_message(result, True)
 
         return result
 
     @property
+    def queue_top(self):
+        return self._queue[-1]
+
+    @property
     def message(self):
-        return self._queue[-1].get(self.MESSAGE)
+        return self.queue_top.get(self.MESSAGE)
 
     @property
     def current(self):
-        return self._queue[-1].get(self.CURRENT) if self._queue else None
+        return self.queue_top.get(self.CURRENT)
 
 
 ### Borderline between new and old ###
