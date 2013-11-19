@@ -444,11 +444,11 @@ class Process2(Talker):
 
         self.queue_top[self.CURRENT] = None
 
-    # New level: if the head of the message is an Abstract - we make the new queue item and get ready to query it
-    def is_new_level(self, *message):
+    # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
+    def can_push_queue(self, *message):
         return self.message and isinstance(message[0], Abstract)
 
-    def do_new_level(self):
+    def do_queue_push(self):
         self.to_queue({self.CURRENT: self.message.pop(0),
                        self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
 
@@ -482,7 +482,7 @@ class Process2(Talker):
         self.on(self.SKIP, self.do_skip)
 
         self.on(self.can_query, self.do_query)
-        self.on(self.is_new_level, self.do_new_level)
+        self.on(self.can_push_queue, self.do_queue_push)
         self.on(self.can_pop_queue, self.do_queue_pop)
 
     # Process' parse works in step-by-step manner, processing message and then popping the queue
