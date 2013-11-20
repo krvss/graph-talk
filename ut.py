@@ -192,7 +192,8 @@ class Talker(Handler):
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
-        event = message or (get_object_name(handler), )
+        # TODO: method?
+        event = message if (message and is_string(message[0])) else (get_object_name(handler), )
         silent = self.is_silent(event[0])
 
         if not silent:

@@ -542,7 +542,44 @@ class UtTests(unittest.TestCase):
         r = p(p.NEW, p.SKIP, 'blah')
         self.assertTrue(r is None)
 
+    def test_7_debug_log(self):
+        root = ComplexNotion2('here')
+        a = ComplexNotion2('a')
 
+        NextRelation2(root, a)
+
+        # Simple debugger test: reply with unknown message at the abstract
+        process = Process2()
+        debugger = ProcessDebugger()
+        debugger.attach(process)
+
+        unk = 'oh noes!'
+        debugger.reply_at(a, unk)
+
+        r = process(root, test='test_debugging')
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.message[0], unk)
+        self.assertEquals(process.current, a)
+        self.assertEqual(len(process._queue), 1)
+
+        # Now let's test skipping the unknowns by the debugger
+        debugger.points = []
+
+        b = Notion2('b')
+        b.on(process.QUERY, unk)
+        NextRelation2(a, b)
+
+        c = Notion2('c')
+        c.on_forward(process.STOP)
+        NextRelation2(a, c)
+
+        debugger.on(process.UNKNOWN, process.SKIP)
+
+        r = process('new', root, test='test_skipping')
+        self.assertEqual(r, process.STOP)
+        self.assertEqual(process.current, c)
+        self.assertEqual(len(process._queue), 1)
 
     '''
 

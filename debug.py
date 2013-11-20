@@ -1,7 +1,53 @@
 # Universal Translator debug classes
 # (c) krvss 2011-2013
 
-from ut import Abstract
+from ut import Abstract, Handler
+from utils import has_first
+
+try:
+    import pydevd
+    _DEBUGGER = 'pydev'
+except ImportError:
+    _DEBUGGER = 'pdb'
+
+
+class ProcessDebugger(Handler):
+    AT = 'at'
+    DEBUG = 'debug'
+    REPLY = 'reply'
+    ACTION = 'action'
+
+    def __init__(self):
+        super(ProcessDebugger, self).__init__()
+        self.points = []
+
+        self.on(self.is_at, self.at)
+
+    def attach(self, process):
+        process.on_any(self)
+
+    def find_point(self, process_at):
+        for point in self.points:
+            if point.get(self.AT) == process_at:
+                return point
+
+    def reply_at(self, abstract, reply):
+        self.points.append({self.AT: abstract, self.REPLY: reply})
+
+    def is_at(self, *message, **context):
+        process = context.get(self.SENDER)
+
+        point = self.find_point(process.current)
+
+        if point and self.REPLY in point:
+            # TODO: generalize?
+            return has_first(message, 'post_do_queue_push')
+
+    def at(self, *message, **context):
+        process = context.get(self.SENDER)
+        return self.find_point(process.current).get(self.REPLY)
+
+
 
 
 # Debugger/logger
