@@ -2,7 +2,7 @@
 # (c) krvss 2011-2013
 
 from ut import Abstract, Handler
-from utils import has_first
+from utils import has_first, get_object_name
 
 try:
     import pydevd
@@ -20,15 +20,21 @@ class ProcessDebugger(Handler):
     def __init__(self):
         super(ProcessDebugger, self).__init__()
         self.points = []
+        self.processes = {}
 
         self.on(self.is_at, self.at)
 
     def attach(self, process):
         process.on_any(self)
+        # TODO: add other events
+        self.processes[process] = process.add_prefix(get_object_name(process.do_queue_push), process.POST_PREFIX)
 
-    def find_point(self, process_at):
+    def detach(self, process):
+        process.off_all(self)
+
+    def find_point(self, process):
         for point in self.points:
-            if point.get(self.AT) == process_at:
+            if point.get(self.AT) == process.current:
                 return point
 
     def reply_at(self, abstract, reply):
@@ -36,18 +42,17 @@ class ProcessDebugger(Handler):
 
     def is_at(self, *message, **context):
         process = context.get(self.SENDER)
+        if not process in self.processes:
+            return
 
-        point = self.find_point(process.current)
+        point = self.find_point(process)
 
         if point and self.REPLY in point:
-            # TODO: generalize?
-            return has_first(message, 'post_do_queue_push')
+            return has_first(message, self.processes.get(process))
 
     def at(self, *message, **context):
         process = context.get(self.SENDER)
-        return self.find_point(process.current).get(self.REPLY)
-
-
+        return self.find_point(process).get(self.REPLY)
 
 
 # Debugger/logger
