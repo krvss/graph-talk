@@ -581,6 +581,58 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, c)
         self.assertEqual(len(process._queue), 1)
 
+    def test_8_queue(self):
+        global _acc
+
+        #logger.add_queries()
+
+        # Stack test: root -> (a, d); a -> (b, b2, c)
+        root = ComplexNotion("root")
+        a = ComplexNotion("a")
+
+        NextRelation(root, a)
+
+        b = ActionNotion("b", accumulate_false)  # Just return False to keep going to C
+        b2 = ActionNotion("b2", [])  # Test of empty array
+        c = ActionNotion("c", showstopper)  # Stop here
+
+        NextRelation(a, b)
+        NextRelation(a, b2)
+        NextRelation(a, c)
+
+        d = ActionNotion("d", showstopper)  # And stop here too
+
+        NextRelation(root, d)
+
+        process = Process()
+        process.callback = logger
+
+        _acc = 0
+        r = process.parse(root, test="test_queue")
+
+        self.assertEqual(process.reply, "c")
+        self.assertEqual(process.current, c)
+        self.assertEqual(r, "unknown")
+        self.assertEqual(_acc, 1)
+
+        r = process.parse("skip", test="test_skip_1")  # Make process pop from stack
+
+        self.assertEqual(process.reply, "d")
+        self.assertEqual(process.current, d)
+        self.assertEqual(r, "unknown")
+
+        r = process.parse("skip", test="test_skip_2")  # Trying empty stack
+
+        self.assertEqual(process.reply, None)
+        self.assertEqual(process.current, None)  # Because everything skipped
+        self.assertEqual(r, "ok")
+
+        # Trying list message
+        _acc = 0
+        process.parse(b, b, b)
+        self.assertEqual(_acc, 3)
+        self.assertEqual(process.current, b)
+
     '''
 
     # Old style
@@ -1705,6 +1757,8 @@ class UtTests(unittest.TestCase):
         # Simple next test: root -> a
         process = ParsingProcess()
         process.callback = a
+
+        _acc = 0
 
         r = process.parse(root, test="analyzer_test_1")
         self.assertEqual(_acc, 2)
