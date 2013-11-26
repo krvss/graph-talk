@@ -489,60 +489,72 @@ class UtTests(unittest.TestCase):
         self.assertEqual(nr(nr.NEXT), n2)
 
     def test_6_process(self):
-        p = Process2()
+        process = Process2()
 
         # Testing the default
         n = Notion2('N')
 
-        r = p(n, test='process_default')
+        r = process(n, test='process_default')
         self.assertTrue(r)
-        self.assertEquals(p.current, n)
-        self.assertEquals(len(p._queue), 1)
+        self.assertEquals(process.current, n)
+        self.assertEquals(len(process._queue), 1)
+        self.assertFalse(process.message)
 
         # Testing the unknown
-        n.on_forward('strange')
+        strange = 'strange'
+        n.on_forward(strange)
 
-        r = p(p.NEW, n, test='process_unknown')
+        r = process(process.NEW, n, test='process_unknown')
         self.assertTrue(r is False)
-        self.assertEquals(p.current, n)
-        self.assertEquals(len(p._queue), 1)
+        self.assertEquals(process.current, n)
+        self.assertEquals(len(process._queue), 1)
+        self.assertTrue(process.message[0], strange)
 
         # We really stuck
-        r = p(test='process_unknown_2')
+        r = process(test='process_unknown_2')
         self.assertTrue(r is False)
-        self.assertEquals(p.current, n)
-        self.assertEquals(len(p._queue), 1)
+        self.assertEquals(process.current, n)
+        self.assertEquals(len(process._queue), 1)
+        self.assertTrue(process.message[0], strange)
 
         # Now we are good
-        r = p(p.NEW, test='process_new')
+        r = process(process.NEW, test='process_new')
         self.assertTrue(r is None)
-        self.assertEquals(p.current, None)
-        self.assertEquals(len(p._queue), 1)
+        self.assertEquals(process.current, None)
+        self.assertEquals(len(process._queue), 1)
+        self.assertFalse(process.message)
 
         # Testing the correct processing of list replies
         cn = ComplexNotion2('CN')
         n1 = Notion2('N1')
         n2 = Notion2('N2')
 
-        n2.on_forward(p.STOP)
+        n2.on_forward(process.STOP)
 
         NextRelation2(cn, n1)
         NextRelation2(cn, n2)
 
         # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
-        r = p(p.NEW, cn, test='process_list')
-        self.assertEqual(r, p.STOP)
-        self.assertEquals(p.current, n2)
-        self.assertEquals(len(p._queue), 1)
+        r = process(process.NEW, cn, test='process_list')
+        self.assertEqual(r, process.STOP)
+        self.assertEquals(process.current, n2)
+        self.assertEquals(len(process._queue), 1)
+        self.assertFalse(process.message)
 
         # Skip test
-        r = p(p.NEW, 'blah')
+        r = process(process.NEW, strange)
         self.assertTrue(r is False)
+        self.assertIsNone(process.current)
+        self.assertEquals(process.message[0], strange)
+        self.assertEquals(len(process._queue), 1)
 
-        r = p(p.NEW, p.SKIP, 'blah')
+        r = process(process.NEW, process.SKIP, strange)
         self.assertTrue(r is None)
+        self.assertIsNone(process.current)
+        self.assertFalse(process.message)
+        self.assertEquals(len(process._queue), 1)
 
-    def test_7_debug_log(self):
+    def test_7_debug(self):
         root = ComplexNotion2('here')
         a = ComplexNotion2('a')
 
@@ -581,56 +593,60 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(process._queue), 1)
 
     def test_8_queue(self):
-        global _acc
+        # Stack test: root -> (a, e); a -> (b, c, d)
+        root = ComplexNotion2('root')
+        a = ComplexNotion2('a')
 
-        #logger.add_queries()
+        NextRelation2(root, a)
 
-        # Stack test: root -> (a, d); a -> (b, b2, c)
-        root = ComplexNotion("root")
-        a = ComplexNotion("a")
+        b = Notion2('b')
+        c = Notion2('c')
+        c.on_forward([])  # Test of empty array
 
-        NextRelation(root, a)
+        unk = 'unk'
 
-        b = ActionNotion("b", accumulate_false)  # Just return False to keep going to C
-        b2 = ActionNotion("b2", [])  # Test of empty array
-        c = ActionNotion("c", showstopper)  # Stop here
+        d = Notion2('d')  # Stop here
+        d.on_forward(unk)
 
-        NextRelation(a, b)
-        NextRelation(a, b2)
-        NextRelation(a, c)
+        NextRelation2(a, b)
+        NextRelation2(a, c)
+        NextRelation2(a, d)
 
-        d = ActionNotion("d", showstopper)  # And stop here too
+        e = Notion2('e')
+        e.on_forward(unk)  # And stop here too
 
-        NextRelation(root, d)
+        NextRelation2(root, e)
 
-        process = Process()
-        process.callback = logger
+        process = Process2()
 
-        _acc = 0
-        r = process.parse(root, test="test_queue")
+        r = process(root, test='test_queue')
 
-        self.assertEqual(process.reply, "c")
-        self.assertEqual(process.current, c)
-        self.assertEqual(r, "unknown")
-        self.assertEqual(_acc, 1)
-
-        r = process.parse("skip", test="test_skip_1")  # Make process pop from stack
-
-        self.assertEqual(process.reply, "d")
         self.assertEqual(process.current, d)
-        self.assertEqual(r, "unknown")
+        self.assertTrue(r is False)
+        self.assertEqual(len(process._queue), 2)
+        self.assertEqual(process.message[0], unk)
 
-        r = process.parse("skip", test="test_skip_2")  # Trying empty stack
+        r = process('skip', test='test_skip_1')  # Make process pop from stack
 
-        self.assertEqual(process.reply, None)
-        self.assertEqual(process.current, None)  # Because everything skipped
-        self.assertEqual(r, "ok")
+        self.assertEqual(process.current, e)
+        self.assertTrue(r is False)
+        self.assertEqual(len(process._queue), 1)
+        self.assertEqual(process.message[0], unk)
+
+        r = process('skip', test='test_skip_2')  # Trying empty stack
+
+        self.assertEqual(process.current, e)  # Nowhere to go
+        self.assertTrue(r is None)
+        self.assertEqual(len(process._queue), 1)
+        self.assertFalse(process.message)
 
         # Trying list message
-        _acc = 0
-        process.parse(b, b, b)
-        self.assertEqual(_acc, 3)
+        process(e, b)
+        r = process('skip')
+        self.assertTrue(r)
         self.assertEqual(process.current, b)
+        self.assertEqual(len(process._queue), 1)
+        self.assertFalse(process.message)
 
     '''
 

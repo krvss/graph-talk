@@ -476,7 +476,10 @@ class Process2(Talker):
 
     # Skip: remove current and the next item from the queue
     def do_skip(self):
-        self.message.pop(0)
+        self.message.pop(0)  # Remove the command itself
+
+        while not self.message and self._queue:  # skipping
+            self.do_queue_pop()
 
         # It is ok if message is empty to ignore skip
         if self.message:
