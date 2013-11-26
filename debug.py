@@ -1,7 +1,9 @@
 # Universal Translator debug classes
 # (c) krvss 2011-2013
 
-from ut import Abstract, Handler
+from collections import defaultdict
+
+from ut import Abstract, Handler, Process2, Talker
 from utils import has_first, get_object_name
 
 try:
@@ -17,62 +19,56 @@ class ProcessDebugger(Handler):
     LOG = 'log'
     EVENT = 'event'
 
-    def __init__(self):
+    AT_EVENT = Process2.add_prefix(get_object_name(Process2.do_queue_push), Talker.POST_PREFIX)
+    LOG_EVENT = Process2.add_prefix(Process2.QUERY, Talker.POST_PREFIX)
+
+    def __init__(self, process=None):
         super(ProcessDebugger, self).__init__()
-        self.points = []
-        self.processes = {}
+        self._points = defaultdict(dict)
 
         self.on(self.is_at, self.do_reply_at)
         self.on(self.is_log, None)
 
+        if process:
+            self.attach(process)
+
     def attach(self, process):
         process.on_any(self)
-        process_events = {self.AT: process.add_prefix(get_object_name(process.do_queue_push), process.POST_PREFIX),
-                          self.LOG: process.add_prefix(process.QUERY, process.POST_PREFIX)}
-
-        self.processes[process] = process_events
 
     def detach(self, process):
         process.off_all(self)
-        # TODO points clear
-
-    def find_point(self, process):
-        for point in self.points:
-            if point.get(self.AT) == process.current or point.get(self.LOG) == process:
-                return point
-
-    def get_process_point(self, context):
-        #TODO: should we be so bound to self.XXXX or process.XXXX
-        process = context.get(self.SENDER)
-        if not process in self.processes:
-            return None, None
-
-        return process, self.find_point(process)
+        
+    def clear_points(self):
+        self._points.clear()
 
     def reply_at(self, abstract, reply):
-        self.points.append({self.AT: abstract, self.REPLY: reply})
+        self._points[abstract] = {ProcessDebugger.REPLY: reply}
 
     def show_log(self, process):
-        self.points.append({self.LOG: process})
+        self._points[process] = {ProcessDebugger.LOG: True}
 
     def is_at(self, *message, **context):
-        process, point = self.get_process_point(context)
+        process = context[Handler.SENDER]
+        point = self._points.get(process.current)
+
         if not point:
             return
 
-        if self.REPLY in point:
-            return has_first(message, self.processes[process].get(self.AT))
+        if ProcessDebugger.REPLY in point:
+            return has_first(message, ProcessDebugger.AT_EVENT)
 
     def do_reply_at(self, *message, **context):
         process = context.get(self.SENDER)
-        return self.find_point(process).get(self.REPLY)
+        return self._points[process.current].get(self.REPLY)
 
     def is_log(self, *message, **context):
-        process, point = self.get_process_point(context)
+        process = context[Handler.SENDER]
+        point = self._points.get(process)
+
         if not point:
             return
 
-        if self.LOG in point and has_first(message, self.processes[process].get(self.LOG)):
+        if self.LOG in point and has_first(message, ProcessDebugger.LOG_EVENT):
             print "%s: '%s'? - '%s'" % (process.current, process.query, context.get(process.RESULT))
 
 

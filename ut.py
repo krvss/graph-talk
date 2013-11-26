@@ -58,7 +58,8 @@ class Handler(Abstract):
             return [h for h in self.handlers if not is_list(h)]
 
     # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
-    def var_call_result(self, func, message, context):
+    @staticmethod
+    def var_call_result(func, message, context):
         c = var_arg_count(func)
 
         if c == 0:
@@ -114,15 +115,15 @@ class Handler(Abstract):
     def handle(self, *message, **context):
         check, rank, handler_found = None, -1, None
 
-        if not self.SENDER in context:
-            context[self.SENDER] = self
+        if not Handler.SENDER in context:
+            context[Handler.SENDER] = self
 
         # Searching for the best handler
         for handler in self.handlers:
             handler_func = handler if not is_list(handler) else handler[1]
 
             # Avoiding recursive calls
-            if context.get(self.HANDLER) == handler_func:
+            if context.get(Handler.HANDLER) == handler_func:
                 continue
 
             # Condition check, if no condition the result is true with zero rank
@@ -135,10 +136,10 @@ class Handler(Abstract):
 
         # Running the best handler
         if rank >= 0:
-            if not self.HANDLER in context:
-                context[self.HANDLER] = handler_found
+            if not Handler.HANDLER in context:
+                context[Handler.HANDLER] = handler_found
 
-            context.update({self.RANK: rank, self.CONDITION: check})
+            context.update({Handler.RANK: rank, Handler.CONDITION: check})
 
             # Call handler, add the condition result to the context
             result, handler_found = self.run_handler(handler_found, message, context)
@@ -166,29 +167,33 @@ class Talker(Handler):
     SILENT = (RESULT, UNKNOWN)
 
     # Add prefix to the message
-    def add_prefix(self, message, prefix):
+    @staticmethod
+    def add_prefix(message, prefix):
         event = str(message[0] if is_list(message) else message)
 
         if not event.startswith(prefix):
-            event = self.SEP.join([prefix, event])
+            event = Talker.SEP.join([prefix, event])
 
         return tupled(event, message[1:]) if is_list(message) else event
 
     # Remove prefix from the message
-    def remove_prefix(self, message, prefix=None):
+    @staticmethod
+    def remove_prefix(message, prefix=None):
         event = str(message[0] if is_list(message) else message)
 
-        if not self.SEP in event or (prefix and not event.startswith(prefix + self.SEP)):
+        if not Talker.SEP in event or (prefix and not event.startswith(prefix + Talker.SEP)):
             return None
 
-        return event.split(self.SEP, 1)[-1]
+        return event.split(Talker.SEP, 1)[-1]
 
     # Should message go silent or not, useful to avoid recursions
-    def is_silent(self, message):
+    @staticmethod
+    def is_silent(message):
         if not is_string(message):
             message = str(message)
 
-        return message.startswith(self.PRE_PREFIX) or message.startswith(self.POST_PREFIX) or message in self.SILENT
+        return message.startswith(Talker.PRE_PREFIX) or message.startswith(Talker.POST_PREFIX) \
+            or message in Talker.SILENT
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
@@ -197,10 +202,10 @@ class Talker(Handler):
         silent = self.is_silent(event[0])
 
         if not silent:
-            context[self.HANDLER] = handler
+            context[Handler.HANDLER] = handler
 
             # Pre-processing, adding prefix to event or handler name
-            pre_result = self.handle(*self.add_prefix(event, self.PRE_PREFIX), **context)
+            pre_result = self.handle(*self.add_prefix(event, Talker.PRE_PREFIX), **context)
 
             if pre_result[0]:
                 return pre_result[0], pre_result[2]
@@ -208,10 +213,10 @@ class Talker(Handler):
         result = super(Talker, self).run_handler(handler, message, context)
 
         if not silent:
-            context.update({self.RESULT: result[0], self.RANK: result[1]})
+            context.update({Talker.RESULT: result[0], Handler.RANK: result[1]})
 
             # Post-processing, adding postfix and results
-            post_result = self.handle(*self.add_prefix(event, self.POST_PREFIX), **context)
+            post_result = self.handle(*self.add_prefix(event, Talker.POST_PREFIX), **context)
 
             if post_result[0]:
                 return post_result[0], post_result[2]
@@ -224,10 +229,10 @@ class Talker(Handler):
 
         # There is a way to override result and handle unknown message
         if result is not False:
-            context.update({self.RESULT: result, self.RANK: rank, self.HANDLER: handler})
-            result = self.handle_result(self.RESULT, *message, **context) or result  # override has priority
+            context.update({Talker.RESULT: result, Handler.RANK: rank, Handler.HANDLER: handler})
+            result = self.handle_result(Talker.RESULT, *message, **context) or result  # override has priority
         else:
-            result = self.handle_result(self.UNKNOWN, *message, **context)
+            result = self.handle_result(Talker.UNKNOWN, *message, **context)
 
         return result
 
@@ -250,19 +255,19 @@ class Element(Talker):
         self._owner, self.owner = None, owner
 
     def can_set_property(self, *message, **context):
-        property_name = self.remove_prefix(message, self.SET_PREFIX)
+        property_name = self.remove_prefix(message, Element.SET_PREFIX)
 
         if property_name and hasattr(self, property_name) and \
-                has_keys(context, self.OLD_VALUE, self.NEW_VALUE) and \
-                getattr(self, property_name) != context.get(self.NEW_VALUE):
+                has_keys(context, Element.OLD_VALUE, Element.NEW_VALUE) and \
+                getattr(self, property_name) != context.get(Element.NEW_VALUE):
 
                 return len(property_name), property_name
 
     # Set the property to the new value
     def do_set_property(self, *message, **context):
-        new_value = context.get(self.NEW_VALUE)
+        new_value = context.get(Element.NEW_VALUE)
 
-        setattr(self, '_%s' % context[self.CONDITION], new_value)
+        setattr(self, '_%s' % context[Handler.CONDITION], new_value)
 
         if isinstance(new_value, Abstract):
             new_value(*message, **context)
@@ -271,11 +276,11 @@ class Element(Talker):
 
     def change_property(self, name, value):
         # We change property via handler to allow notifications
-        return self.handle_result(self.add_prefix(name, self.SET_PREFIX),
-                                  **{self.NEW_VALUE: value, self.OLD_VALUE: getattr(self, name)})
+        return self.handle_result(self.add_prefix(name, Element.SET_PREFIX),
+                                  **{Element.NEW_VALUE: value, Element.OLD_VALUE: getattr(self, name)})
 
     def on_forward(self, handler):
-        self.on(self.FORWARD, handler)
+        self.on(Element.FORWARD, handler)
 
     @property
     def owner(self):
@@ -304,7 +309,7 @@ class Notion2(Element):
 
     @name.setter
     def name(self, value):
-        self.change_property(self.NAME, value)
+        self.change_property(Element.NAME, value)
 
 
 # Relation is a connection between one or more elements: subject -> object
@@ -323,7 +328,7 @@ class Relation2(Element):
 
     @subject.setter
     def subject(self, value):
-        self.change_property(self.SUBJECT, value)
+        self.change_property(Relation2.SUBJECT, value)
 
     @property
     def object(self):
@@ -331,7 +336,7 @@ class Relation2(Element):
 
     @object.setter
     def object(self, value):
-        self.change_property(self.OBJECT, value)
+        self.change_property(Relation2.OBJECT, value)
 
     def __str__(self):
         return '<%s - %s>' % (self.subject, self.object)
@@ -346,20 +351,20 @@ class ComplexNotion2(Notion2):
         super(ComplexNotion2, self).__init__(name, owner)
 
         self._relations = []
-        self._relate_event = self.add_prefix(Relation2.SUBJECT, self.SET_PREFIX)
+        self._relate_event = self.add_prefix(Relation2.SUBJECT, Element.SET_PREFIX)
 
         self.on(self._relate_event, self.relate)
         self.on_forward(self.next)
 
     def relate(self, *message, **context):
-        relation = context.get(self.SENDER)
+        relation = context.get(Handler.SENDER)
 
-        if context[self.OLD_VALUE] == self and relation in self._relations:
+        if context[Element.OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
             relation.off(self._relate_event, self)
             return True
 
-        elif context[self.NEW_VALUE] == self and relation not in self._relations:
+        elif context[Element.NEW_VALUE] == self and relation not in self._relations:
             self._relations.append(relation)
             relation.on(self._relate_event, self)
             return True
@@ -407,8 +412,8 @@ class Process2(Talker):
 
     # Generate the new queue item and add it to the queue updated with values
     def new_queue_item(self, values):
-        item = {self.CURRENT: values.get(self.CURRENT) or None,
-                self.MESSAGE: values.get(self.MESSAGE) or []}
+        item = {Process2.CURRENT: values.get(Process2.CURRENT) or None,
+                Process2.MESSAGE: values.get(Process2.MESSAGE) or []}
 
         self._queue.append(item)
 
@@ -419,8 +424,8 @@ class Process2(Talker):
         if not self.message:
             self.queue_top.update(values)  # No need to keep the empty one in the queue
         else:
-            if not self.CURRENT in values:
-                values[self.CURRENT] = self.current  # It is better to keep the current current
+            if not Process2.CURRENT in values:
+                values[Process2.CURRENT] = self.current  # It is better to keep the current current
 
             self.new_queue_item(values)
 
@@ -435,7 +440,7 @@ class Process2(Talker):
         if insert:
             message.extend(self.message)
 
-        self.queue_top[self.MESSAGE] = message
+        self.queue_top[Process2.MESSAGE] = message
 
     # Events
     # New: cleaning up the queue
@@ -443,15 +448,15 @@ class Process2(Talker):
         self.message.pop(0)
         del self._queue[:-1]
 
-        self.queue_top[self.CURRENT] = None
+        self.queue_top[Process2.CURRENT] = None
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def can_push_queue(self, *message):
         return self.message and isinstance(message[0], Abstract)
 
     def do_queue_push(self):
-        self.to_queue({self.CURRENT: self.message.pop(0),
-                       self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
+        self.to_queue({Process2.CURRENT: self.message.pop(0),
+                       Process2.MESSAGE: [Process2.QUERY]})  # Adding query command to start from asking
 
     # Queue pop: when current queue item is empty we can remove it
     def can_pop_queue(self, *message):
@@ -462,7 +467,7 @@ class Process2(Talker):
 
     # Query: should we ask the query to the current current
     def can_query(self, *message):
-        return self.current and has_first(message, self.QUERY)
+        return self.current and has_first(message, Process2.QUERY)
 
     def do_query(self):
         self.message.pop(0)
@@ -479,8 +484,8 @@ class Process2(Talker):
 
     # Init handlers
     def setup_handlers(self):
-        self.on(self.NEW, self.do_new)
-        self.on(self.SKIP, self.do_skip)
+        self.on(Process2.NEW, self.do_new)
+        self.on(Process2.SKIP, self.do_skip)
 
         self.on(self.can_query, self.do_query)
         self.on(self.can_push_queue, self.do_queue_push)
@@ -489,14 +494,14 @@ class Process2(Talker):
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
         self.context.update(context)
-        self.to_queue({self.MESSAGE: list(message)})
+        self.to_queue({Process2.MESSAGE: list(message)})
 
         result = None
 
         while self.message or len(self._queue) > 1:
             result = super(Process2, self).parse(*self.message, **self.context)
 
-            if result in (self.OK, self.STOP, False):
+            if result in (Process2.OK, Process2.STOP, False):
                 break
 
             elif result in (None, True):
@@ -512,11 +517,11 @@ class Process2(Talker):
 
     @property
     def message(self):
-        return self.queue_top.get(self.MESSAGE)
+        return self.queue_top.get(Process2.MESSAGE)
 
     @property
     def current(self):
-        return self.queue_top.get(self.CURRENT)
+        return self.queue_top.get(Process2.CURRENT)
 
 
 ### Borderline between new and old ###

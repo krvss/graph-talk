@@ -550,8 +550,7 @@ class UtTests(unittest.TestCase):
 
         # Simple debugger test: reply with unknown message at the abstract
         process = Process2()
-        debugger = ProcessDebugger()
-        debugger.attach(process)
+        debugger = ProcessDebugger(process)
 
         unk = 'oh noes!'
         debugger.reply_at(a, unk)
@@ -564,7 +563,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(process._queue), 1)
 
         # Now let's test skipping the unknowns by the debugger
-        debugger.points = []
+        debugger.clear_points()
 
         b = Notion2('b')
         b.on(process.QUERY, unk)
