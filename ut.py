@@ -187,8 +187,7 @@ class Talker(Handler):
         return event.split(Talker.SEP, 1)[-1]
 
     # Should message go silent or not, useful to avoid recursions
-    @staticmethod
-    def is_silent(message):
+    def is_silent(self, message):
         if not is_string(message):
             message = str(message)
 
@@ -197,7 +196,6 @@ class Talker(Handler):
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
-        # TODO: method?
         event = message if (message and is_string(message[0])) else (get_object_name(handler), )
         silent = self.is_silent(event[0])
 
@@ -386,9 +384,9 @@ class NextRelation2(Relation2):
         self.on_forward(lambda *m, **c: self.object)
 
 
-# Process is a walker from abstract to abstract, asking them for the next one with a query
-# It has the current abstract and the message to process; when new abstract appears
-# the new queue with current and message is created
+# Process is a walker from an abstract to abstract, asking them for the next one with a query
+# It has the current abstract and the message to process; when new abstract appears,
+# the new queue item with current and message is created
 class Process2(Talker):
     NEW = 'new'
     OK = 'ok'
@@ -472,16 +470,16 @@ class Process2(Talker):
     def do_query(self):
         self.message.pop(0)
         reply = self.current.parse(self.query, **self.context)
-        return reply or True  # if it is False, we just continue to the next one
+        return reply or True  # if it is False/None, we just continue to the next one
 
     # Skip: remove current and the next item from the queue
     def do_skip(self):
         self.message.pop(0)  # Remove the command itself
 
-        while not self.message and self._queue:  # skipping
+        while not self.message and self._queue:  # Looking for the item to skip
             self.do_queue_pop()
 
-        # It is ok if message is empty to ignore skip
+        # It is ok if the message is empty to ignore skip
         if self.message:
             self.message.pop(0)
 

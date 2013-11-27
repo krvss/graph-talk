@@ -272,22 +272,22 @@ class UtTests(unittest.TestCase):
 
         # Call parameters check
         # Sender
-        handler4 = lambda *m, **c: c[h.SENDER]
-        h.on(h.SENDER, handler4)
+        handler4 = lambda *m, **c: c[Handler.SENDER]
+        h.on(Handler.SENDER, handler4)
 
-        r = h.handle(h.SENDER)
-        self.assertEquals(r, (h, len(h.SENDER), handler4))
+        r = h.handle(Handler.SENDER)
+        self.assertEquals(r, (h, len(Handler.SENDER), handler4))
 
-        r = h.handle(h.SENDER, **{h.SENDER: 'test'})
-        self.assertEquals(r, ('test', len(h.SENDER), handler4))
+        r = h.handle(Handler.SENDER, **{Handler.SENDER: 'test'})
+        self.assertEquals(r, ('test', len(Handler.SENDER), handler4))
 
         # Condition & rank
-        handler5 = lambda *m, **c: (c[h.RANK], c[h.CONDITION])
+        handler5 = lambda *m, **c: (c[Handler.RANK], c[Handler.CONDITION])
 
-        h.on(h.CONDITION, handler5)
+        h.on(Handler.CONDITION, handler5)
 
-        r = h.handle(h.CONDITION)
-        self.assertEquals(r, ((len(h.CONDITION), h.CONDITION), len(h.CONDITION), handler5))
+        r = h.handle(Handler.CONDITION)
+        self.assertEquals(r, ((len(Handler.CONDITION), Handler.CONDITION), len(Handler.CONDITION), handler5))
 
         # Args count test
         self.assertEqual(var_arg_count(tc.parse), 2)
@@ -299,18 +299,18 @@ class UtTests(unittest.TestCase):
         # Names
         self.assertEqual(t.add_prefix('event', '1'), Talker.SEP.join(['1', 'event']))
         self.assertEqual(get_object_name(t.add_prefix), 'add_prefix')
-        self.assertEqual(t.add_prefix(['event', 1], t.POST_PREFIX), ('post_event', 1))
-        self.assertEqual(t.add_prefix('post_event', t.POST_PREFIX), 'post_event')
-        self.assertEqual(t.add_prefix(['post_event'], t.POST_PREFIX), ('post_event', ))
+        self.assertEqual(t.add_prefix(['event', 1], Talker.POST_PREFIX), ('post_event', 1))
+        self.assertEqual(t.add_prefix('post_event', Talker.POST_PREFIX), 'post_event')
+        self.assertEqual(t.add_prefix(['post_event'], Talker.POST_PREFIX), ('post_event', ))
 
         self.assertEqual(t.remove_prefix('e', 'p'), None)
         self.assertEqual(t.remove_prefix('p_e_v', 'p'), 'e_v')
         self.assertEqual(t.remove_prefix(['p_e']), 'e')
 
         # Silent
-        self.assertTrue(t.is_silent(t.PRE_PREFIX))
-        self.assertTrue(t.is_silent(t.POST_PREFIX))
-        for s in t.SILENT:
+        self.assertTrue(t.is_silent(Talker.PRE_PREFIX))
+        self.assertTrue(t.is_silent(Talker.POST_PREFIX))
+        for s in Talker.SILENT:
             self.assertTrue(t.is_silent(s))
 
         self.assertFalse(t.is_silent('loud'))
@@ -379,15 +379,15 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], tc.return_true)
 
         # Recursion test
-        t.on('r', lambda *m, **c: c[t.SENDER].handle('r', **c))
+        t.on('r', lambda *m, **c: c[Handler.SENDER].handle('r', **c))
         self.assertTrue(t.handle('r'))
 
         # Result test
         t.on('pre_result', 'handler3')  # Will not be called
-        t.on(t.RESULT, 'handler4')
+        t.on(Talker.RESULT, 'handler4')
         self.assertEqual(t('event'), 'handler4')
 
-        t.on(t.UNKNOWN, handler1)
+        t.on(Talker.UNKNOWN, handler1)
         self.assertEqual(t('strange'), 'handler1')
 
     def test_4_element(self):
@@ -397,10 +397,10 @@ class UtTests(unittest.TestCase):
         # Can change property or not
         self.assertFalse(e.can_set_property('x'))
         self.assertFalse(e.can_set_property('set_owner'))
-        self.assertFalse(e.can_set_property('set_owner', **{e.OLD_VALUE: '1'}))
-        self.assertFalse(e.can_set_property('set_owner', **{e.OLD_VALUE: '1', e.NEW_VALUE: None}))
+        self.assertFalse(e.can_set_property('set_owner', **{Element.OLD_VALUE: '1'}))
+        self.assertFalse(e.can_set_property('set_owner', **{Element.OLD_VALUE: '1', Element.NEW_VALUE: None}))
 
-        self.assertTrue(e.can_set_property('set_owner', **{e.OLD_VALUE: '1', e.NEW_VALUE: '2'}))
+        self.assertTrue(e.can_set_property('set_owner', **{Element.OLD_VALUE: '1', Element.NEW_VALUE: '2'}))
 
         # Preventing the change
         e.on('pre_set_owner', tc.return_true)
@@ -413,11 +413,11 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(e.owner, tc)
         self.assertEqual(tc.last_message, ('set_owner', ))
-        self.assertEqual(tc.last_context[e.CONDITION], 'owner')
-        self.assertEqual(tc.last_context[e.HANDLER], e.do_set_property)
-        self.assertEqual(tc.last_context[e.OLD_VALUE], None)
-        self.assertEqual(tc.last_context[e.NEW_VALUE], tc)
-        self.assertEqual(tc.last_context[e.SENDER], e)
+        self.assertEqual(tc.last_context[Handler.CONDITION], 'owner')
+        self.assertEqual(tc.last_context[Handler.HANDLER], e.do_set_property)
+        self.assertEqual(tc.last_context[Element.OLD_VALUE], None)
+        self.assertEqual(tc.last_context[Element.NEW_VALUE], tc)
+        self.assertEqual(tc.last_context[Handler.SENDER], e)
 
         # Allowing the change to non-abstract
         self.assertTrue(e.change_property('owner', 1))
@@ -426,15 +426,15 @@ class UtTests(unittest.TestCase):
         self.assertEqual(e.owner, 1)
 
         # Move test
-        handler1 = lambda *m: m[0] if m[0] in e.FORWARD else None
+        handler1 = lambda *m: m[0] if m[0] in Element.FORWARD else None
 
         e.on_forward(handler1)
 
-        self.assertEqual(e(e.NEXT), e.NEXT)
+        self.assertEqual(e(Element.NEXT), Element.NEXT)
 
         e.off_all(handler1)
 
-        self.assertTrue(e(e.NEXT) is False)
+        self.assertTrue(e(Element.NEXT) is False)
 
     def test_5_objects(self):
         # Notions test
@@ -464,29 +464,29 @@ class UtTests(unittest.TestCase):
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it, not a list
-        self.assertEqual(cn(cn.NEXT), r1)
+        self.assertEqual(cn(Element.NEXT), r1)
 
         r2 = Relation2(n2, n1)
         r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
-        self.assertEqual(cn(cn.NEXT), (r1, r2))
+        self.assertEqual(cn(Element.NEXT), (r1, r2))
 
         r2.subject = n2
         self.assertEqual(len(cn.relations), 1)
 
         # Trying direct calls to relate
         r3 = Relation2(n1, n2)
-        self.assertFalse(cn.relate(**{cn.OLD_VALUE: None, cn.SENDER: r3, cn.NEW_VALUE: None}))
-        self.assertFalse(cn.relate(**{cn.OLD_VALUE: cn, cn.SENDER: r3, cn.NEW_VALUE: None}))
+        self.assertFalse(cn.relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertFalse(cn.relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
-        self.assertTrue(cn.relate(**{cn.OLD_VALUE: None, cn.SENDER: r3, cn.NEW_VALUE: cn}))
-        self.assertFalse(cn.relate(**{cn.OLD_VALUE: None, cn.SENDER: r3, cn.NEW_VALUE: cn}))
-        self.assertTrue(cn.relate(**{cn.OLD_VALUE: cn, cn.SENDER: r3, cn.NEW_VALUE: None}))
+        self.assertTrue(cn.relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertFalse(cn.relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertTrue(cn.relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
         # Next test
         nr = NextRelation2(n1, n2)
-        self.assertEqual(nr(nr.NEXT), n2)
+        self.assertEqual(nr(Element.NEXT), n2)
 
     def test_6_process(self):
         process = Process2()
@@ -504,7 +504,7 @@ class UtTests(unittest.TestCase):
         strange = 'strange'
         n.on_forward(strange)
 
-        r = process(process.NEW, n, test='process_unknown')
+        r = process(Process2.NEW, n, test='process_unknown')
         self.assertTrue(r is False)
         self.assertEquals(process.current, n)
         self.assertEquals(len(process._queue), 1)
@@ -518,7 +518,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(process.message[0], strange)
 
         # Now we are good
-        r = process(process.NEW, test='process_new')
+        r = process(Process2.NEW, test='process_new')
         self.assertTrue(r is None)
         self.assertEquals(process.current, None)
         self.assertEquals(len(process._queue), 1)
@@ -529,26 +529,26 @@ class UtTests(unittest.TestCase):
         n1 = Notion2('N1')
         n2 = Notion2('N2')
 
-        n2.on_forward(process.STOP)
+        n2.on_forward(Process2.STOP)
 
         NextRelation2(cn, n1)
         NextRelation2(cn, n2)
 
         # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
-        r = process(process.NEW, cn, test='process_list')
-        self.assertEqual(r, process.STOP)
+        r = process(Process2.NEW, cn, test='process_list')
+        self.assertEqual(r, Process2.STOP)
         self.assertEquals(process.current, n2)
         self.assertEquals(len(process._queue), 1)
         self.assertFalse(process.message)
 
         # Skip test
-        r = process(process.NEW, strange)
+        r = process(Process2.NEW, strange)
         self.assertTrue(r is False)
         self.assertIsNone(process.current)
         self.assertEquals(process.message[0], strange)
         self.assertEquals(len(process._queue), 1)
 
-        r = process(process.NEW, process.SKIP, strange)
+        r = process(Process2.NEW, Process2.SKIP, strange)
         self.assertTrue(r is None)
         self.assertIsNone(process.current)
         self.assertFalse(process.message)
@@ -578,17 +578,17 @@ class UtTests(unittest.TestCase):
         debugger.clear_points()
 
         b = Notion2('b')
-        b.on(process.QUERY, unk)
+        b.on(Process2.QUERY, unk)
         NextRelation2(a, b)
 
         c = Notion2('c')
-        c.on_forward(process.STOP)
+        c.on_forward(Process2.STOP)
         NextRelation2(a, c)
 
-        debugger.on(process.UNKNOWN, process.SKIP)
+        debugger.on(Talker.UNKNOWN, Process2.SKIP)
 
-        r = process('new', root, test='test_skipping')
-        self.assertEqual(r, process.STOP)
+        r = process(Process2.NEW, root, test='test_skipping')
+        self.assertEqual(r, Process2.STOP)
         self.assertEqual(process.current, c)
         self.assertEqual(len(process._queue), 1)
 
@@ -626,14 +626,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(process._queue), 2)
         self.assertEqual(process.message[0], unk)
 
-        r = process('skip', test='test_skip_1')  # Make process pop from stack
+        r = process(Process2.SKIP, test='test_skip_1')  # Make process pop from stack
 
         self.assertEqual(process.current, e)
         self.assertTrue(r is False)
         self.assertEqual(len(process._queue), 1)
         self.assertEqual(process.message[0], unk)
 
-        r = process('skip', test='test_skip_2')  # Trying empty stack
+        r = process(Process2.SKIP, test='test_skip_2')  # Trying empty stack
 
         self.assertEqual(process.current, e)  # Nowhere to go
         self.assertTrue(r is None)
@@ -642,7 +642,7 @@ class UtTests(unittest.TestCase):
 
         # Trying list message
         process(e, b)
-        r = process('skip')
+        r = process(Process2.SKIP)
         self.assertTrue(r)
         self.assertEqual(process.current, b)
         self.assertEqual(len(process._queue), 1)
