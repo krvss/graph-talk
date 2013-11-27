@@ -314,6 +314,7 @@ class UtTests(unittest.TestCase):
             self.assertTrue(t.is_silent(s))
 
         self.assertFalse(t.is_silent('loud'))
+        self.assertFalse(t.is_silent(1))
 
         # Handling
         handler1 = 'handler1'
@@ -647,6 +648,77 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
         self.assertEqual(len(process._queue), 1)
         self.assertFalse(process.message)
+
+    def test_9_context(self):
+        # Verify correctness of adding
+        # Root -> (a, b)
+        root = ComplexNotion2('root')
+        a = Notion2('a')
+
+        ctx_key = 'ctx'
+        l = lambda: {SharedContextProcess2.ADD_CONTEXT: {ctx_key: True}}
+        a.on_forward(l)
+
+        b = Notion2('b')
+        b.on_forward(lambda *m, **c: Process2.STOP if ctx_key in c else Process2.OK)
+
+        NextRelation2(root, a)
+        NextRelation2(root, b)
+
+        process = SharedContextProcess2()
+
+        r = process(root, test='test_context_add_1')
+        self.assertEqual(r, Process2.STOP)
+        self.assertIn(ctx_key, process.context)
+        self.assertEqual(process.current, b)
+
+        # Testing the order of execution/update and keeping of source values in context if adding
+        process.context[ctx_key] = 1
+        r = process(Process2.NEW, {SharedContextProcess2.ADD_CONTEXT: {'from': 'me'}}, root, test='test_context_add_2')
+
+        self.assertEqual(r, Process2.STOP)
+        self.assertEqual(1, process.context[ctx_key])
+        self.assertEqual('me', process.context['from'])
+        self.assertEqual(process.current, b)
+
+        # Verify updating
+        a.off_all(l)
+        l = lambda: {SharedContextProcess2.UPDATE_CONTEXT: {ctx_key: 'new'}}
+        a.on_forward(l)
+
+        process.context[ctx_key] = 2
+
+        r = process(Process2.NEW, root, test='test_context_update')
+        self.assertEqual(r, Process2.STOP)
+        self.assertEqual('new', process.context[ctx_key])
+        self.assertEqual(process.current, b)
+
+        # Verify deleting & mass deleting
+        a.off_all(l)
+        l = lambda: {SharedContextProcess2.DELETE_CONTEXT: ctx_key}
+        a.on_forward(l)
+
+        r = process.parse(Process2.NEW, root, test='test_context_del')
+        self.assertEqual(r, Process2.OK)
+        self.assertNotIn(ctx_key, process.context)
+        self.assertEqual(process.current, b)
+
+        a.off_all(l)
+        l = lambda: {SharedContextProcess2.DELETE_CONTEXT: ['more', 'more2']}
+        a.on_forward(l)
+
+        r = process.parse(Process2.NEW, root, test='test_context_del', more=False)
+        self.assertEqual(r, Process2.OK)
+        self.assertNotIn('more', process.context)
+        self.assertEqual(process.current, b)
+
+        # See what's happening if command argument is incorrect
+        a.off_all(l)
+        a.on_forward(SharedContextProcess2.ADD_CONTEXT)
+
+        r = process.parse(Process2.NEW, root, test='test_context_bad')
+        self.assertTrue(r is False)
+        self.assertEqual(process.current, a)
 
     '''
 

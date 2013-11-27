@@ -186,13 +186,13 @@ class Talker(Handler):
 
         return event.split(Talker.SEP, 1)[-1]
 
-    # Should message go silent or not, useful to avoid recursions
-    def is_silent(self, message):
-        if not is_string(message):
-            message = str(message)
+    # Should event go silent or not, useful to avoid recursions
+    def is_silent(self, event):
+        if not is_string(event):
+            event = str(event)
 
-        return message.startswith(Talker.PRE_PREFIX) or message.startswith(Talker.POST_PREFIX) \
-            or message in Talker.SILENT
+        return event.startswith(Talker.PRE_PREFIX) or event.startswith(Talker.POST_PREFIX) \
+            or event in Talker.SILENT
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
@@ -395,7 +395,7 @@ class Process2(Talker):
 
     CURRENT = 'current'
     MESSAGE = 'message'
-    QUERY = 'query'
+    QUERY = 'query'  # TODO: add generic Error?
 
     def __init__(self):
         super(Process2, self).__init__()
@@ -440,7 +440,7 @@ class Process2(Talker):
 
         self.queue_top[Process2.MESSAGE] = message
 
-    # Events
+    # Events #
     # New: cleaning up the queue
     def do_new(self):
         self.message.pop(0)
@@ -483,6 +483,13 @@ class Process2(Talker):
         if self.message:
             self.message.pop(0)
 
+    # Cleanup: remove empty message item
+    def can_clear_message(self, *message):
+        return message and (is_list(message[0]) or isinstance(message[0], dict)) and not message[0]
+
+    def do_clear_message(self):
+        self.message.pop(0)
+
     # Init handlers
     def setup_handlers(self):
         self.on(Process2.NEW, self.do_new)
@@ -491,6 +498,7 @@ class Process2(Talker):
         self.on(self.can_query, self.do_query)
         self.on(self.can_push_queue, self.do_queue_push)
         self.on(self.can_pop_queue, self.do_queue_pop)
+        self.on(self.can_clear_message, self.do_clear_message)
 
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
@@ -510,7 +518,7 @@ class Process2(Talker):
 
             self.set_message(result, True)
 
-        return result
+        return result  # TODO: return OK or True?
 
     @property
     def queue_top(self):
@@ -523,6 +531,70 @@ class Process2(Talker):
     @property
     def current(self):
         return self.queue_top.get(Process2.CURRENT)
+
+
+# Shared context process supports context modification commands
+class SharedContextProcess2(Process2):
+    ADD_CONTEXT = 'add_context'
+    UPDATE_CONTEXT = 'update_context'
+    DELETE_CONTEXT = 'delete_context'
+
+    def _context_add(self, key, value):
+        self.context[key] = value
+
+    def _context_set(self, key, value):
+        self.context[key] = value
+
+    def _context_delete(self, key):
+        del self.context[key]
+
+    # Events #
+    # Do we have add context command
+    def can_add_context(self, *message):
+        return message and isinstance(message[0], dict) \
+            and isinstance(message[0].get(SharedContextProcess2.ADD_CONTEXT), dict)
+
+    # Adding items to context, do not replacing existing ones
+    def do_add_context(self):
+        add = self.message[0].pop(SharedContextProcess2.ADD_CONTEXT)
+
+        for k, v in add.items():
+            if not k in self.context:
+                self._context_add(k, v)
+
+    # Updating the context
+    def can_update_context(self, *message):
+        return message and isinstance(message[0], dict) \
+            and isinstance(message[0].get(SharedContextProcess2.UPDATE_CONTEXT), dict)
+
+    def do_update_context(self):
+        update = self.message[0].pop(SharedContextProcess2.UPDATE_CONTEXT)
+
+        for k, v in update.items():
+            self._context_set(k, v)
+
+    # Deleting items from the context
+    def can_delete_context(self, *message):
+        return message and isinstance(message[0], dict) \
+            and SharedContextProcess2.DELETE_CONTEXT in message[0]
+
+    def do_delete_context(self):
+        delete = self.message[0].pop(SharedContextProcess2.DELETE_CONTEXT)
+
+        if is_list(delete):
+            for k in delete:
+                if k in self.context:
+                    self._context_delete(k)
+
+        elif delete in self.context:
+            self._context_delete(delete)
+
+    def setup_handlers(self):
+        super(SharedContextProcess2, self).setup_handlers()
+
+        self.on(self.can_add_context, self.do_add_context)
+        self.on(self.can_update_context, self.do_update_context)
+        self.on(self.can_delete_context, self.do_delete_context)
 
 
 ### Borderline between new and old ###
