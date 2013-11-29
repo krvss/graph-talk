@@ -489,6 +489,10 @@ class UtTests(unittest.TestCase):
         nr = NextRelation2(n1, n2)
         self.assertEqual(nr(Element.NEXT), n2)
 
+        # Action test
+        na = ActionNotion2('action', 'action')
+        self.assertEquals(na(Element.NEXT), na.name)
+
     def test_6_process(self):
         process = Process2()
 
@@ -528,9 +532,7 @@ class UtTests(unittest.TestCase):
         # Testing the correct processing of list replies
         cn = ComplexNotion2('CN')
         n1 = Notion2('N1')
-        n2 = Notion2('N2')
-
-        n2.on_forward(Process2.STOP)
+        n2 = ActionNotion2('N2', Process2.STOP)
 
         NextRelation2(cn, n1)
         NextRelation2(cn, n2)
@@ -582,8 +584,7 @@ class UtTests(unittest.TestCase):
         b.on(Process2.QUERY, unk)
         NextRelation2(a, b)
 
-        c = Notion2('c')
-        c.on_forward(Process2.STOP)
+        c = ActionNotion2('c', Process2.STOP)
         NextRelation2(a, c)
 
         debugger.on(Talker.UNKNOWN, Process2.SKIP)
@@ -601,20 +602,17 @@ class UtTests(unittest.TestCase):
         NextRelation2(root, a)
 
         b = Notion2('b')
-        c = Notion2('c')
-        c.on_forward([])  # Test of empty array
+        c = ActionNotion2('c', [])  # Test of empty array
 
         unk = 'unk'
 
-        d = Notion2('d')  # Stop here
-        d.on_forward(unk)
+        d = ActionNotion2('d', unk)  # Stop here
 
         NextRelation2(a, b)
         NextRelation2(a, c)
         NextRelation2(a, d)
 
-        e = Notion2('e')
-        e.on_forward(unk)  # And stop here too
+        e = ActionNotion2('e', unk)  # And stop here too
 
         NextRelation2(root, e)
 
@@ -659,8 +657,7 @@ class UtTests(unittest.TestCase):
         l = lambda: {SharedContextProcess2.ADD_CONTEXT: {ctx_key: True}}
         a.on_forward(l)
 
-        b = Notion2('b')
-        b.on_forward(lambda *m, **c: Process2.STOP if ctx_key in c else Process2.OK)
+        b = ActionNotion2('b', lambda *m, **c: Process2.STOP if ctx_key in c else Process2.OK)
 
         NextRelation2(root, a)
         NextRelation2(root, b)
@@ -719,6 +716,109 @@ class UtTests(unittest.TestCase):
         r = process.parse(Process2.NEW, root, test='test_context_bad')
         self.assertTrue(r is False)
         self.assertEqual(process.current, a)
+
+    def test_10_dict_tracking(self):
+        d = {'a': 1, 'c': 12}
+        ops = DictChangeGroup()
+
+        d2 = {'a': 1}
+
+        a1 = DictChangeOperation(d, DictChangeOperation.ADD, 'b', 2)
+        ops.add(a1, False)
+
+        ops.add(DictChangeOperation(d, DictChangeOperation.SET, 'b', 4), False)
+
+        a2 = DictChangeOperation(d, DictChangeOperation.SET, 'b', 3)
+        ops.add(a2, False)
+
+        a3 = DictChangeOperation(d2, DictChangeOperation.ADD, 'b', 3)
+        ops.add(a3, False)
+
+        s1 = DictChangeOperation(d, DictChangeOperation.SET, 'a', 0)
+        ops.add(s1, False)
+
+        ops.add(DictChangeOperation(d, DictChangeOperation.DELETE, 'c'), False)
+
+        ops.do()
+
+        self.assertEqual(d['b'], 3)
+        self.assertEqual(d2['b'], 3)
+        self.assertEqual(d['a'], 0)
+        self.assertNotIn('c', d)
+
+        ops.undo()
+
+        self.assertEqual(d['a'], 1)
+        self.assertEqual(d['c'], 12)
+        self.assertNotIn('b', d)
+
+        self.assertEqual(len(d), 2)
+
+        self.assertEqual(str(a1), '%s %s=%s' % (DictChangeOperation.ADD,  a1._key, a1._value))
+        self.assertEqual(repr(s1), '%s %s=%s<-%s' % (DictChangeOperation.SET,  s1._key, s1._value, s1._old_value))
+
+        with self.assertRaises(ValueError):
+            DictChangeOperation('fail', 1, 2)
+
+    def test_11_stacking_context(self):
+        # Testing without tracking
+        root = ComplexNotion2('root')
+
+        NextRelation2(root, ActionNotion2('change_context',
+                                          {StackingContextProcess2.ADD_CONTEXT: {'inject': 'ninja'}}))
+
+        NextRelation2(root, ActionNotion2('change_context2',
+                                          {StackingContextProcess2.UPDATE_CONTEXT: {'inject': 'revenge of ninja'}}))
+
+        NextRelation2(root, ActionNotion2('del_context', {StackingContextProcess2.DELETE_CONTEXT: 'inject'}))
+
+        p = ActionNotion2('pop_context', StackingContextProcess2.POP_CONTEXT)
+        NextRelation2(root, p)
+
+        process = StackingContextProcess2()
+
+        r = process(root, test='test_stacking_1')
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.current, p)
+        self.assertNotIn('inject', process.context)
+
+        # Now tracking is on!
+        root = ComplexNotion2('root')
+
+        NextRelation2(root, ActionNotion2('push_context', StackingContextProcess2.PUSH_CONTEXT))
+
+        NextRelation2(root, ActionNotion2('change_context',
+                                          {StackingContextProcess2.ADD_CONTEXT: {'terminator': '2'}}))
+
+        NextRelation2(root, ActionNotion2('delete_context',
+                                          {StackingContextProcess2.DELETE_CONTEXT: 'terminator'}))
+
+        NextRelation2(root, ActionNotion2('change_context2',
+                                          {StackingContextProcess2.UPDATE_CONTEXT: {'alien': 'omnomnom'}}))
+
+        NextRelation2(root, ActionNotion2('check_context', lambda *m, **c: None if 'alien' in c else 'Ripley!'))
+
+        NextRelation2(root, ActionNotion2('push_context2', StackingContextProcess2.PUSH_CONTEXT))
+
+        NextRelation2(root, ActionNotion2('change_context3',
+                                          {StackingContextProcess2.UPDATE_CONTEXT: {'test': 'predator'}}))
+
+        NextRelation2(root, ActionNotion2('forget_context', StackingContextProcess2.FORGET_CONTEXT))
+
+        pop = ActionNotion2('pop_context', StackingContextProcess2.POP_CONTEXT)
+        NextRelation2(root, pop)
+
+        r = process(Process2.NEW, root, test='test_stacking_2')
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.current, pop)
+        self.assertNotIn('alien', process.context)
+        self.assertNotIn('terminator', process.context)
+        self.assertEqual('predator', process.context['test'])  # Lasts because context changes were forgotten
+        self.assertFalse(process._context_stack)
+
+        r = process.parse('new', pop, test='test_stacking_3')
 
     '''
 

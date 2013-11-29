@@ -310,6 +310,13 @@ class Notion2(Element):
         self.change_property(Element.NAME, value)
 
 
+# Action notion is a notion with specified forward handler
+class ActionNotion2(Notion2):
+    def __init__(self, name, action, owner=None):
+        super(ActionNotion2, self).__init__(name, owner)
+        self.on_forward(action)
+
+
 # Relation is a connection between one or more elements: subject -> object
 class Relation2(Element):
     SUBJECT = 'subject'
@@ -395,7 +402,7 @@ class Process2(Talker):
 
     CURRENT = 'current'
     MESSAGE = 'message'
-    QUERY = 'query'  # TODO: add generic Error?
+    QUERY = 'query'
 
     def __init__(self):
         super(Process2, self).__init__()
@@ -518,7 +525,7 @@ class Process2(Talker):
 
             self.set_message(result, True)
 
-        return result  # TODO: return OK or True?
+        return result
 
     @property
     def queue_top(self):
@@ -595,6 +602,73 @@ class SharedContextProcess2(Process2):
         self.on(self.can_add_context, self.do_add_context)
         self.on(self.can_update_context, self.do_update_context)
         self.on(self.can_delete_context, self.do_delete_context)
+
+
+# Process that can save and restore context
+# Useful for cases when process needs to try various paths in the graph
+class StackingContextProcess2(SharedContextProcess2):
+    PUSH_CONTEXT = 'push_context'
+    POP_CONTEXT = 'pop_context'
+    FORGET_CONTEXT = 'forget_context'
+
+    def __init__(self):
+        super(StackingContextProcess2, self).__init__()
+
+        self._context_stack = []
+
+    def is_tracking(self):
+        return len(self._context_stack) > 0
+
+    # Clearing stack if new
+    def do_new(self):
+        super(StackingContextProcess2, self).do_new()
+        del self._context_stack[:]
+
+    # Tracking changes in the context, if needed
+    def _context_add(self, key, value):
+        if not self.is_tracking():
+            super(StackingContextProcess2, self)._context_add(key, value)
+        else:
+            self._context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.ADD, key, value))
+
+    def _context_set(self, key, value):
+        if not self.is_tracking():
+            super(StackingContextProcess2, self)._context_set(key, value)
+        else:
+            self._context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.SET, key, value))
+
+    def _context_delete(self, key):
+        if not self.is_tracking():
+            super(StackingContextProcess2, self)._context_delete(key)
+        else:
+            self._context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.DELETE, key))
+
+    # Events #
+    def do_push_context(self):
+        self.message.pop(0)
+        self._context_stack.append(DictChangeGroup())
+
+    def can_pop_context(self, *message):
+        return self.is_tracking() and has_first(message, StackingContextProcess2.POP_CONTEXT)
+
+    def do_pop_context(self):
+        self.message.pop(0)
+        self._context_stack[-1].undo()
+        self._context_stack.pop()
+
+    def can_forget_context(self, *message):
+        return self.is_tracking() and has_first(message, StackingContextProcess2.FORGET_CONTEXT)
+
+    def do_forget_context(self):
+        self.message.pop(0)
+        self._context_stack.pop()
+
+    def setup_handlers(self):
+        super(StackingContextProcess2, self).setup_handlers()
+
+        self.on(StackingContextProcess2.PUSH_CONTEXT, self.do_push_context)
+        self.on(self.can_pop_context, self.do_pop_context)
+        self.on(self.can_forget_context, self.do_forget_context)
 
 
 ### Borderline between new and old ###
