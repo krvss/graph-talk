@@ -46,8 +46,12 @@ class Handler(Abstract):
         if handler in self.handlers:
             self.handlers.remove(handler)
 
+    # Removing all the handlers for the condition
+    def off_condition(self, condition):
+        self.handlers = filter(lambda h: not (is_list(h) and h[0] == condition), self.handlers)
+
     # Remove all occurrences of the handler
-    def off_all(self, handler):
+    def off_handler(self, handler):
         self.handlers = filter(lambda h: not ((is_list(h) and h[1] == handler) or h == handler), self.handlers)
 
     # Getting the handlers for the specified condition
@@ -280,6 +284,9 @@ class Element(Talker):
     def on_forward(self, handler):
         self.on(Element.FORWARD, handler)
 
+    def off_forward(self):
+        self.off_condition(Element.FORWARD)
+
     @property
     def owner(self):
         return self._owner
@@ -315,6 +322,16 @@ class ActionNotion2(Notion2):
     def __init__(self, name, action, owner=None):
         super(ActionNotion2, self).__init__(name, owner)
         self.on_forward(action)
+
+    @property
+    def action(self):
+        value = self.get_handlers(Element.FORWARD)
+        return value[0] if value else None
+
+    @action.setter
+    def action(self, value):
+        self.off_forward()
+        self.on_forward(value)
 
 
 # Relation is a connection between one or more elements: subject -> object
@@ -374,7 +391,7 @@ class ComplexNotion2(Notion2):
             relation.on(self._relate_event, self)
             return True
 
-    def next(self, *message, **context):
+    def next(self):
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
@@ -669,6 +686,93 @@ class StackingContextProcess2(SharedContextProcess2):
         self.on(StackingContextProcess2.PUSH_CONTEXT, self.do_push_context)
         self.on(self.can_pop_context, self.do_pop_context)
         self.on(self.can_forget_context, self.do_forget_context)
+
+
+# Process with support of abstract states and notifications between them
+# Useful to preserve private a state of an abstract
+class StatefulProcess2(StackingContextProcess2):
+    STATE = 'state'
+    SET_STATE = 'set_state'
+    CLEAR_STATE = 'clear_state'
+
+    NOTIFY = 'notify'
+    TO = 'to'
+    INFO = 'info'
+    NOTIFICATIONS = 'notifications'
+
+    def __init__(self):
+        super(StatefulProcess2, self).__init__()
+        self.states = {}
+
+    def _add_current_state(self):
+        self.context[StatefulProcess2.STATE] = self.states.get(self.current, {})
+
+    def _del_current_state(self):
+        del self.context[StatefulProcess2.STATE]
+
+    def _set_state(self, abstract, state):
+        if abstract in self.states:
+            self.states[abstract].update(state)
+        else:
+            self.states[abstract] = state
+
+    # Clearing states if new
+    def do_new(self):
+        super(StatefulProcess2, self).do_new()
+        self.states.clear()
+
+    def do_query(self):
+        self._add_current_state()
+
+        # Now the state contains the right state
+        result = super(StatefulProcess2, self).do_query()
+
+        self._del_current_state()
+
+        return result
+
+    # Events #
+    # Set state
+    def can_set_state(self, *message):
+        return self.current and message and isinstance(message[0], dict) and StatefulProcess2.SET_STATE in message[0]
+
+    def do_set_state(self):
+        value = self.message[0].pop(StatefulProcess2.SET_STATE)
+        self._set_state(self.current, value)
+
+    # Clear state
+    def can_clear_state(self, *message):
+        return self.current and message and has_first(message, StatefulProcess2.CLEAR_STATE)
+
+    def do_clear_state(self):
+        self.message.pop(0)
+        if self.current in self.states:
+            del self.states[self.current]
+
+    # Notifications
+    def can_notify(self, *message):
+        return message and isinstance(message[0], dict) and isinstance(message[0].get(StatefulProcess2.NOTIFY), dict) \
+            and has_keys(message[0].get(StatefulProcess2.NOTIFY), StatefulProcess2.TO, StatefulProcess2.INFO)
+
+    def do_notify(self):
+        notification = self.message[0].pop(StatefulProcess2.NOTIFY)
+        to = notification[StatefulProcess2.TO]
+        info = notification[StatefulProcess2.INFO]
+
+        if not to in self.states:
+            self._set_state(to, {})
+
+        if not StatefulProcess2.NOTIFICATIONS in self.states[to]:
+            self.states[to][StatefulProcess2.NOTIFICATIONS] = {}
+
+        self.states[to][StatefulProcess2.NOTIFICATIONS].update(info)
+
+    def setup_handlers(self):
+        super(StatefulProcess2, self).setup_handlers()
+
+        self.on(self.can_set_state, self.do_set_state)
+        self.on(self.can_clear_state, self.do_clear_state)
+        self.on(self.can_notify, self.do_notify)
 
 
 ### Borderline between new and old ###

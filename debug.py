@@ -36,7 +36,7 @@ class ProcessDebugger(Handler):
         process.on_any(self)
 
     def detach(self, process):
-        process.off_all(self)
+        process.off_handler(self)
         
     def clear_points(self):
         self._points.clear()

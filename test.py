@@ -5,99 +5,29 @@ from debug import *
 
 import re
 
-logger = Analyzer()
-
-
-# Dialog test
-class Debugger(Abstract):
-    def parse(self, *message, **context):
-        if message[0] == "query_post" and str(context["from"].current) == '"here"':
-            return "debug"
-
-
-# Skip test
-class Skipper(Abstract):
-    def parse(self, *message, **context):
-        if message[0] == "unknown_pre":
-            return "skip"
-
 
 # Test functions
-def showstopper(notion, *message, **context):
-    return notion.name
-
-
-def state_starter(notion, *message, **context):
-    if "state" in context and "v" in context["state"]:
-        return {"set_state": {"v": context["state"]["v"] + 1}}
+def state_v_starter(*m, **context):
+    if StatefulProcess2.STATE in context and 'v' in context[StatefulProcess2.STATE]:
+        return {StatefulProcess2.SET_STATE: {'v': context[StatefulProcess2.STATE]['v'] + 1}}
     else:
-        return {"set_state": {"v": 1}}
+        return {StatefulProcess2.SET_STATE: {'v': 1}}
 
 
-def state_checker(notion, *message, **context):
-    if "state" in context and "v" in context["state"]:
-        return "error"
+def state_v_checker(*m, **context):
+    if StatefulProcess2.STATE in context and 'v' in context[StatefulProcess2.STATE]:
+        return Process2.STOP
     else:
-        return None
-
-_acc = 0
+        return Process2.OK  # Others' state is not visible
 
 
-def accumulate_false(abstract, *message, **context):
-    global _acc
-    _acc += 1
-    return False
-
-
-def is_a(condition, *message, **context):
-    if "text" in context and context["text"].startswith("a"):
-        return True, 1
-    else:
-        return False, 0
-
-
-def has_condition(notion, *message, **context):
-    if 'passed_condition' in context:
-        return context['passed_condition']
+def has_notification(*m, **context):
+    if StatefulProcess2.STATE in context and StatefulProcess2.NOTIFICATIONS in context[StatefulProcess2.STATE]:
+        return context[StatefulProcess2.STATE][StatefulProcess2.NOTIFICATIONS]['note']
     else:
         return False
 
 
-def has_notification(notion, *message, ** context):
-    if 'state' in context and 'notifications' in context['state']:
-        return context['state']['notifications']['condition']
-    else:
-        return False
-
-
-def add_to_result(notion, *message, **context):
-    add = notion.name
-    if "result" in context:
-        add = context["result"] + add
-
-    return {"update_context": {"result": add}}
-
-
-def if_loop(*message, **context):
-    if not 'n' in context['state']:
-        return 5
-    else:
-        return context['state']['n'] - 1
-
-
-def stop_infinite(notion, *message, **context):
-    counter = 1
-
-    if "infinite" in context:
-        if context["infinite"] == 4:
-            return "break"
-        else:
-            counter = context["infinite"] + 1
-
-    return {"update_context": {"infinite": counter}, "error": "trying to break"}
-
-
-# New style
 class TestCalls(Abstract):
     def __init__(self):
         self.last_message = None
@@ -165,11 +95,24 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(handler1, h.handlers)
         self.assertIn(('event', handler1), h.handlers)
 
-        # Off-all
+        # Off-conditon
+        h.on('cond', 1)
+        h.on('cond', 2)
+        h.on('cond2', 2)
+
+        h.off_condition('cond')
+
+        self.assertFalse(h.get_handlers('cond'))
+        self.assertEqual(h.get_handlers('cond2'), [2])
+
+        h.off_condition('cond2')
+        self.assertFalse(h.get_handlers('cond'))
+
+        # Off-handler
         h.on_any(handler1)
 
-        h.off_all(handler1)
-        h.off_all(1)
+        h.off_handler(handler1)
+        h.off_handler(1)
         self.assertEqual(len(h.handlers), 0)
 
         # Get handlers
@@ -353,7 +296,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], 2)
 
-        t.off_all(2)
+        t.off_handler(2)
         r = t.handle(1)
         self.assertEqual(r[0], 1)
         self.assertEqual(r[1], 0)
@@ -409,7 +352,7 @@ class UtTests(unittest.TestCase):
         self.assertIsNone(e.owner)
 
         # Allowing the change and verifying data
-        e.off_all(tc.return_true)
+        e.off_handler(tc.return_true)
         e.owner = tc
 
         self.assertEqual(e.owner, tc)
@@ -433,7 +376,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(e(Element.NEXT), Element.NEXT)
 
-        e.off_all(handler1)
+        e.off_forward()
 
         self.assertTrue(e(Element.NEXT) is False)
 
@@ -492,6 +435,13 @@ class UtTests(unittest.TestCase):
         # Action test
         na = ActionNotion2('action', 'action')
         self.assertEquals(na(Element.NEXT), na.name)
+        self.assertEqual(na.action, na.name)
+
+        na.action = 2
+        self.assertEquals(na(Element.NEXT), 2)
+
+        na.off_forward()
+        self.assertIsNone(na.action)
 
     def test_6_process(self):
         process = Process2()
@@ -679,7 +629,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify updating
-        a.off_all(l)
+        a.off_handler(l)
         l = lambda: {SharedContextProcess2.UPDATE_CONTEXT: {ctx_key: 'new'}}
         a.on_forward(l)
 
@@ -691,7 +641,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify deleting & mass deleting
-        a.off_all(l)
+        a.off_handler(l)
         l = lambda: {SharedContextProcess2.DELETE_CONTEXT: ctx_key}
         a.on_forward(l)
 
@@ -700,7 +650,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(ctx_key, process.context)
         self.assertEqual(process.current, b)
 
-        a.off_all(l)
+        a.off_handler(l)
         l = lambda: {SharedContextProcess2.DELETE_CONTEXT: ['more', 'more2']}
         a.on_forward(l)
 
@@ -710,7 +660,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # See what's happening if command argument is incorrect
-        a.off_all(l)
+        a.off_handler(l)
         a.on_forward(SharedContextProcess2.ADD_CONTEXT)
 
         r = process.parse(Process2.NEW, root, test='test_context_bad')
@@ -818,9 +768,146 @@ class UtTests(unittest.TestCase):
         self.assertEqual('predator', process.context['test'])  # Lasts because context changes were forgotten
         self.assertFalse(process._context_stack)
 
-        r = process.parse('new', pop, test='test_stacking_3')
+    def test_12_states(self):
+        # Root -> (inc, inc, "state_check")
+        root = ComplexNotion2('root')
+
+        inc = ActionNotion2('+1', state_v_starter)
+
+        NextRelation2(root, inc)
+        NextRelation2(root, inc)
+
+        check = ActionNotion('state_check', state_v_checker)
+        NextRelation2(root, check)
+
+        process = StatefulProcess2()
+        r = process(root, test='test_states_1')
+
+        self.assertEqual(r, Process2.OK)
+        self.assertEqual(process.current, check)
+        self.assertEqual(process.states[inc]['v'], 2)
+
+        # Checking clearing of states when new
+        r = process(Process2.NEW, root, test='test_states_2')
+        self.assertEqual(r, Process2.OK)
+        self.assertEqual(process.states[inc]['v'], 2)
+        self.assertEqual(process.current, check)
+
+        # Manual clearing of states
+        inc.action = StatefulProcess2.CLEAR_STATE
+        r = process(root, test='test_states_3')
+
+        self.assertEqual(r, Process2.OK)
+        self.assertFalse(process.states)
+        self.assertEqual(process.current, check)
+
+        # Notifications
+        while root.relations:
+            root.relations[0].subject = None
+
+        t = ActionNotion2('terminator', has_notification)
+        NextRelation2(root, t)
+
+        r = process(Process2.NEW,
+                    {StatefulProcess2.NOTIFY: {StatefulProcess2.TO: t,
+                                               StatefulProcess2.INFO: {'note': Process2.OK}}},
+                    root, test='test_states_4')
+
+        self.assertEqual(r, Process2.OK)
+        self.assertEqual(process.current, t)
 
     '''
+
+logger = Analyzer()
+
+
+# Dialog test
+class Debugger(Abstract):
+    def parse(self, *message, **context):
+        if message[0] == "query_post" and str(context["from"].current) == '"here"':
+            return "debug"
+
+
+# Skip test
+class Skipper(Abstract):
+    def parse(self, *message, **context):
+        if message[0] == "unknown_pre":
+            return "skip"
+
+# Test functions
+def showstopper(notion, *message, **context):
+    return notion.name
+
+
+def state_starter(notion, *message, **context):
+def state_starter(notion, *message, **context):
+    if "state" in context and "v" in context["state"]:
+        return {"set_state": {"v": context["state"]["v"] + 1}}
+    else:
+        return {"set_state": {"v": 1}}
+
+
+def state_checker(notion, *message, **context):
+    if "state" in context and "v" in context["state"]:
+        return "error"
+    else:
+        return None
+
+_acc = 0
+
+
+def accumulate_false(abstract, *message, **context):
+    global _acc
+    _acc += 1
+    return False
+
+
+def is_a(condition, *message, **context):
+    if "text" in context and context["text"].startswith("a"):
+        return True, 1
+    else:
+        return False, 0
+
+
+def has_condition(notion, *message, **context):
+    if 'passed_condition' in context:
+        return context['passed_condition']
+    else:
+        return False
+
+
+def has_notification(notion, *message, ** context):
+    if 'state' in context and 'notifications' in context['state']:
+        return context['state']['notifications']['condition']
+    else:
+        return False
+
+
+def add_to_result(notion, *message, **context):
+    add = notion.name
+    if "result" in context:
+        add = context["result"] + add
+
+    return {"update_context": {"result": add}}
+
+
+def if_loop(*message, **context):
+    if not 'n' in context['state']:
+        return 5
+    else:
+        return context['state']['n'] - 1
+
+
+def stop_infinite(notion, *message, **context):
+    counter = 1
+
+    if "infinite" in context:
+        if context["infinite"] == 4:
+            return "break"
+        else:
+            counter = context["infinite"] + 1
+
+    return {"update_context": {"infinite": counter}, "error": "trying to break"}
 
     # Old style
     # General objects test
@@ -1935,6 +2022,8 @@ class UtTests(unittest.TestCase):
     '''
     def test_analyzer(self):
         global _acc
+
+        return
 
         root = ComplexNotion("root")
 
