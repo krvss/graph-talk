@@ -242,6 +242,7 @@ class Talker(Handler):
 # Element is a part of a bigger system
 class Element(Talker):
     NEXT = 'next'
+    PREVIOUS = 'previous'
 
     SET_PREFIX = 'set'
     NAME = 'name'
@@ -249,6 +250,7 @@ class Element(Talker):
     NEW_VALUE = 'new-value'
 
     FORWARD = NEXT,
+    BACKWARD = PREVIOUS,
 
     def __init__(self, owner=None):
         super(Element, self).__init__()
@@ -286,6 +288,30 @@ class Element(Talker):
 
     def off_forward(self):
         self.off_condition(Element.FORWARD)
+
+    def on_backward(self, handler):
+        self.on(Element.BACKWARD, handler)
+
+    def off_backward(self):
+        self.off_condition(Element.BACKWARD)
+
+    @staticmethod
+    def add_forward_command(command):
+        if not command in Element.FORWARD:
+            Element.FORWARD = Element.FORWARD + (command, )
+
+    @staticmethod
+    def remove_forward_command(command):
+        Element.FORWARD = tuple(c for c in Element.FORWARD if c != command)
+
+    @staticmethod
+    def add_backward_command(command):
+        if not command in Element.BACKWARD:
+            Element.BACKWARD = Element.BACKWARD + (command, )
+
+    @staticmethod
+    def remove_backward_command(command):
+        Element.BACKWARD = tuple(c for c in Element.BACKWARD if c != command)
 
     @property
     def owner(self):
@@ -405,7 +431,7 @@ class NextRelation2(Relation2):
     def __init__(self, subj, obj, owner=None):
         super(NextRelation2, self).__init__(subj, obj, owner)
 
-        self.on_forward(lambda *m, **c: self.object)
+        self.on_forward(lambda: self.object)
 
 
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
@@ -473,7 +499,7 @@ class Process2(Talker):
         self.queue_top[Process2.CURRENT] = None
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
-    def can_push_queue(self, *message):
+    def can_push_queue(self, *message):  # TODO rank
         return self.message and isinstance(message[0], Abstract)
 
     def do_queue_push(self):

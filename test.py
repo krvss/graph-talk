@@ -370,6 +370,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(e.owner, 1)
 
         # Move test
+        # Forward
         handler1 = lambda *m: m[0] if m[0] in Element.FORWARD else None
 
         e.on_forward(handler1)
@@ -379,6 +380,37 @@ class UtTests(unittest.TestCase):
         e.off_forward()
 
         self.assertTrue(e(Element.NEXT) is False)
+
+        # Backward
+        handler2 = lambda *m: m[0] if m[0] in Element.BACKWARD else None
+        e.on_backward(handler2)
+
+        self.assertEqual(e(Element.PREVIOUS), Element.PREVIOUS)
+
+        e.off_backward()
+
+        self.assertTrue(e(Element.PREVIOUS) is False)
+
+        # Commands
+        new_forward = 'ahead'
+        Element.add_forward_command(new_forward)
+        Element.add_forward_command(new_forward)
+        self.assertIn(new_forward, Element.FORWARD)
+        self.assertEqual(len(Element.FORWARD), 2)
+
+        Element.remove_forward_command(new_forward)
+        self.assertNotIn(new_forward, Element.FORWARD)
+        self.assertEqual(len(Element.FORWARD), 1)
+
+        new_backward = 'avast'
+        Element.add_backward_command(new_backward)
+        Element.add_backward_command(new_backward)
+        self.assertIn(new_backward, Element.BACKWARD)
+        self.assertEqual(len(Element.BACKWARD), 2)
+
+        Element.remove_backward_command(new_backward)
+        self.assertNotIn(new_backward, Element.BACKWARD)
+        self.assertEqual(len(Element.BACKWARD), 1)
 
     def test_5_objects(self):
         # Notions test
@@ -909,7 +941,6 @@ def stop_infinite(notion, *message, **context):
 
     return {"update_context": {"infinite": counter}, "error": "trying to break"}
 
-    # Old style
     # General objects test
     def test_objects(self):
         n1 = Notion("n1")
