@@ -403,14 +403,15 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(Element.FORWARD), 1)
 
         new_backward = 'avast'
+        l = len(Element.BACKWARD)
         Element.add_backward_command(new_backward)
         Element.add_backward_command(new_backward)
         self.assertIn(new_backward, Element.BACKWARD)
-        self.assertEqual(len(Element.BACKWARD), 2)
+        self.assertEqual(len(Element.BACKWARD), l + 1)
 
         Element.remove_backward_command(new_backward)
         self.assertNotIn(new_backward, Element.BACKWARD)
-        self.assertEqual(len(Element.BACKWARD), 1)
+        self.assertEqual(len(Element.BACKWARD), l)
 
     def test_5_objects(self):
         # Notions test
@@ -847,6 +848,51 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(r, Process2.OK)
         self.assertEqual(process.current, t)
+
+    def test_13_parsing(self):
+        # Move test
+        root = ComplexNotion2('root')
+        mover = ActionNotion2('move', lambda: {ParsingProcess2.MOVE: 2})
+        NextRelation2(root, mover)
+
+        process = ParsingProcess2()
+        # Good (text fully parsed)
+        r = process(root, **{ParsingProcess2.TEXT: 'go', 'test': 'test_parsing_1'})
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.parsed_length, 2)
+
+        # Bad (incomplete parsing)
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'gogo', 'test': 'test_parsing_2'})
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.parsed_length, 2)
+        self.assertEqual(process.text, 'go')
+
+        # State check - nothing changed if POP
+        r = process(Process2.NEW, StackingContextProcess2.PUSH_CONTEXT, root, StackingContextProcess2.POP_CONTEXT,
+                    **{ParsingProcess2.TEXT: 'go', 'test': 'test_parsing_3'})
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.text, 'go')
+
+        # Changing of query
+        r = process(Process2.NEW, Element.NEXT, ParsingProcess2.BREAK, Process2.STOP)
+
+        self.assertFalse(r)
+        self.assertEqual(process.query, ParsingProcess2.BREAK)
+
+        r = process(Process2.NEW, ParsingProcess2.CONTINUE, Process2.STOP)
+
+        self.assertFalse(r)
+        self.assertEqual(process.query, ParsingProcess2.CONTINUE)
+
+        r = process(Process2.NEW, ParsingProcess2.ERROR, Process2.STOP)
+
+        self.assertFalse(r)
+        self.assertEqual(process.query, ParsingProcess2.ERROR)
+
 
     '''
 

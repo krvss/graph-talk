@@ -801,6 +801,76 @@ class StatefulProcess2(StackingContextProcess2):
         self.on(self.can_notify, self.do_notify)
 
 
+# Parsing process supports error and move commands for text processing
+class ParsingProcess2(StatefulProcess2):
+    ERROR = 'error'
+    MOVE = 'move'
+    BREAK = 'break'
+    CONTINUE = 'continue'
+
+    PARSED_LENGTH = 'parsed_length'
+    TEXT = 'text'
+
+    def do_new(self):
+        super(ParsingProcess2, self).do_new()
+        self.query = Element.NEXT
+        self._context_set(ParsingProcess2.PARSED_LENGTH, 0)
+
+    def is_parsed(self):
+        return self.query == Element.NEXT and not self.text
+
+    def parse(self, *message, **context):
+        result = super(ParsingProcess2, self).parse(*message, **context)
+
+        if not self.is_parsed():
+            result = False
+
+        return result
+
+    # Events #
+    # Move: part of the Text was parsed
+    def can_move(self, *message):
+        if not message or not isinstance(message[0], dict):
+            return False
+
+        distance = message[0].get(ParsingProcess2.MOVE)
+        return is_number(distance) and len(self.context.get(ParsingProcess2.TEXT)) >= distance
+
+    def do_move(self):
+        move = self.message[0].pop(ParsingProcess2.MOVE)
+
+        self._context_set(ParsingProcess2.TEXT, self.context[ParsingProcess2.TEXT][move:])
+        self._context_set(ParsingProcess2.PARSED_LENGTH, self.parsed_length + move)
+
+    # Next, Break, Error or Continue
+    def do_turn(self):
+        new_query = self.message.pop(0)
+
+        if new_query in Element.BACKWARD:
+            del self.message[:]
+
+        self.query = new_query
+
+    def setup_handlers(self):
+        super(ParsingProcess2, self).setup_handlers()
+
+        self.on((Element.NEXT, ParsingProcess2.ERROR, ParsingProcess2.BREAK, ParsingProcess2.CONTINUE), self.do_turn)
+        self.on(self.can_move, self.do_move)
+
+    @property
+    def text(self):
+        return self.context.get(ParsingProcess2.TEXT, '')
+
+    @property
+    def parsed_length(self):
+        return self.context.get(ParsingProcess2.PARSED_LENGTH, 0)
+
+# Adding new backward commands
+Element.add_backward_command(ParsingProcess2.ERROR)
+Element.add_backward_command(ParsingProcess2.BREAK)
+Element.add_backward_command(ParsingProcess2.CONTINUE)
+
+
 ### Borderline between new and old ###
 
 # Notion is an abstract with name
