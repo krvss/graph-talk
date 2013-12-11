@@ -305,8 +305,8 @@ class UtTests(unittest.TestCase):
         # Overriding result
         t.off('pre_event', handler1)
 
-        handler2 = lambda *m, **c: 'handler2' if (c.get(Talker.RESULT) and c.get(Talker.RANK) == len('post_event')
-                                                       and c.get(Talker.HANDLER) == tc.return_true) else None
+        handler2 = lambda *m, **c: 'handler2' if (c.get(Talker.RESULT) and c.get(Handler.RANK) == len('post_event')
+                                                       and c.get(Handler.HANDLER) == tc.return_true) else None
         t.on('post_event', handler2)
 
         r = t.handle('event')
@@ -678,7 +678,7 @@ class UtTests(unittest.TestCase):
         l = lambda: {SharedContextProcess2.DELETE_CONTEXT: ctx_key}
         a.on_forward(l)
 
-        r = process.parse(Process2.NEW, root, test='test_context_del')
+        r = process(Process2.NEW, root, test='test_context_del')
         self.assertEqual(r, Process2.OK)
         self.assertNotIn(ctx_key, process.context)
         self.assertEqual(process.current, b)
@@ -687,7 +687,7 @@ class UtTests(unittest.TestCase):
         l = lambda: {SharedContextProcess2.DELETE_CONTEXT: ['more', 'more2']}
         a.on_forward(l)
 
-        r = process.parse(Process2.NEW, root, test='test_context_del', more=False)
+        r = process(Process2.NEW, root, test='test_context_del', more=False)
         self.assertEqual(r, Process2.OK)
         self.assertNotIn('more', process.context)
         self.assertEqual(process.current, b)
@@ -696,7 +696,7 @@ class UtTests(unittest.TestCase):
         a.off_handler(l)
         a.on_forward(SharedContextProcess2.ADD_CONTEXT)
 
-        r = process.parse(Process2.NEW, root, test='test_context_bad')
+        r = process(Process2.NEW, root, test='test_context_bad')
         self.assertTrue(r is False)
         self.assertEqual(process.current, a)
 

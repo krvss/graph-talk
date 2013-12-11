@@ -431,7 +431,7 @@ class NextRelation2(Relation2):
     def __init__(self, subj, obj, owner=None):
         super(NextRelation2, self).__init__(subj, obj, owner)
 
-        self.on_forward(lambda: self.object)
+        self.on_forward(lambda: self.object)  # Making copy
 
 
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
@@ -456,7 +456,7 @@ class Process2(Talker):
         self.context = {}
         self.query = Element.NEXT
 
-        self.setup_handlers()
+        self.setup_handlers()  # Todo join to ctor
 
     # Generate the new queue item and add it to the queue updated with values
     def new_queue_item(self, values):
