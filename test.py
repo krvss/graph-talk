@@ -864,10 +864,11 @@ class UtTests(unittest.TestCase):
 
         process = ParsingProcess2()
         # Good (text fully parsed)
-        r = process(root, **{ParsingProcess2.TEXT: 'go', 'test': 'test_parsing_1'})
+        r = process(root, **{ParsingProcess2.TEXT: 'go', 'test': 'test_parsing_1', Handler.ANSWER: Handler.RANK})
 
-        self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 2)
+        self.assertTrue(r[0] is None)
+        self.assertEqual(r[1], 2)
+        self.assertEqual(r[1], process.parsed_length)
 
         # Bad (incomplete parsing)
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'gogo', 'test': 'test_parsing_2'})

@@ -15,7 +15,7 @@ class Abstract(object):
     def answer(self, *message, **context):
         return self.parse(*message, **context)
 
-    # A convenient way to call
+    # A singular way to call
     def __call__(self, *args, **kwargs):
         return self.answer(*args, **kwargs)
 
@@ -27,6 +27,8 @@ class Handler(Abstract):
     CONDITION = 'condition'
     HANDLER = 'handler'
     RANK = 'rank'
+
+    NO_PARSE = (False, -1, None)
 
     def __init__(self):
         self.handlers = []
@@ -122,7 +124,7 @@ class Handler(Abstract):
 
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
-        check, rank, handler_found = None, -1, None
+        check, rank, handler_found = Handler.NO_PARSE
 
         if not Handler.SENDER in context:
             context[Handler.SENDER] = self
@@ -163,9 +165,10 @@ class Handler(Abstract):
 
     # Answer depends on the context
     def answer(self, *message, **context):
+        answer_mode = context.pop(Handler.ANSWER, None)  # Applicable only for a top level
         result = super(Handler, self).answer(*message, **context)
 
-        if context.get(Handler.ANSWER) == Handler.RANK:
+        if answer_mode == Handler.RANK:
             return result[0], result[1]
 
         return result[0]  # No need to know the details
@@ -470,7 +473,7 @@ class Process2(Talker):
         self.context = {}
         self.query = Element.NEXT
 
-        self.setup_handlers()  # Todo join to ctor
+        self.setup_handlers()
 
     # Generate the new queue item and add it to the queue updated with values
     def new_queue_item(self, values):
@@ -569,7 +572,7 @@ class Process2(Talker):
         self.context.update(context)
         self.to_queue({Process2.MESSAGE: list(message)})
 
-        result = ()  # TODO dummy false
+        result = Handler.NO_PARSE
 
         while self.message or len(self._queue) > 1:
             result = super(Process2, self).parse(*self.message, **self.context)
@@ -836,10 +839,7 @@ class ParsingProcess2(StatefulProcess2):
     def parse(self, *message, **context):
         result = super(ParsingProcess2, self).parse(*message, **context)
 
-        if not self.is_parsed():
-            result = (False, self.parsed_length, self)  # TODO: parsed length everythere
-
-        return result
+        return False if not self.is_parsed() else result[0], self.parsed_length, result[2]
 
     # Events #
     # Move: part of the Text was parsed
