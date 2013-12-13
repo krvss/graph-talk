@@ -49,7 +49,10 @@ class TestCalls(Abstract):
 class UtTests(unittest.TestCase):
 
     def test_1_abstract(self):
-        a = Abstract()
+        with self.assertRaises(NotImplementedError):
+            Abstract().parse()
+
+        a = TestCalls()
         self.assertEqual(a.parse(), a())
 
     def test_2_handler(self):
@@ -231,6 +234,10 @@ class UtTests(unittest.TestCase):
 
         r = h.handle(Handler.CONDITION)
         self.assertEquals(r, ((len(Handler.CONDITION), Handler.CONDITION), len(Handler.CONDITION), handler5))
+
+        # Answer check
+        r = h('event', **{Handler.ANSWER: Handler.RANK})
+        self.assertEquals(r, (True, len('event')))
 
         # Args count test
         self.assertEqual(var_arg_count(tc.parse), 2)
@@ -700,7 +707,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is False)
         self.assertEqual(process.current, a)
 
-    def test_10_dict_tracking(self):
+    def test_a_dict_tracking(self):
         d = {'a': 1, 'c': 12}
         ops = DictChangeGroup()
 
@@ -743,7 +750,7 @@ class UtTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             DictChangeOperation('fail', 1, 2)
 
-    def test_11_stacking_context(self):
+    def test_b_stacking_context(self):
         # Testing without tracking
         root = ComplexNotion2('root')
 
@@ -801,7 +808,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual('predator', process.context['test'])  # Lasts because context changes were forgotten
         self.assertFalse(process._context_stack)
 
-    def test_12_states(self):
+    def test_c_states(self):
         # Root -> (inc, inc, "state_check")
         root = ComplexNotion2('root')
 
@@ -849,7 +856,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, Process2.OK)
         self.assertEqual(process.current, t)
 
-    def test_13_parsing(self):
+    def test_d_parsing(self):
         # Move test
         root = ComplexNotion2('root')
         mover = ActionNotion2('move', lambda: {ParsingProcess2.MOVE: 2})

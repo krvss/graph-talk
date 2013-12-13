@@ -4,20 +4,25 @@
 from utils import *
 
 
-# Base interface for all communicable objects
+# Base abstract class for all communicable objects
 class Abstract(object):
 
-    # The way to send the abstract a message in a certain context
+    # Parse the message
     def parse(self, *message, **context):
-        pass
+        raise NotImplementedError('Method not implemented')
+
+    # Make the answer
+    def answer(self, *message, **context):
+        return self.parse(*message, **context)
 
     # A convenient way to call
     def __call__(self, *args, **kwargs):
-        return self.parse(*args, **kwargs)
+        return self.answer(*args, **kwargs)
 
 
 # Handler is a class for the routing of messages to processing functions (handlers) basing on specified conditions
 class Handler(Abstract):
+    ANSWER = 'answer'
     SENDER = 'sender'
     CONDITION = 'condition'
     HANDLER = 'handler'
@@ -152,12 +157,18 @@ class Handler(Abstract):
 
         return result, rank, handler_found
 
-    def handle_result(self, *message, **context):
-        return self.handle(*message, **context)[0]
-
     # Parse means search for a handler
     def parse(self, *message, **context):
-        return self.handle_result(*message, **context)
+        return self.handle(*message, **context)
+
+    # Answer depends on the context
+    def answer(self, *message, **context):
+        result = super(Handler, self).answer(*message, **context)
+
+        if context.get(Handler.ANSWER) == Handler.RANK:
+            return result[0], result[1]
+
+        return result[0]  # No need to know the details
 
 
 # Handler which uses pre and post handling notifications
@@ -227,14 +238,17 @@ class Talker(Handler):
 
     # Parse means search for a handler
     def parse(self, *message, **context):
-        result, rank, handler = self.handle(*message, **context)
+        result = super(Talker, self).parse(*message, **context)  # TODO: move to answer or add isFinished
 
         # There is a way to override result and handle unknown message
-        if result is not False:
-            context.update({Talker.RESULT: result, Handler.RANK: rank, Handler.HANDLER: handler})
-            result = self.handle_result(Talker.RESULT, *message, **context) or result  # override has priority
+        if result[0] is not False:
+            context.update({Talker.RESULT: result[0], Handler.RANK: result[1], Handler.HANDLER: result[2]})
+            after_result = super(Talker, self).parse(Talker.RESULT, *message, **context)
+
+            if after_result[0]:
+                result = after_result  # override has priority
         else:
-            result = self.handle_result(Talker.UNKNOWN, *message, **context)
+            result = super(Talker, self).parse(Talker.UNKNOWN, *message, **context)
 
         return result
 
@@ -280,8 +294,8 @@ class Element(Talker):
 
     def change_property(self, name, value):
         # We change property via handler to allow notifications
-        return self.handle_result(self.add_prefix(name, Element.SET_PREFIX),
-                                  **{Element.NEW_VALUE: value, Element.OLD_VALUE: getattr(self, name)})
+        return self(self.add_prefix(name, Element.SET_PREFIX),
+                    **{Element.NEW_VALUE: value, Element.OLD_VALUE: getattr(self, name)})
 
     def on_forward(self, handler):
         self.on(Element.FORWARD, handler)
@@ -519,7 +533,7 @@ class Process2(Talker):
 
     def do_query(self):
         self.message.pop(0)
-        reply = self.current.parse(self.query, **self.context)
+        reply = self.current(self.query, **self.context)
         return reply or True  # if it is False/None, we just continue to the next one
 
     # Skip: remove current and the next item from the queue
@@ -555,18 +569,18 @@ class Process2(Talker):
         self.context.update(context)
         self.to_queue({Process2.MESSAGE: list(message)})
 
-        result = None
+        result = ()  # TODO dummy false
 
         while self.message or len(self._queue) > 1:
             result = super(Process2, self).parse(*self.message, **self.context)
 
-            if result in (Process2.OK, Process2.STOP, False):
+            if result[0] in (Process2.OK, Process2.STOP, False):
                 break
 
-            elif result in (None, True):
+            elif result[0] in (None, True):
                 continue  # No need to put it into the message
 
-            self.set_message(result, True)
+            self.set_message(result[0], True)
 
         return result
 
@@ -823,7 +837,7 @@ class ParsingProcess2(StatefulProcess2):
         result = super(ParsingProcess2, self).parse(*message, **context)
 
         if not self.is_parsed():
-            result = False
+            result = (False, self.parsed_length, self)  # TODO: parsed length everythere
 
         return result
 
