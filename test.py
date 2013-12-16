@@ -475,12 +475,13 @@ class UtTests(unittest.TestCase):
         nr.condition = Element.FORWARD
         self.assertEqual(len(nr.handlers), 2)
 
-        nr.condition = None
-        self.assertTrue(nr(Element.NEXT) is False)
-
         nr.condition = 'event'
         nr.object = [1]
         self.assertListEqual(nr(nr.condition), nr.object)
+
+        nr.condition = None
+        self.assertTrue(nr('event') is False)
+        self.assertListEqual(nr(Element.NEXT), nr.object)
 
         # Action test
         na = ActionNotion2('action', 'action')
@@ -879,6 +880,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r[0] is None)
         self.assertEqual(r[1], 2)
         self.assertEqual(r[1], process.parsed_length)
+        self.assertEqual('go', process.last_parsed)
 
         # Bad (incomplete parsing)
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'gogo', 'test': 'test_parsing_2'})
@@ -886,6 +888,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 2)
         self.assertEqual(process.text, 'go')
+        self.assertEqual('go', process.last_parsed)
 
         # State check - nothing changed if POP
         r = process(Process2.NEW, StackingContextProcess2.PUSH_CONTEXT, root, StackingContextProcess2.POP_CONTEXT,
@@ -894,6 +897,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
         self.assertEqual(process.text, 'go')
+        self.assertFalse(process.last_parsed)
 
         # Changing of query
         r = process(Process2.NEW, Element.NEXT, ParsingProcess2.BREAK, Process2.STOP)
@@ -912,6 +916,103 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.query, ParsingProcess2.ERROR)
 
 
+    def test_e_conditions(self):
+
+        return
+        # Simple positive condition test root -a-> d for "a"
+        root = ComplexNotion('root')
+
+        d = ActionNotion("d", has_condition)
+
+        c = ConditionalRelation(root, d, "a")
+
+        self.assertIsNone(c.parse("test"))
+
+        process = ParsingProcess()
+        process.callback = logger
+
+        r = process.parse(root, text="a")
+
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(r, "unknown")
+        self.assertEqual(process.current, d)
+
+        # Simple negative condition test root -a-> a for "n"
+        r = process.parse("new", root, text="n")
+
+        self.assertEqual(r, "error")
+        self.assertIn(c, process.errors)
+        self.assertEqual(process.errors[c], "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
+        # Simple positive condition test root -function-> None for "a"
+        c.checker = is_a
+        c.object = None
+
+        r = process.parse("new", root, text="a")
+
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.current, c)
+
+        r = process.parse("new", root, text="b")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
+        # Optional check
+        c.mode = 'optional'
+
+        r = process.parse("new", root, text="")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
+        # Test check
+        c.mode = 'test'
+
+        r = process.parse("new", root, text="a")
+
+        self.assertEqual(r, "error")
+        self.assertIn(process, process.errors)
+        self.assertNotIn(c, process.errors)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
+        r = process.parse("new", root, text="b")
+
+        self.assertEqual(r, "error")
+        self.assertIn(process, process.errors)
+        self.assertNotIn(c, process.errors)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, c)
+
+        # Regex check
+        c.mode = None
+
+        c.checker = re.compile(r"(\s)*")
+
+        r = process.parse("new", root, text="     ")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 5)
+        self.assertEqual(process.current, c)
+
+        # Underflow check
+        r = process.parse("new", root, text=" z")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(process.current, c)
+        self.assertEqual(process.errors[process], "underflow")
+
+        # Zero checker test
+        c.checker = None
+
+        self.assertIsNone(c.parse("check"))
     '''
 
 logger = Analyzer()

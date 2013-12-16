@@ -451,17 +451,22 @@ class NextRelation2(Relation2):
 
         self.set_condition(condition)
 
+    def next_handler(self, *message, **context):
+        return self.object
+
     def set_condition(self, condition):
         if condition == self._condition:
             return
 
         if self._condition:
-            self.off_condition(self._condition)
+            self.off(self._condition, self.next_handler)
+
+        # Setting to default
+        if not condition:
+            condition = Element.FORWARD
 
         self._condition = condition
-
-        if condition:
-            self.on(condition, lambda: self.object)  # Making copy of the object
+        self.on(condition, self.next_handler)
 
     @property
     def condition(self):
@@ -842,17 +847,19 @@ class StatefulProcess2(StackingContextProcess2):
 # Parsing process supports error and move commands for text processing
 class ParsingProcess2(StatefulProcess2):
     ERROR = 'error'
-    PROCEED = 'proceed'  # TODO: advance, add ParsingRelation
+    PROCEED = 'proceed'
     BREAK = 'break'
     CONTINUE = 'continue'
 
     PARSED_LENGTH = 'parsed_length'
     TEXT = 'text'
+    LAST_PARSED = 'last_parsed'
 
     def do_new(self):
         super(ParsingProcess2, self).do_new()
         self.query = Element.NEXT
         self._context_set(ParsingProcess2.PARSED_LENGTH, 0)
+        self._context_set(ParsingProcess2.LAST_PARSED, '')
 
     def is_parsed(self):
         return self.query == Element.NEXT and not self.text
@@ -863,19 +870,21 @@ class ParsingProcess2(StatefulProcess2):
         return False if not self.is_parsed() else result[0], self.parsed_length, result[2]
 
     # Events #
-    # Move: part of the Text was parsed
-    def can_move(self, *message):
+    # Proceed: part of the Text was parsed
+    def can_proceed(self, *message):
         if not message or not isinstance(message[0], dict):
             return False
 
         distance = message[0].get(ParsingProcess2.PROCEED)
         return is_number(distance) and len(self.context.get(ParsingProcess2.TEXT)) >= distance
 
-    def do_move(self):
-        move = self.message[0].pop(ParsingProcess2.PROCEED)
+    def do_proceed(self):
+        proceed = self.message[0].pop(ParsingProcess2.PROCEED)
+        last_parsed = self.context[ParsingProcess2.TEXT][0:proceed]
 
-        self._context_set(ParsingProcess2.TEXT, self.context[ParsingProcess2.TEXT][move:])
-        self._context_set(ParsingProcess2.PARSED_LENGTH, self.parsed_length + move)
+        self._context_set(ParsingProcess2.TEXT, self.context[ParsingProcess2.TEXT][proceed:])
+        self._context_set(ParsingProcess2.PARSED_LENGTH, self.parsed_length + proceed)
+        self._context_set(ParsingProcess2.LAST_PARSED, last_parsed)
 
     # Next, Break, Error or Continue
     def do_turn(self):
@@ -890,7 +899,7 @@ class ParsingProcess2(StatefulProcess2):
         super(ParsingProcess2, self).setup_handlers()
 
         self.on((Element.NEXT, ParsingProcess2.ERROR, ParsingProcess2.BREAK, ParsingProcess2.CONTINUE), self.do_turn)
-        self.on(self.can_move, self.do_move)
+        self.on(self.can_proceed, self.do_proceed)
 
     @property
     def text(self):
@@ -900,10 +909,35 @@ class ParsingProcess2(StatefulProcess2):
     def parsed_length(self):
         return self.context.get(ParsingProcess2.PARSED_LENGTH, 0)
 
+    @property
+    def last_parsed(self):
+        return self.context.get(ParsingProcess2.LAST_PARSED, '')
+
+
 # Adding new backward commands
 Element.add_backward_command(ParsingProcess2.ERROR)
 Element.add_backward_command(ParsingProcess2.BREAK)
 Element.add_backward_command(ParsingProcess2.CONTINUE)
+
+
+# Parsing relation: should be passable in forward direction (otherwise returns Error), if
+class ParsingRelation(NextRelation2):
+    def __init__(self, subj, obj, condition=Element.FORWARD, owner=None):
+        super(ParsingRelation, self).__init__(subj, obj, condition, owner)
+
+        self.on(Talker.RESULT, self.on_result)
+        self.on(Talker.UNKNOWN, self.on_error)
+
+    def on_result(self, *message, **context):
+        if len(message) > 1 and message[1] in Element.FORWARD and \
+                context[Handler.HANDLER] == self.next_handler:
+
+            # Overriding the initial result, adding Proceed of the parsed Rank
+            return {ParsingProcess2.PROCEED: context.get(Handler.RANK)}, context.get(Talker.RESULT)
+
+    def on_error(self, *message, **context):
+        if message and message[0] in Element.FORWARD:
+            return ParsingProcess2.ERROR
 
 
 ### Borderline between new and old ###
