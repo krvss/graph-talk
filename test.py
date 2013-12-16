@@ -472,6 +472,16 @@ class UtTests(unittest.TestCase):
         nr = NextRelation2(n1, n2)
         self.assertEqual(nr(Element.NEXT), n2)
 
+        nr.condition = Element.FORWARD
+        self.assertEqual(len(nr.handlers), 2)
+
+        nr.condition = None
+        self.assertTrue(nr(Element.NEXT) is False)
+
+        nr.condition = 'event'
+        nr.object = [1]
+        self.assertListEqual(nr(nr.condition), nr.object)
+
         # Action test
         na = ActionNotion2('action', 'action')
         self.assertEquals(na(Element.NEXT), na.name)
@@ -857,9 +867,9 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, t)
 
     def test_d_parsing(self):
-        # Move test
+        # Proceed test
         root = ComplexNotion2('root')
-        mover = ActionNotion2('move', lambda: {ParsingProcess2.MOVE: 2})
+        mover = ActionNotion2('move', lambda: {ParsingProcess2.PROCEED: 2})
         NextRelation2(root, mover)
 
         process = ParsingProcess2()

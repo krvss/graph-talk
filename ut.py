@@ -241,7 +241,7 @@ class Talker(Handler):
 
     # Parse means search for a handler
     def parse(self, *message, **context):
-        result = super(Talker, self).parse(*message, **context)  # TODO: move to answer or add isFinished
+        result = super(Talker, self).parse(*message, **context)
 
         # There is a way to override result and handle unknown message
         if result[0] is not False:
@@ -443,12 +443,33 @@ class ComplexNotion2(Notion2):
         return self._relations
 
 
-# Next relation is just a simple sequence relation
+# Next relation is just a conditioned sequence relation
 class NextRelation2(Relation2):
-    def __init__(self, subj, obj, owner=None):
+    def __init__(self, subj, obj, condition=Element.FORWARD, owner=None):
         super(NextRelation2, self).__init__(subj, obj, owner)
+        self._condition = None
 
-        self.on_forward(lambda: self.object)  # Making copy
+        self.set_condition(condition)
+
+    def set_condition(self, condition):
+        if condition == self._condition:
+            return
+
+        if self._condition:
+            self.off_condition(self._condition)
+
+        self._condition = condition
+
+        if condition:
+            self.on(condition, lambda: self.object)  # Making copy of the object
+
+    @property
+    def condition(self):
+        return self._condition
+
+    @condition.setter
+    def condition(self, value):
+        self.set_condition(value)
 
 
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
@@ -516,7 +537,7 @@ class Process2(Talker):
         self.queue_top[Process2.CURRENT] = None
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
-    def can_push_queue(self, *message):  # TODO rank
+    def can_push_queue(self, *message):
         return self.message and isinstance(message[0], Abstract)
 
     def do_queue_push(self):
@@ -821,7 +842,7 @@ class StatefulProcess2(StackingContextProcess2):
 # Parsing process supports error and move commands for text processing
 class ParsingProcess2(StatefulProcess2):
     ERROR = 'error'
-    MOVE = 'move'
+    PROCEED = 'proceed'  # TODO: advance, add ParsingRelation
     BREAK = 'break'
     CONTINUE = 'continue'
 
@@ -847,11 +868,11 @@ class ParsingProcess2(StatefulProcess2):
         if not message or not isinstance(message[0], dict):
             return False
 
-        distance = message[0].get(ParsingProcess2.MOVE)
+        distance = message[0].get(ParsingProcess2.PROCEED)
         return is_number(distance) and len(self.context.get(ParsingProcess2.TEXT)) >= distance
 
     def do_move(self):
-        move = self.message[0].pop(ParsingProcess2.MOVE)
+        move = self.message[0].pop(ParsingProcess2.PROCEED)
 
         self._context_set(ParsingProcess2.TEXT, self.context[ParsingProcess2.TEXT][move:])
         self._context_set(ParsingProcess2.PARSED_LENGTH, self.parsed_length + move)
