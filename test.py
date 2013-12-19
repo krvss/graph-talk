@@ -472,16 +472,12 @@ class UtTests(unittest.TestCase):
         nr = NextRelation2(n1, n2)
         self.assertEqual(nr(Element.NEXT), n2)
 
-        nr.condition = Element.FORWARD
-        self.assertEqual(len(nr.handlers), 2)
-
-        nr.condition = 'event'
+        nr.condition = lambda *m, **c: 'event' in c
         nr.object = [1]
-        self.assertListEqual(nr(nr.condition), nr.object)
+        self.assertListEqual(nr(Element.NEXT, event=1), nr.object)
 
-        nr.condition = None
-        self.assertTrue(nr('event') is False)
-        self.assertListEqual(nr(Element.NEXT), nr.object)
+        self.assertTrue(nr(event=1) is False)
+        self.assertTrue(nr(Element.NEXT) is False)
 
         # Action test
         na = ActionNotion2('action', 'action')
@@ -915,104 +911,84 @@ class UtTests(unittest.TestCase):
         self.assertFalse(r)
         self.assertEqual(process.query, ParsingProcess2.ERROR)
 
-
     def test_e_conditions(self):
-
-        return
         # Simple positive condition test root -a-> d for "a"
-        root = ComplexNotion('root')
+        root = ComplexNotion2('root')
 
-        d = ActionNotion("d", has_condition)
+        action = ActionNotion2('passed', lambda *m, **c: c.get(ParsingProcess2.LAST_PARSED, ParsingProcess2.ERROR))
 
-        c = ConditionalRelation(root, d, "a")
+        parsing = ParsingRelation(root, action, 'a')
 
-        self.assertIsNone(c.parse("test"))
+        r = parsing(Element.NEXT, text='a')
 
-        process = ParsingProcess()
-        process.callback = logger
+        self.assertEqual(r[0].get(ParsingProcess2.PROCEED), 1)
+        self.assertEqual(r[1], action)
 
-        r = process.parse(root, text="a")
+        self.assertEqual(parsing(Element.NEXT), ParsingProcess2.ERROR)
+        self.assertTrue(parsing(ParsingProcess2.BREAK) is None)
 
-        self.assertEqual(process.parsed_length, 1)
-        self.assertEqual(r, "unknown")
-        self.assertEqual(process.current, d)
+        # Using in process
+        process = ParsingProcess2()
 
-        # Simple negative condition test root -a-> a for "n"
-        r = process.parse("new", root, text="n")
-
-        self.assertEqual(r, "error")
-        self.assertIn(c, process.errors)
-        self.assertEqual(process.errors[c], "error")
-        self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, c)
-
-        # Simple positive condition test root -function-> None for "a"
-        c.checker = is_a
-        c.object = None
-
-        r = process.parse("new", root, text="a")
+        r = process(root, text='a')
 
         self.assertEqual(process.parsed_length, 1)
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.current, c)
+        self.assertTrue(r is False)
+        self.assertEqual(process.current, action)
 
-        r = process.parse("new", root, text="b")
+        # Simple negative condition test root -a-> a for 'n'
+        r = process(Process2.NEW, root, text='n')
 
-        self.assertEqual(r, "error")
+        self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, c)
+        self.assertEqual(process.current, parsing)
+
+        # Simple positive condition test root -function-> None for 'a'
+        parsing.condition = lambda *m, **c: 1 if c.get(ParsingProcess2.TEXT, '').startswith('a') else -1
+        parsing.object = None
+
+        r = process(Process2.NEW, root, text='a')
+
+        self.assertEqual(process.parsed_length, 1)
+        self.assertTrue(r is None)
+        self.assertEqual(process.current, parsing)
+
+        r = process(Process2.NEW, root, text='b')
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, parsing)
 
         # Optional check
-        c.mode = 'optional'
+        parsing.optional = True
+        r = process(Process2.NEW, root, text='')
 
-        r = process.parse("new", root, text="")
-
-        self.assertEqual(r, "ok")
+        self.assertTrue(r is not False)
         self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, c)
-
-        # Test check
-        c.mode = 'test'
-
-        r = process.parse("new", root, text="a")
-
-        self.assertEqual(r, "error")
-        self.assertIn(process, process.errors)
-        self.assertNotIn(c, process.errors)
-        self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, c)
-
-        r = process.parse("new", root, text="b")
-
-        self.assertEqual(r, "error")
-        self.assertIn(process, process.errors)
-        self.assertNotIn(c, process.errors)
-        self.assertEqual(process.parsed_length, 0)
-        self.assertEqual(process.current, c)
+        self.assertEqual(process.current, parsing)
 
         # Regex check
-        c.mode = None
+        parsing.optional = False
+        parsing.condition = re.compile(r"(\s)*")
 
-        c.checker = re.compile(r"(\s)*")
+        r = process(Process2.NEW, root, text="     ")
 
-        r = process.parse("new", root, text="     ")
-
-        self.assertEqual(r, "ok")
+        self.assertTrue(r is None)
         self.assertEqual(process.parsed_length, 5)
-        self.assertEqual(process.current, c)
+        self.assertEqual(process.current, parsing)
 
         # Underflow check
-        r = process.parse("new", root, text=" z")
+        r = process(Process2.NEW, root, text=" z")
 
-        self.assertEqual(r, "error")
+        self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 1)
-        self.assertEqual(process.current, c)
-        self.assertEqual(process.errors[process], "underflow")
+        self.assertEqual(process.current, parsing)
 
         # Zero checker test
-        c.checker = None
+        parsing.condition = None
+        parsing.object = 1
+        self.assertEqual(parsing(Element.NEXT), 1)
 
-        self.assertIsNone(c.parse("check"))
     '''
 
 logger = Analyzer()

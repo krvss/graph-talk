@@ -69,8 +69,7 @@ class Handler(Abstract):
             return [h for h in self.handlers if not is_list(h)]
 
     # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
-    @staticmethod
-    def var_call_result(func, message, context):
+    def var_call_result(self, func, message, context):
         c = var_arg_count(func)
 
         if c == 0:
@@ -197,7 +196,7 @@ class Talker(Handler):
     # Remove prefix from the message
     @staticmethod
     def remove_prefix(message, prefix=None):
-        event = str(message[0] if is_list(message) else message)
+        event = str(message[0] if message and is_list(message) else message)
 
         if not Talker.SEP in event or (prefix and not event.startswith(prefix + Talker.SEP)):
             return None
@@ -282,7 +281,7 @@ class Element(Talker):
                 has_keys(context, Element.OLD_VALUE, Element.NEW_VALUE) and \
                 getattr(self, property_name) != context.get(Element.NEW_VALUE):
 
-                return len(property_name), property_name
+                return len(property_name), property_name  # To select the best property
 
     # Set the property to the new value
     def do_set_property(self, *message, **context):
@@ -443,38 +442,23 @@ class ComplexNotion2(Notion2):
         return self._relations
 
 
-# Next relation is just a conditioned sequence relation
+# Next relation checks for additional condition when relation traversed forward
 class NextRelation2(Relation2):
-    def __init__(self, subj, obj, condition=Element.FORWARD, owner=None):
+    def __init__(self, subj, obj, condition=None, owner=None):
         super(NextRelation2, self).__init__(subj, obj, owner)
-        self._condition = None
+        self.condition = condition
 
-        self.set_condition(condition)
+        self.on(self.can_pass, self.next_handler)
+
+    def check_condition(self, *message, **context):
+        return self.can_handle(self.condition, message, context)
+
+    def can_pass(self, *message, **context):
+        if message and message[0] in Element.FORWARD:  # We use 0 rank to make condition prevail other forward command
+            return True if self.condition is None else self.check_condition(*message, **context)
 
     def next_handler(self, *message, **context):
         return self.object
-
-    def set_condition(self, condition):
-        if condition == self._condition:
-            return
-
-        if self._condition:
-            self.off(self._condition, self.next_handler)
-
-        # Setting to default
-        if not condition:
-            condition = Element.FORWARD
-
-        self._condition = condition
-        self.on(condition, self.next_handler)
-
-    @property
-    def condition(self):
-        return self._condition
-
-    @condition.setter
-    def condition(self, value):
-        self.set_condition(value)
 
 
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
@@ -578,7 +562,8 @@ class Process2(Talker):
 
     # Cleanup: remove empty message item
     def can_clear_message(self, *message):
-        return message and (is_list(message[0]) or isinstance(message[0], dict)) and not message[0]
+        if message:
+            return ((is_list(message[0]) or isinstance(message[0], dict)) and not message[0]) or message[0] is None
 
     def do_clear_message(self):
         self.message.pop(0)
@@ -611,7 +596,7 @@ class Process2(Talker):
 
             self.set_message(result[0], True)
 
-        return result
+        return result  # TODO: process return value - True or None
 
     @property
     def queue_top(self):
@@ -920,23 +905,25 @@ Element.add_backward_command(ParsingProcess2.BREAK)
 Element.add_backward_command(ParsingProcess2.CONTINUE)
 
 
-# Parsing relation: should be passable in forward direction (otherwise returns Error), if
+# Parsing relation: should be passable in forward direction (otherwise returns Error)
 class ParsingRelation(NextRelation2):
-    def __init__(self, subj, obj, condition=Element.FORWARD, owner=None):
+    def __init__(self, subj, obj, condition=None, owner=None):
         super(ParsingRelation, self).__init__(subj, obj, condition, owner)
-
-        self.on(Talker.RESULT, self.on_result)
+        self.optional = False
         self.on(Talker.UNKNOWN, self.on_error)
 
-    def on_result(self, *message, **context):
-        if len(message) > 1 and message[1] in Element.FORWARD and \
-                context[Handler.HANDLER] == self.next_handler:
+    # Here we check condition against the parsing text
+    def check_condition(self, *message, **context):
+        return self.can_handle(self.condition, tupled(context.get(ParsingProcess2.TEXT), message), context)
 
-            # Overriding the initial result, adding Proceed of the parsed Rank
-            return {ParsingProcess2.PROCEED: context.get(Handler.RANK)}, context.get(Talker.RESULT)
+    def next_handler(self, *message, **context):
+        next_result = super(ParsingRelation, self).next_handler(*message, **context)
+        rank = context.get(Handler.RANK)
+
+        return ({ParsingProcess2.PROCEED: rank}, next_result) if rank else next_result
 
     def on_error(self, *message, **context):
-        if message and message[0] in Element.FORWARD:
+        if not self.optional and len(message) > 1 and message[1] in Element.FORWARD:
             return ParsingProcess2.ERROR
 
 
