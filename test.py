@@ -21,6 +21,13 @@ def state_v_checker(*m, **context):
         return Process2.OK  # Others' state is not visible
 
 
+def common_state_acc(*m, **context):
+    if 'acc' in context:
+        return {SharedContextProcess2.UPDATE_CONTEXT: {'acc': context['acc'] + 1}}
+    else:
+        return {SharedContextProcess2.ADD_CONTEXT: {'acc': 1}}
+
+
 def has_notification(*m, **context):
     if StatefulProcess2.STATE in context and StatefulProcess2.NOTIFICATIONS in context[StatefulProcess2.STATE]:
         return context[StatefulProcess2.STATE][StatefulProcess2.NOTIFICATIONS]['note']
@@ -988,6 +995,65 @@ class UtTests(unittest.TestCase):
         parsing.condition = None
         parsing.object = 1
         self.assertEqual(parsing(Element.NEXT), 1)
+
+    def test_f_complex(self):
+        # Complex notion test: root -> ab -> (a , b) with empty message
+        root = ComplexNotion2('root')
+        ab = ComplexNotion2('ab')
+        NextRelation2(root, ab)
+
+        a = ActionNotion2('a', common_state_acc)
+        r1 = NextRelation2(ab, a)
+
+        b = ActionNotion2('b', common_state_acc)
+        r2 = NextRelation2(ab, b)
+
+        process = ParsingProcess2()
+
+        r = process(root, test='test_complex_1')
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, b)
+        self.assertEqual(process.context['acc'], 2)
+
+        # Complex notion negative test: root -> ab -> ( (-a-> a) , (-b-> b) ) for 'a'
+        r1.subject = None
+        r2.subject = None
+
+        ParsingRelation(ab, a, 'a')
+        r2 = ParsingRelation(ab, b, 'b')
+
+        r = process(Process2.NEW, root, text='a', test='test_complex_2', acc=0)
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(process.last_parsed, 'a')
+        self.assertEqual(process.context['acc'], 1)
+        self.assertNotIn(b, process.states)
+        self.assertEqual(process.current, r2)  # Finished at error
+
+        # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
+        c = ComplexNotion2('c')
+        NextRelation2(ab, c)
+
+        d = ActionNotion2('d', common_state_acc)
+        NextRelation2(c, d)
+
+        e = ActionNotion2('e', common_state_acc)
+        NextRelation2(c, e)
+
+        f = ActionNotion2('f', True)
+        ParsingRelation(ab, f, 'f')
+
+        r = process(Process2.NEW, root, text='abf', test='test_complex_3', acc=0)
+
+        self.assertEqual(r, True)
+        self.assertEqual(process.parsed_length, 3)
+        self.assertEqual(process.current, f)
+        self.assertEqual(process.last_parsed, 'f')
+        self.assertEqual(process.context['acc'], 4)
+
 
     '''
 
