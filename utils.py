@@ -78,6 +78,7 @@ class DictChangeGroup(object):
             c.undo()
 
 
+# TODO: remove unneccessary
 def is_number(n):
     return type(n) in (IntType, LongType)
 

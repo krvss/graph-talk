@@ -16,7 +16,7 @@ class Abstract(object):
         return self.parse(*message, **context)
 
     # A singular way to call
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):  # TODO Factory pattern to not bother about *, **?
         return self.answer(*args, **kwargs)
 
 
@@ -299,17 +299,23 @@ class Element(Talker):
         return self(self.add_prefix(name, Element.SET_PREFIX),
                     **{Element.NEW_VALUE: value, Element.OLD_VALUE: getattr(self, name)})
 
+    def can_go_forward(self, *message, **context):
+        return self.can_handle(Element.FORWARD, message, context)
+
+    def can_go_backward(self, *message, **context):
+        return self.can_handle(Element.BACKWARD, message, context)
+
     def on_forward(self, handler):
-        self.on(Element.FORWARD, handler)
+        self.on(self.can_go_forward, handler)
 
     def off_forward(self):
-        self.off_condition(Element.FORWARD)
+        self.off_condition(self.can_go_forward)
 
     def on_backward(self, handler):
-        self.on(Element.BACKWARD, handler)
+        self.on(self.can_go_backward, handler)
 
     def off_backward(self):
-        self.off_condition(Element.BACKWARD)
+        self.off_condition(self.can_go_backward)
 
     @staticmethod
     def add_forward_command(command):
@@ -367,7 +373,7 @@ class ActionNotion2(Notion2):
 
     @property
     def action(self):
-        value = self.get_handlers(Element.FORWARD)
+        value = self.get_handlers(self.can_go_forward)
         return value[0] if value else None
 
     @action.setter
@@ -433,7 +439,7 @@ class ComplexNotion2(Notion2):
             relation.on(self._relate_event, self)
             return True
 
-    def next(self):
+    def next(self, *message, **context):
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
@@ -596,7 +602,7 @@ class Process2(Talker):
 
             self.set_message(result[0], True)
 
-        return result  # TODO: process return value - True or None
+        return result
 
     @property
     def queue_top(self):
@@ -925,6 +931,82 @@ class ParsingRelation(NextRelation2):
     def on_error(self, *message, **context):
         if not self.optional and len(message) > 1 and message[1] in Element.FORWARD:
             return ParsingProcess2.ERROR
+
+
+# Selective notion: complex notion that can consist of one of its objects
+# It tries all relations and uses the one without errors
+class SelectiveNotion2(ComplexNotion2):
+    CASES = 'cases'
+
+    def __init__(self, name, owner=None):
+        super(SelectiveNotion2, self).__init__(name, owner)
+
+        self.on(self.can_retry, self.do_retry)
+        self.on(self.can_finish, self.do_finish)
+
+    def can_go_forward(self, *message, **context):
+        if not context.get(StatefulProcess2.STATE):  # If we've been here before we need to try something different
+            return super(SelectiveNotion2, self).can_go_forward(*message, **context)
+
+    # Searching for the longest case
+    def get_best_cases(self, message, context):
+        context[Handler.ANSWER] = Handler.RANK
+
+        cases = {}
+        max_len = -1
+        for rel in self.relations:
+            result, length = rel(*message, **context)  # With the rank, please
+
+            if result != ParsingProcess2.ERROR and length > max_len:
+                max_len = length
+                cases[rel] = length
+
+        return [case for case, length in cases.iteritems() if length == max_len]
+
+    def next(self, *message, **context):
+        reply = super(SelectiveNotion2, self).next(*message, **context)
+
+        if is_list(reply):
+            cases = self.get_best_cases(message, context)
+
+            if cases:
+                case = cases.pop(0)
+
+                if not cases:
+                    reply = case
+                else:
+                    reply = (StackingContextProcess2.PUSH_CONTEXT,  # Keep the context if re-try will needed
+                             {StatefulProcess2.SET_STATE: {SelectiveNotion2.CASES: cases}},  # Store what to try next
+                             case,  # Try first case
+                             self)  # And come back again
+            else:
+                return ParsingProcess2.ERROR
+
+        return reply
+
+    def can_retry(self, *message, **context):
+        return context.get(StatefulProcess2.STATE) and has_first(ParsingProcess2.ERROR, message)
+
+    def do_retry(self, *message, **context):
+        cases = context[StatefulProcess2.STATE][SelectiveNotion2.CASES]
+
+        if cases:
+            case = cases.pop(0)  # Try another case, if any
+
+            # Pop context and update state, then try another case and come back here
+            return [StackingContextProcess2.POP_CONTEXT,  # Roll back to the initial context
+                    {StatefulProcess2.SET_STATE: {SelectiveNotion2.CASES: cases}},  # Update cases
+                    StackingContextProcess2.PUSH_CONTEXT,  # Save updated context
+                    case,  # Try another case
+                    self]  # Come back
+        else:
+            return self.do_finish(*message, **context)  # No more opportunities
+
+    def can_finish(self, *message, **context):
+        return context.get(StatefulProcess2.STATE) and not has_first(ParsingProcess2.ERROR, message)
+
+    def do_finish(self, *message, **context):
+        return [StatefulProcess2.FORGET_CONTEXT, StatefulProcess2.CLEAR_STATE]
 
 
 ### Borderline between new and old ###

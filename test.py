@@ -68,7 +68,7 @@ class UtTests(unittest.TestCase):
         handler1 = lambda: True
         handler2 = True
 
-        # Generic "on"
+        # Generic 'on'
         h.on('event', handler1)
 
         self.assertIn(('event', handler1), h.handlers)
@@ -137,7 +137,7 @@ class UtTests(unittest.TestCase):
         # Smart calls
         self.assertEqual(h.var_call_result(lambda: 1, [], {}), 1)
         self.assertEqual(h.var_call_result(lambda *m: m[0], [2], {}), 2)
-        self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ["3"], {"3": 3}), 3)
+        self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ['3'], {'3': 3}), 3)
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
@@ -151,7 +151,7 @@ class UtTests(unittest.TestCase):
         self.assertEquals(h.can_handle(condition1, [1], {}), (0, True))
         self.assertEquals(h.can_handle(condition1, [2], {}), cant_handle)
 
-        self.assertEquals(h.can_handle(condition2, [3], {"1": 1}), (3, 1))
+        self.assertEquals(h.can_handle(condition2, [3], {'1': 1}), (3, 1))
         self.assertEquals(h.can_handle(condition3, [], {}), (4, 4))
 
         self.assertEquals(h.can_handle(tc.return_true, [], {}), (0, True))
@@ -209,7 +209,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
-        # Specific event beats "any" handler
+        # Specific event beats 'any' handler
         r = h.handle('event')
         self.assertEqual(r[0], True)
         self.assertEqual(r[1], len('event'))
@@ -823,7 +823,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process._context_stack)
 
     def test_c_states(self):
-        # Root -> (inc, inc, "state_check")
+        # Root -> (inc, inc, 'state_check')
         root = ComplexNotion2('root')
 
         inc = ActionNotion2('+1', state_v_starter)
@@ -919,14 +919,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.query, ParsingProcess2.ERROR)
 
     def test_e_conditions(self):
-        # Simple positive condition test root -a-> d for "a"
+        # Simple positive condition test root -a-> d for 'a'
         root = ComplexNotion2('root')
 
         action = ActionNotion2('passed', lambda *m, **c: c.get(ParsingProcess2.LAST_PARSED, ParsingProcess2.ERROR))
 
         parsing = ParsingRelation(root, action, 'a')
 
-        r = parsing(Element.NEXT, text='a')
+        r = parsing(Element.NEXT, **{ParsingProcess2.TEXT: 'a', 'test': 'conditions_1'})
 
         self.assertEqual(r[0].get(ParsingProcess2.PROCEED), 1)
         self.assertEqual(r[1], action)
@@ -937,14 +937,14 @@ class UtTests(unittest.TestCase):
         # Using in process
         process = ParsingProcess2()
 
-        r = process(root, text='a')
+        r = process(root, **{ParsingProcess2.TEXT: 'a', 'test': 'conditions_2'})
 
         self.assertEqual(process.parsed_length, 1)
         self.assertTrue(r is False)
         self.assertEqual(process.current, action)
 
         # Simple negative condition test root -a-> a for 'n'
-        r = process(Process2.NEW, root, text='n')
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'n', 'test': 'conditions_3'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
@@ -954,13 +954,13 @@ class UtTests(unittest.TestCase):
         parsing.condition = lambda *m, **c: 1 if c.get(ParsingProcess2.TEXT, '').startswith('a') else -1
         parsing.object = None
 
-        r = process(Process2.NEW, root, text='a')
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'conditions_4'})
 
         self.assertEqual(process.parsed_length, 1)
         self.assertTrue(r is None)
         self.assertEqual(process.current, parsing)
 
-        r = process(Process2.NEW, root, text='b')
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'b', 'test': 'conditions_5'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
@@ -968,7 +968,7 @@ class UtTests(unittest.TestCase):
 
         # Optional check
         parsing.optional = True
-        r = process(Process2.NEW, root, text='')
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'conditions_6'})
 
         self.assertTrue(r is not False)
         self.assertEqual(process.parsed_length, 0)
@@ -976,16 +976,16 @@ class UtTests(unittest.TestCase):
 
         # Regex check
         parsing.optional = False
-        parsing.condition = re.compile(r"(\s)*")
+        parsing.condition = re.compile(r'(\s)*')
 
-        r = process(Process2.NEW, root, text="     ")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: '     ', 'test': 'conditions_7'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.parsed_length, 5)
         self.assertEqual(process.current, parsing)
 
         # Underflow check
-        r = process(Process2.NEW, root, text=" z")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: ' z', 'test': 'conditions_8'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 1)
@@ -1024,7 +1024,7 @@ class UtTests(unittest.TestCase):
         ParsingRelation(ab, a, 'a')
         r2 = ParsingRelation(ab, b, 'b')
 
-        r = process(Process2.NEW, root, text='a', test='test_complex_2', acc=0)
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_complex_2', 'acc':0})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 1)
@@ -1033,7 +1033,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(b, process.states)
         self.assertEqual(process.current, r2)  # Finished at error
 
-        # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for "abf"
+        # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for 'abf'
         c = ComplexNotion2('c')
         NextRelation2(ab, c)
 
@@ -1046,7 +1046,7 @@ class UtTests(unittest.TestCase):
         f = ActionNotion2('f', True)
         ParsingRelation(ab, f, 'f')
 
-        r = process(Process2.NEW, root, text='abf', test='test_complex_3', acc=0)
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'abf', 'test': 'test_complex_3', 'acc': 0})
 
         self.assertEqual(r, True)
         self.assertEqual(process.parsed_length, 3)
@@ -1054,6 +1054,150 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.last_parsed, 'f')
         self.assertEqual(process.context['acc'], 4)
 
+    def test_g_selective(self):
+        process = ParsingProcess2()
+
+        # Simple selective test: root -a-> a, -b-> b for 'b'
+        root = SelectiveNotion2('root')
+        a = ActionNotion2('a', common_state_acc)
+
+        c1 = ParsingRelation(root, a, 'a')
+
+        b = ActionNotion2('b', common_state_acc)
+        c2 = ParsingRelation(root, b, 'b')
+
+        r = process(root, **{ParsingProcess2.TEXT: 'b', 'test': 'test_selective_1'})
+
+        self.assertEqual(process.last_parsed, 'b')
+        self.assertTrue(r is None)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(process.query, Element.NEXT)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process._context_stack)
+        self.assertEqual(process.current, b)
+
+        # Alternative negative test: same tree, message 'xx'
+        r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: 'xx', 'test': 'test_selective_2'})
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.query, ParsingProcess2.ERROR)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process._context_stack)
+        self.assertEqual(process.current, root)  # No case found
+
+        return
+
+        p = ProcessDebugger(process)
+        p.show_log(process)
+
+        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa), -bb->bb ) ) for "aa"
+        c1.subject = None
+        c2.subject = None
+
+        a1 = ComplexNotion("a1")
+        NextRelation(root, a1)
+
+        a = ComplexNotion("a")
+        a1a = ConditionalRelation(a1, a, "a")
+
+        b = ActionNotion("b", add_to_result)
+        ConditionalRelation(a, b, "b")
+
+        a2 = ComplexNotion("a2")
+        na2 = NextRelation(root, a2)
+
+        aa = ActionNotion("aa", add_to_result)
+        caa = ConditionalRelation(a2, aa, "aa")
+
+        bb = ActionNotion("bb", add_to_result)
+        nbb = NextRelation(root, bb)
+
+        r = process.parse("new", root, text="aa", test="test_selective_3")
+
+        self.assertEqual(process.context["result"], "aa")
+        self.assertTrue(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertFalse(process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        # Longest regex/selection
+        # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), -a-> a2 -> (-c->aa), -a+->bb ) ) for "aaaa"
+        na2.subject = None
+        na2.object = None
+
+        ConditionalRelation(root, a2, "a")
+        caa.checker = "c"
+
+        nbb.subject = None
+        nbb.object = None
+        ConditionalRelation(root, bb, re.compile("(a)+"))
+
+        s = ActionNotion("stop", showstopper)
+        ConditionalRelation(root, s, "a")
+
+        r = process.parse("new", root, text="aaaa", test="test_selective_4")
+
+        self.assertEqual(process.context["result"], "bb")
+        self.assertTrue(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertFalse(process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        # Negative test
+        r = process.parse("new", root, text="x", test="test_selective_5")
+        self.assertTrue(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertIn(root, process.errors)
+        self.assertIn(a1a, process.errors)  # Error for the first real condition after epsilon move to a1
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        # Error test
+        for relation in root.relations:
+            relation.subject = None
+
+        breaker = ActionNotion("breaker", ["break", "error"])
+        c1 = ConditionalRelation(root, breaker, "a")
+        n1 = NextRelation(root, ActionNotion("adder", add_to_result))
+
+        r = process.parse("new", root, text="a", test="test_selective_6")
+        self.assertTrue(r, "error")
+        self.assertNotIn("result", process.context)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertIn(root, process.errors)
+        self.assertIn(breaker, process.errors)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        breaker.action = "break"  # In this case Selective will not offer new cases
+
+        r = process.parse("new", root, text="a", test="test_selective_7")
+        self.assertTrue(r, "ok")
+        self.assertNotIn("result", process.context)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+
+        breaker.action = "error"
+
+        r = process.parse("new", root, text="a", test="test_selective_8")
+        self.assertTrue(r, "error")
+        self.assertEqual(process.context["result"], "adder")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(root, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, root)
+        self.assertNotIn(root, process.errors)
+        self.assertNotIn(breaker, process.errors)
+        self.assertIn(process, process.errors)
 
     '''
 
