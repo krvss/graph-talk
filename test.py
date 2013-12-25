@@ -503,11 +503,14 @@ class UtTests(unittest.TestCase):
         # Testing the default
         n = Notion2('N')
 
+        process.context = {'preserved': True}
         r = process(n, test='process_default')
+
         self.assertTrue(r)
         self.assertEquals(process.current, n)
         self.assertEquals(len(process._queue), 1)
         self.assertFalse(process.message)
+        self.assertTrue(process.context.get('preserved'))
 
         # Testing the unknown
         strange = 'strange'
@@ -518,6 +521,7 @@ class UtTests(unittest.TestCase):
         self.assertEquals(process.current, n)
         self.assertEquals(len(process._queue), 1)
         self.assertTrue(process.message[0], strange)
+        self.assertNotIn('preserved', process.context)
 
         # We really stuck
         r = process(test='process_unknown_2')
@@ -1108,7 +1112,6 @@ class UtTests(unittest.TestCase):
         bb = ActionNotion2('bb', common_state_acc)
         nbb = NextRelation2(root, bb)
 
-        process.context.clear()
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_selective_3'})
 
         self.assertEqual(process.context['acc'], 1)
@@ -1132,7 +1135,6 @@ class UtTests(unittest.TestCase):
         s = ActionNotion2('stop', ParsingProcess2.ERROR)
         ParsingRelation(root, s, 'a')
 
-        process.context.clear()
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_selective_4'})
 
         self.assertEqual(process.last_parsed, 'aaaa')
@@ -1144,7 +1146,6 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, bb)
 
         # Negative test: just wrong text input
-        process.context.clear()
         r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: 'x', 'test': 'test_selective_5'})
 
         self.assertTrue(r is False)
@@ -1163,7 +1164,6 @@ class UtTests(unittest.TestCase):
         c1 = ParsingRelation(root, breaker, 'a')
         NextRelation2(root, ActionNotion2('adder', common_state_acc))
 
-        process.context.clear()
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_selective_6'})
 
         self.assertTrue(r is False)
@@ -1175,7 +1175,6 @@ class UtTests(unittest.TestCase):
         # No error, 1 good relation so there are no returns
         breaker.action = Process2.OK  # In this case Selective will not offer new cases
 
-        process.context.clear()
         r = process(ParsingProcess2.NEW, root, ** {ParsingProcess2.TEXT: 'a', 'test': 'test_selective_7'})
 
         self.assertTrue(r, ParsingProcess2.OK)
@@ -1189,7 +1188,6 @@ class UtTests(unittest.TestCase):
         c1.subject = None
         NextRelation2(root, breaker)
 
-        process.context.clear()
         r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'test_selective_8'})
 
         self.assertTrue(r is None)

@@ -584,10 +584,18 @@ class Process2(Talker):
         self.on(self.can_pop_queue, self.do_queue_pop)
         self.on(self.can_clear_message, self.do_clear_message)
 
+    # Start new parsing
+    def start_parsing(self, new_message, new_context):
+        if has_first(new_message, Process2.NEW):
+            self.context = new_context
+        else:
+            self.context.update(new_context)
+
+        self.to_queue({Process2.MESSAGE: list(new_message)})
+
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
-        self.context.update(context)  # TODO: think of New (start handler) and remove all process.context.clear() then
-        self.to_queue({Process2.MESSAGE: list(message)})
+        self.start_parsing(message, context)
 
         result = Handler.NO_PARSE
 
