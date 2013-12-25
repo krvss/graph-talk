@@ -586,7 +586,7 @@ class Process2(Talker):
 
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
-        self.context.update(context)
+        self.context.update(context)  # TODO: think of New (start handler) and remove all process.context.clear() then
         self.to_queue({Process2.MESSAGE: list(message)})
 
         result = Handler.NO_PARSE
@@ -952,16 +952,16 @@ class SelectiveNotion2(ComplexNotion2):
     def get_best_cases(self, message, context):
         context[Handler.ANSWER] = Handler.RANK
 
-        cases = {}
+        cases = []
         max_len = -1
         for rel in self.relations:
             result, length = rel(*message, **context)  # With the rank, please
 
-            if result != ParsingProcess2.ERROR and length > max_len:
-                max_len = length
-                cases[rel] = length
+            if result != ParsingProcess2.ERROR and length >= 0:
+                max_len = max(length, max_len)
+                cases.append((rel, length))
 
-        return [case for case, length in cases.iteritems() if length == max_len]
+        return [case for case, length in cases if length == max_len]
 
     def next(self, *message, **context):
         reply = super(SelectiveNotion2, self).next(*message, **context)
@@ -985,7 +985,7 @@ class SelectiveNotion2(ComplexNotion2):
         return reply
 
     def can_retry(self, *message, **context):
-        return context.get(StatefulProcess2.STATE) and has_first(ParsingProcess2.ERROR, message)
+        return context.get(StatefulProcess2.STATE) and has_first(message, ParsingProcess2.ERROR)
 
     def do_retry(self, *message, **context):
         cases = context[StatefulProcess2.STATE][SelectiveNotion2.CASES]
@@ -997,13 +997,14 @@ class SelectiveNotion2(ComplexNotion2):
             return [StackingContextProcess2.POP_CONTEXT,  # Roll back to the initial context
                     {StatefulProcess2.SET_STATE: {SelectiveNotion2.CASES: cases}},  # Update cases
                     StackingContextProcess2.PUSH_CONTEXT,  # Save updated context
+                    Element.NEXT,  # Go forward again
                     case,  # Try another case
                     self]  # Come back
         else:
             return self.do_finish(*message, **context)  # No more opportunities
 
     def can_finish(self, *message, **context):
-        return context.get(StatefulProcess2.STATE) and not has_first(ParsingProcess2.ERROR, message)
+        return context.get(StatefulProcess2.STATE) and message and message[0] in Element.FORWARD
 
     def do_finish(self, *message, **context):
         return [StatefulProcess2.FORGET_CONTEXT, StatefulProcess2.CLEAR_STATE]
