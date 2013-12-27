@@ -305,6 +305,12 @@ class Element(Talker):
     def can_go_backward(self, *message, **context):
         return self.can_handle(Element.BACKWARD, message, context)
 
+    def is_forward(self, message):
+        return message and message[0] in Element.FORWARD
+
+    def is_backward(self, message):
+        return message and message[0] in Element.BACKWARD
+
     def on_forward(self, handler):
         self.on(self.can_go_forward, handler)
 
@@ -456,12 +462,12 @@ class NextRelation2(Relation2):
 
         self.on(self.can_pass, self.next_handler)
 
-    def check_condition(self, *message, **context):
+    def check_condition(self, message, context):
         return self.can_handle(self.condition, message, context)
 
     def can_pass(self, *message, **context):
-        if message and message[0] in Element.FORWARD:  # We use 0 rank to make condition prevail other forward command
-            return True if self.condition is None else self.check_condition(*message, **context)
+        if self.is_forward(message):  # We use 0 rank to make condition prevail other forward command
+            return True if self.condition is None else self.check_condition(message, context)
 
     def next_handler(self, *message, **context):
         return self.object
@@ -927,7 +933,7 @@ class ParsingRelation(NextRelation2):
         self.on(Talker.UNKNOWN, self.on_error)
 
     # Here we check condition against the parsing text
-    def check_condition(self, *message, **context):
+    def check_condition(self, message, context):
         return self.can_handle(self.condition, tupled(context.get(ParsingProcess2.TEXT), message), context)
 
     def next_handler(self, *message, **context):
@@ -952,10 +958,6 @@ class SelectiveNotion2(ComplexNotion2):
         self.on(self.can_retry, self.do_retry)
         self.on(self.can_finish, self.do_finish)
 
-    def can_go_forward(self, *message, **context):
-        if not context.get(StatefulProcess2.STATE):  # If we've been here before we need to try something different
-            return super(SelectiveNotion2, self).can_go_forward(*message, **context)
-
     # Searching for the longest case
     def get_best_cases(self, message, context):
         context[Handler.ANSWER] = Handler.RANK
@@ -970,6 +972,11 @@ class SelectiveNotion2(ComplexNotion2):
                 cases.append((rel, length))
 
         return [case for case, length in cases if length == max_len]
+
+    # Events #
+    def can_go_forward(self, *message, **context):
+        if not context.get(StatefulProcess2.STATE):  # If we've been here before we need to try something different
+            return super(SelectiveNotion2, self).can_go_forward(*message, **context)
 
     def next(self, *message, **context):
         reply = super(SelectiveNotion2, self).next(*message, **context)
@@ -1012,10 +1019,162 @@ class SelectiveNotion2(ComplexNotion2):
             return self.do_finish(*message, **context)  # No more opportunities
 
     def can_finish(self, *message, **context):
-        return context.get(StatefulProcess2.STATE) and message and message[0] in Element.FORWARD
+        return context.get(StatefulProcess2.STATE) and self.is_forward(message)
 
     def do_finish(self, *message, **context):
         return [StatefulProcess2.FORGET_CONTEXT, StatefulProcess2.CLEAR_STATE]
+
+
+# Loop relation specifies iteration of the related object.
+# Possible conditions are: numeric (n; m..n; m..; m..n with step), wildcards (*, ?, +) and iterator functions
+class LoopRelation2(NextRelation2):
+    ITERATION = 'i'
+    WILDCARDS = ('*', '?', '+')
+
+    def __init__(self, subj, obj, condition=None, owner=None):
+        super(LoopRelation2, self).__init__(subj, obj, condition, owner)
+
+        # Numerics
+        self.on(self.can_repeat_numeric, self.do_repeat_numeric)
+        self.on(self.can_start_numeric, self.do_start_numeric)
+        self.on(self.can_stop_numeric, self.do_stop_numeric)
+
+    def is_numeric(self):
+        if is_number(self.condition):
+            return True
+
+        elif is_list(self.condition):
+            for n in self.condition:
+                if not is_number(n):
+                    return False
+
+            return True
+
+    def is_wildcard(self):
+        return self.condition in LoopRelation2.WILDCARDS
+
+    def check_condition(self, message, context):
+        if not self.condition or self.condition is True:  # Here we check only the simplest case
+            return super(LoopRelation2, self).check_condition(message, context)
+
+    def is_looping(self, context):
+        return LoopRelation2.ITERATION in context.get(StatefulProcess2.STATE)
+
+    # Events #
+    # Numeric condition
+    def can_start_numeric(self, *message, **context):
+        return self.is_forward(message) and not self.is_looping(context) and self.is_numeric()
+
+    def do_start_numeric(self, *message, **context):
+        return [{StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: 0}}, self.object, self]
+
+    def can_repeat_numeric(self, *message, **context):
+        return self.is_forward(message) and self.is_looping(context) and self.is_numeric()
+
+    def do_repeat_numeric(self, *message, **context):
+        i = context.get(StatefulProcess2.STATE).get(LoopRelation2.ITERATION)
+
+        # TODO: support all kinds of numerics; add error if less than needed
+        if i < self.condition - 1:
+            return [{StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: i + 1}}, self.object, self]
+        else:
+            return StatefulProcess2.CLEAR_STATE
+
+    def can_stop_numeric(self, *message, **context):
+        return self.is_looping(context) and self.is_numeric() and self.is_backward(message)
+
+    def do_stop_numeric(self, *message, **context):
+        return StatefulProcess2.CLEAR_STATE
+
+    ### Old ###
+    def is_ranged(self):
+        if is_list(self.condition) and len(self.condition) >= 2:
+            for n in self.condition:
+                if not is_number(n):
+                    return False
+
+            return True
+
+    def has_finite_n(self):
+        return self.n is not True and (is_number(self.n) or self.n == '?')
+
+    def has_rollback(self):
+        return self.n == '*' or self.n == '+' or self.is_ranged()
+
+    def parse1(self, *message, **context):
+        if (not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue')) \
+                or (not self.n and not self.is_ranged()):
+            return None
+
+        repeat = True
+        error = restore = False
+        reply = []
+
+        if callable(self.n):
+            repeat = self.n(self, *message, **context)
+
+            if repeat:
+                iteration = repeat  # Storing for the future calls
+                reply.append({'set_state': {'n': iteration}})
+
+        elif context['state']:  # May be was here before
+            iteration = context['state'].get('n')
+
+            if context.get('errors') and self.n is not True:
+                repeat = False
+
+                if (self.n == '*' or self.n == '?') or (self.n == '+' and iteration > 1):
+                    restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
+                                    # last good context
+
+                elif (self.n == '+' and iteration <= 1) or not self.is_ranged():
+                    error = True  # '+' means more than 1 iterations and if there is no range we have a fixed count
+
+                elif self.is_ranged():
+                    if self.m is not None:
+                        if iteration <= self.m:  # Less than lower limit
+                            error = True
+                        else:
+                            restore = True
+
+                    elif iteration < self.n:
+                        restore = True
+            else:
+                if message[0] != 'next':
+                    reply.append('next')
+
+                if message[0] == 'break':  # Consider work done
+                    repeat = False
+
+                else:
+                    if self.has_finite_n() and (self.n == '?' or iteration >= self.n):
+                        repeat = False  # No more iterations
+
+                    if repeat and self.has_rollback():
+                        reply += ['forget_context', 'push_context']  # Prepare for the new iteration
+                                                                     # apply last changes and start new tracking
+                if repeat:
+                    iteration += 1
+                    reply.append({'set_state': {'n': iteration}})
+        else:
+            # A very first iteration - init the variable and store the context
+            reply += [{'set_state': {'n': 1}}, 'push_context']
+
+        if repeat:
+            reply += [self.object, self]  # We need to come back after the object to think should we repeat or not
+        else:
+            if restore:
+                reply.append('pop_context')  # If we need to restore we need to repair context
+
+            if not callable(self.n):
+                reply.append('forget_context')  # Nothing to forget in case of custom function
+
+            reply.append('clear_state')  # No more repeats, clearing
+
+            if error:
+                reply.append('error')
+
+        return reply
 
 
 ### Borderline between new and old ###

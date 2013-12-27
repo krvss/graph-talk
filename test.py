@@ -395,6 +395,10 @@ class UtTests(unittest.TestCase):
 
         self.assertTrue(e(Element.NEXT) is False)
 
+        self.assertFalse(e.is_forward(None))
+        self.assertTrue(e.is_forward([Element.NEXT]))
+        self.assertFalse(e.is_forward([]))
+
         # Backward
         handler2 = lambda *m: m[0] if m[0] in Element.BACKWARD else None
         e.on_backward(handler2)
@@ -404,6 +408,10 @@ class UtTests(unittest.TestCase):
         e.off_backward()
 
         self.assertTrue(e(Element.PREVIOUS) is False)
+
+        self.assertFalse(e.is_backward(None))
+        self.assertTrue(e.is_backward([Element.PREVIOUS]))
+        self.assertFalse(e.is_backward([]))
 
         # Commands
         new_forward = 'ahead'
@@ -1196,6 +1204,327 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(root, process.states)
         self.assertFalse(process._context_stack)
         self.assertEqual(process.current, root)
+
+    def test_0_loop(self):
+        # Simple loop test: root -5!-> aa -a-> a for 'aaaaa'
+        root = ComplexNotion2('root')
+        aa = ComplexNotion2('aa')
+        l = LoopRelation2(root, aa, 5)
+
+        a = ActionNotion2('acc', common_state_acc)
+        c = ParsingRelation(aa, a, 'a')
+
+        process = ParsingProcess2()
+
+        r = process(root, **{ParsingProcess2.TEXT: 'aaaaa', 'test': 'test_loop_basic'})
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.context['acc'], 5)
+        self.assertEqual(process.parsed_length, 5)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process._context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Negative loop test: root -5!-> aa -a-> a for 'aaaa'
+        r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_neg'})
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.context['acc'], 4)
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process._context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        return
+
+        deb = ProcessDebugger(process)
+        deb.show_log(process)
+
+        # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
+        l.n = '*'
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_*")
+
+        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Loop test for endless count root -*!-> a's -a-> a for "aaaa"
+        l.n = True
+        a.action = stop_infinite
+
+        r = process.parse("new", root, text="aaaaaaa", test="test_loop_true_n")
+
+        self.assertEqual(process.context["infinite"], 4)
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 5)
+        self.assertFalse(process.context_stack)
+        self.assertIn(a, process.errors)
+        self.assertNotIn(l, process.errors)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Loop test for >1 count root -+!-> a's -a-> a for "aaaa"
+        l.n = '+'
+        a.action = add_to_result
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_+")
+
+        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Loop negative test for >1 count root -+!-> a's -a-> a for "b"
+        l.n = '+'
+
+        r = process.parse("new", root, text="b", test="test_loop_+_neg")
+
+        self.assertNotIn("result", process.context)
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertFalse(process.context_stack)
+        self.assertIn(c, process.errors)
+        self.assertIn(l, process.errors)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Loop test for ? count root -?-> a's -a-> a for "a"
+        l.n = '?'
+
+        r = process.parse("new", root, text="a", test="test_loop_?")
+
+        self.assertEqual(process.context["result"], "a")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Loop test for ? count root -?-> a's -a-> a for ""
+        l.n = '?'
+
+        r = process.parse("new", root, text="", test="test_loop_?_2")
+
+        self.assertNotIn("result", process.context)
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
+        l.n = if_loop
+
+        r = process.parse("new", root, text="aaaaa", test="test_loop_ext_func")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 5)  # External functions stops at 5
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # n=0 test
+        l.n = 0
+        r = process.parse("new", root, text="", test="test_loop_n=0")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Tuples test
+        l2 = LoopRelation(None, None, (1, 2))
+
+        self.assertEqual(l2.m, 1)
+        self.assertEqual(l2.n, 2)
+
+        l2 = LoopRelation(None, None, (2, ))
+
+        self.assertEqual(l2.m, 2)
+        self.assertEqual(l2.n, None)
+
+        l2 = LoopRelation(None, None, (None, 2))
+
+        self.assertEqual(l2.m, None)
+        self.assertEqual(l2.n, 2)
+
+        l.m = 2
+        l.n = 4
+
+        r = process.parse("new", root, text="aaa", test="test_loop_m..n")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 3)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="a", test="test_loop_m..n_2")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertFalse(process.context_stack)
+        self.assertNotIn(l, process.states)
+        self.assertIn(c, process.errors)
+        self.assertIn(l, process.errors)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_m..n_3")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaaaa", test="test_loop_m..n_neg")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertNotIn(c, process.errors)  # error is not here
+        self.assertNotIn(l, process.errors)  # and not here too
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        l.m = None
+        l.n = 2
+        r = process.parse("new", root, text="", test="test_loop_none..n")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 0)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aa", test="test_loop_none..n_2")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaa", test="test_loop_none..n_3")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(c, process.errors)  # just more than
+        self.assertNotIn(l, process.errors)  # we can eat
+        self.assertNotIn(l, process.states)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        l.m = 3
+        l.n = None
+
+        r = process.parse("new", root, text="aa", test="test_loop_m..none_neg")
+
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertIn(c, process.errors)
+        self.assertIn(l, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaa", test="test_loop_m..none")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 3)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_m..none_2")
+
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l)  # Returning to the loop
+
+        # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
+        del l.m
+        l.n = 2
+
+        aaa = ComplexNotion("a2")
+        l.subject = aaa
+
+        l2 = LoopRelation(root, aaa, 2)
+
+        r = process.parse("new", root, text="aaaa", test="test_loop_nested")
+
+        self.assertEqual(process.context["result"], "aaaa")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 4)
+        self.assertNotIn(l, process.states)
+        self.assertNotIn(l2, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l2)  # Returning to the top loop
+
+        # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
+        r = process.parse("new", root, text="aaab", test="test_loop_nested_neg")
+
+        self.assertEqual(process.context["result"], "aaa")
+        self.assertEqual(r, "error")
+        self.assertEqual(process.parsed_length, 3)
+        self.assertIn(l, process.errors)
+        self.assertIn(l2, process.errors)
+        self.assertIn(c, process.errors)
+        self.assertNotIn(l, process.states)
+        self.assertNotIn(l2, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, l2)  # Returning to the top loop
+
+        # Break test: root -2!-> a's (-a-> a, -!->)
+        l.n = 2
+        l.subject = root
+
+        b = ActionNotion("b", add_to_result)
+        NextRelation(aa, b)
+
+        c = ActionNotion("c", add_to_result)
+        NextRelation(root, c)
+
+        a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'break']
+
+        r = process.parse("new", root, text="a", test="test_loop_break")
+
+        self.assertEqual(process.context["result"], "ac")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 1)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, c)
+        self.assertEqual(process.query, 'next')
+
+        # Continue test
+        a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
+
+        r = process.parse("new", root, text="aa", test="test_loop_continue")
+
+        self.assertEqual(process.context["result"], "aac")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, c)
+
+        # Final verification
+        a.action = add_to_result
+
+        r = process.parse("new", root, text="aa", test="test_loop_action")
+
+        self.assertEqual(process.context["result"], "ababc")
+        self.assertEqual(r, "ok")
+        self.assertEqual(process.parsed_length, 2)
+        self.assertNotIn(l, process.states)
+        self.assertFalse(process.context_stack)
+        self.assertEqual(process.current, c)  # Returning to the loop
+
 
     '''
 
