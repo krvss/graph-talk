@@ -35,10 +35,17 @@ def has_notification(*m, **context):
         return False
 
 
-def check_loop_result(test, process, loop):
+def check_loop_result(test, process, loop, counter):
     test.assertNotIn(loop, process.states)
     test.assertFalse(process._context_stack)
     test.assertEqual(process.current, loop)
+
+    test.assertEqual(process.parsed_length, counter)
+
+    if counter > 0:
+        test.assertEqual(process.context['acc'], counter)
+    else:
+        test.assertNotIn('acc', process.context)
 
 
 class TestCalls(Abstract):
@@ -1218,210 +1225,160 @@ class UtTests(unittest.TestCase):
         l = LoopRelation2(root, aa, 5)
 
         self.assertTrue(l.is_numeric())
-        self.assertFalse(l.is_wildcard())
         self.assertFalse(l.is_flexible())
 
         a = ActionNotion2('acc', common_state_acc)
-        c = ParsingRelation(aa, a, 'a')
+        ParsingRelation(aa, a, 'a')
 
         process = ParsingProcess2()
 
         r = process(root, **{ParsingProcess2.TEXT: 'aaaaa', 'test': 'test_loop_basic'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.context['acc'], 5)
-        self.assertEqual(process.parsed_length, 5)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 5)
 
         # Negative loop test: root -5!-> aa -a-> a for 'aaaa'
         r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_neg'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.context['acc'], 4)
-        self.assertEqual(process.parsed_length, 4)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 4)
 
         # n=0 test
         l.condition = 0
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'test_loop_n=0'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 0)
-        self.assertNotIn('acc', process.context)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 0)
 
         # Numeric ranges test
         l.condition = (2, 4)
 
         self.assertTrue(l.is_numeric())
-        self.assertFalse(l.is_wildcard())
         self.assertTrue(l.is_flexible())
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaa', 'test': 'test_loop_m..n'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 3)
-        self.assertEqual(process.context['acc'], 3)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 3)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_loop_m..n_2'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 1)
-        self.assertEqual(process.context['acc'], 1)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 1)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_m..n_3'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 4)
-        self.assertEqual(process.context['acc'], 4)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 4)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaaa', 'test': 'test_loop_m..n_neg'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 4)
-        self.assertEqual(process.context['acc'], 4)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 4)
 
         # Numeric flexibles test
         # No minimum
         l.condition = (None, 2)
 
         self.assertTrue(l.is_numeric())
-        self.assertFalse(l.is_wildcard())
         self.assertTrue(l.is_flexible())
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'test_loop_none..n'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 0)
-        self.assertNotIn('acc', process.context)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 0)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_loop_none..n_2'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 2)
-        self.assertEqual(process.context['acc'], 2)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 2)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaa', 'test': 'test_loop_none..n_3'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 2)
-        self.assertEqual(process.context['acc'], 2)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 2)
 
         # No maximum
         l.condition = 3, None
 
         self.assertTrue(l.is_numeric())
-        self.assertFalse(l.is_wildcard())
         self.assertTrue(l.is_flexible())
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_loop_m..none_neg'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 2)
-        self.assertEqual(process.context['acc'], 2)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 2)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaa', 'test': 'test_loop_m..none'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 3)
-        self.assertEqual(process.context['acc'], 3)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 3)
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_m..none_2'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 4)
-        self.assertNotIn(l, process.states)
-        self.assertEqual(process.context['acc'], 4)
-        check_loop_result(self, process, l)
+        check_loop_result(self, process, l, 4)
+
+        # Loop test for arbitrary count root -*!-> a's -a-> a for 'aaaa'
+        l.condition = '*'
+
+        self.assertTrue(l.is_wildcard())
+        self.assertTrue(l.is_flexible())
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_*'})
+
+        self.assertTrue(r is None)
+        check_loop_result(self, process, l, 4)
+
+        # Loop test for >1 count root -+!-> a's -a-> a for 'aaaa'
+        l.condition = '+'
+
+        self.assertTrue(l.is_wildcard())
+        self.assertTrue(l.is_flexible())
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_+'})
+
+        self.assertTrue(r is None)
+        check_loop_result(self, process, l, 4)
+
+        # Loop negative test for >1 count root -+!-> a's -a-> a for 'b'
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'b', 'test': 'test_loop_+_neg'})
+
+        self.assertTrue(r is False)
+        check_loop_result(self, process, l, 0)
+
+        # Loop test for ? count root -?-> a's -a-> a for 'a'
+        l.condition = '?'
+
+        self.assertTrue(l.is_wildcard())
+        self.assertTrue(l.is_flexible())
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_loop_?'})
+
+        self.assertTrue(r is None)
+        check_loop_result(self, process, l, 1)
+
+        # Loop test for ? count root -?-> a's -a-> a for ''
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'test_loop_?_2'})
+
+        self.assertTrue(r is None)
+        check_loop_result(self, process, l, 0)
+
+        # Loop test for endless count root -*!-> a's -a-> a for some number of a's
+        l.condition = True
+
+        self.assertFalse(l.is_wildcard())
+        self.assertFalse(l.is_numeric())
+        self.assertTrue(l.is_infinite())
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaaa', 'test': 'test_loop_true_n'})
+
+        self.assertTrue(r is False)
+        check_loop_result(self, process, l, 5)
 
         return
+
         ## deb = ProcessDebugger(process).show_log(process)
-
-        # Loop test for arbitrary count root -*!-> a's -a-> a for "aaaa"
-        l.n = '*'
-
-        r = process.parse("new", root, text="aaaa", test="test_loop_*")
-
-        self.assertEqual(process.context["result"], "aaaa")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 4)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l)  # Returning to the loop
-
-        # Loop test for endless count root -*!-> a's -a-> a for "aaaa"
-        l.n = True
-        a.action = stop_infinite
-
-        r = process.parse("new", root, text="aaaaaaa", test="test_loop_true_n")
-
-        self.assertEqual(process.context["infinite"], 4)
-        self.assertEqual(r, "error")
-        self.assertEqual(process.parsed_length, 5)
-        self.assertFalse(process.context_stack)
-        self.assertIn(a, process.errors)
-        self.assertNotIn(l, process.errors)
-        self.assertEqual(process.current, l)  # Returning to the loop
-
-        # Loop test for >1 count root -+!-> a's -a-> a for "aaaa"
-        l.n = '+'
-        a.action = add_to_result
-
-        r = process.parse("new", root, text="aaaa", test="test_loop_+")
-
-        self.assertEqual(process.context["result"], "aaaa")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 4)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l)  # Returning to the loop
-
-        # Loop negative test for >1 count root -+!-> a's -a-> a for "b"
-        l.n = '+'
-
-        r = process.parse("new", root, text="b", test="test_loop_+_neg")
-
-        self.assertNotIn("result", process.context)
-        self.assertEqual(r, "error")
-        self.assertEqual(process.parsed_length, 0)
-        self.assertFalse(process.context_stack)
-        self.assertIn(c, process.errors)
-        self.assertIn(l, process.errors)
-        self.assertEqual(process.current, l)  # Returning to the loop
-
-        # Loop test for ? count root -?-> a's -a-> a for "a"
-        l.n = '?'
-
-        r = process.parse("new", root, text="a", test="test_loop_?")
-
-        self.assertEqual(process.context["result"], "a")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 1)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l)  # Returning to the loop
-
-        # Loop test for ? count root -?-> a's -a-> a for ""
-        l.n = '?'
-
-        r = process.parse("new", root, text="", test="test_loop_?_2")
-
-        self.assertNotIn("result", process.context)
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 0)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l)  # Returning to the loop
-
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
         l.n = if_loop
 

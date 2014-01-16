@@ -2,7 +2,6 @@
 # (c) krvss 2011-2013
 
 from utils import *
-from sys import maxint
 
 # Base abstract class for all communicable objects
 class Abstract(object):
@@ -777,7 +776,7 @@ class StatefulProcess2(StackingContextProcess2):
     def __init__(self):
         super(StatefulProcess2, self).__init__()
         self.states = {}
-
+    # TODO: include state to the stacking context
     def _add_current_state(self):
         self.context[StatefulProcess2.STATE] = self.states.get(self.current, {})
 
@@ -1030,21 +1029,22 @@ class SelectiveNotion2(ComplexNotion2):
 class LoopRelation2(NextRelation2):
     ITERATION = 'i'
     WILDCARDS = ('*', '?', '+')
+    INFINITY = float('inf')
 
     def __init__(self, subj, obj, condition=None, owner=None):
         super(LoopRelation2, self).__init__(subj, obj, condition, owner)
 
-        # Numerics
-        self.on(self.can_start_numeric, self.do_start_numeric)
-        self.on(self.can_loop_numeric, self.do_loop_numeric)
+        # General loop
+        self.on(self.can_start_general, self.do_start_general)
+        self.on(self.can_loop_general, self.do_loop_general)
 
-        self.on(self.can_break_numeric, self.do_break_numeric)
-        self.on(self.can_continue_numeric, self.do_continue_numeric)
-        self.on(self.can_error_numeric, self.do_error_numeric)
+        self.on(self.can_break_general, self.do_break_general)
+        self.on(self.can_continue_general, self.do_continue_general)
+        self.on(self.can_error_general, self.do_error_general)
 
     def check_condition(self, message, context):
         if not self.condition:  # Here we check only the simplest case
-            return False  # TODO: infinite loops when condition is true
+            return False
 
     # Is a wildcard loop
     def is_wildcard(self):
@@ -1058,26 +1058,53 @@ class LoopRelation2(NextRelation2):
             return (self.condition[0] is None or is_number(self.condition[0])) \
                 and (self.condition[1] is None or is_number(self.condition[1]))
 
+    # Infinite loop
+    def is_infinite(self):
+        return self.condition is True
+
+    # Custom loop: not empty callable condition
+    # TODO: implement
+    def is_custom(self):
+        return self.condition and callable(self.condition)
+
     # Flexible condition has no finite bound, lower or higher
     def is_flexible(self):
         return (self.is_numeric() and is_list(self.condition)) or self.is_wildcard()
+
+    # Checking for the condition type
+    def is_general(self):
+        return self.is_numeric() or self.is_wildcard() or self.is_infinite()
 
     # Checking is we are in loop now
     def is_looping(self, context):
         return LoopRelation2.ITERATION in context.get(StatefulProcess2.STATE)
 
-    # Get the limits of the numeric loop, if limit is not defined it is None
+    # Get the limits of the loop
     def get_bounds(self):
-        if not self.is_numeric():
-            raise TypeError('Not a numeric loop condition')
+        lower, upper = 0, LoopRelation2.INFINITY
 
-        if is_number(self.condition):
-            return 1, self.condition
+        if self.is_numeric():
+            if is_number(self.condition):
+                lower, upper = 1, self.condition
+            else:
+                if self.condition[0]:
+                    lower = self.condition[0]
+                if self.condition[1]:
+                    upper = self.condition[1]
 
-        return self.condition[0] or 0, self.condition[1] or maxint
+        elif self.is_wildcard():
+            if self.condition == '+':
+                lower = 1
+            elif self.condition == '?':
+                higher = 1
 
-    # Make the numeric iteration reply
-    def get_next_numeric_reply(self, i=1):
+        elif self.is_infinite():
+            lower = upper
+
+        return lower, upper
+
+    # Make the iteration reply
+    def get_next_iteration_reply(self, i=1):
         reply = [{StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: i}}]
 
         if self.is_flexible():
@@ -1088,21 +1115,21 @@ class LoopRelation2(NextRelation2):
         return reply + [self.object, self]  # Try and come back
 
     # Events #
-    # Numeric condition
-    def can_start_numeric(self, *message, **context):
-        return self.is_forward(message) and not self.is_looping(context) and self.is_numeric()
+    # General loop
+    def can_start_general(self, *message, **context):
+        return self.is_forward(message) and not self.is_looping(context) and self.is_general()
 
-    def do_start_numeric(self, *message, **context):
-        return self.get_next_numeric_reply()
+    def do_start_general(self, *message, **context):
+        return self.get_next_iteration_reply()
 
-    def can_loop_numeric(self, *message, **context):
-        return self.is_forward(message) and self.is_looping(context) and self.is_numeric()
+    def can_loop_general(self, *message, **context):
+        return self.is_forward(message) and self.is_looping(context) and self.is_general()
 
-    def do_loop_numeric(self, *message, **context):
+    def do_loop_general(self, *message, **context):
         i = context.get(StatefulProcess2.STATE).get(LoopRelation2.ITERATION)
 
         if i < self.get_bounds()[1]:
-            return self.get_next_numeric_reply(i + 1)
+            return self.get_next_iteration_reply(i + 1)
         else:
             reply = [StatefulProcess2.CLEAR_STATE]
 
@@ -1111,10 +1138,10 @@ class LoopRelation2(NextRelation2):
 
             return reply
 
-    def can_break_numeric(self, *message, **context):
-        return has_first(message, ParsingProcess2.BREAK) and self.is_looping(context) and self.is_numeric()
+    def can_break_general(self, *message, **context):
+        return has_first(message, ParsingProcess2.BREAK) and self.is_looping(context) and self.is_general()
 
-    def do_break_numeric(self, *message, **context):
+    def do_break_general(self, *message, **context):
         reply = (Element.NEXT, StatefulProcess2.CLEAR_STATE)
 
         if self.is_flexible():
@@ -1122,16 +1149,16 @@ class LoopRelation2(NextRelation2):
 
         return reply
 
-    def can_continue_numeric(self, *message, **context):
-        return has_first(message, ParsingProcess2.CONTINUE) and self.is_looping(context) and self.is_numeric()
+    def can_continue_general(self, *message, **context):
+        return has_first(message, ParsingProcess2.CONTINUE) and self.is_looping(context) and self.is_general()
 
-    def do_continue_numeric(self, *message, **context):
-        return [Element.NEXT] + self.do_loop_numeric(*message, **context)
+    def do_continue_general(self, *message, **context):
+        return [Element.NEXT] + self.do_loop_general(*message, **context)
 
-    def can_error_numeric(self, *message, **context):
-        return has_first(message, ParsingProcess2.ERROR) and self.is_looping(context) and self.is_numeric()
+    def can_error_general(self, *message, **context):
+        return has_first(message, ParsingProcess2.ERROR) and self.is_looping(context) and self.is_general()
 
-    def do_error_numeric(self, *message, **context):
+    def do_error_general(self, *message, **context):
         i = context.get(StatefulProcess2.STATE).get(LoopRelation2.ITERATION)
         lower, upper = self.get_bounds()
 
