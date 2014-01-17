@@ -1037,10 +1037,15 @@ class LoopRelation2(NextRelation2):
         # General loop
         self.on(self.can_start_general, self.do_start_general)
         self.on(self.can_loop_general, self.do_loop_general)
-
-        self.on(self.can_break_general, self.do_break_general)
-        self.on(self.can_continue_general, self.do_continue_general)
         self.on(self.can_error_general, self.do_error_general)
+        
+        # Custom loop
+        self.on(self.can_loop_custom, self.do_loop_custom)
+        self.on(self.can_error_custom, self.do_error_custom)
+        
+        # Common events
+        self.on(self.can_break, self.do_break)
+        self.on(self.can_continue, self.do_continue)
 
     def check_condition(self, message, context):
         if not self.condition:  # Here we check only the simplest case
@@ -1063,7 +1068,6 @@ class LoopRelation2(NextRelation2):
         return self.condition is True
 
     # Custom loop: not empty callable condition
-    # TODO: implement
     def is_custom(self):
         return self.condition and callable(self.condition)
 
@@ -1096,7 +1100,7 @@ class LoopRelation2(NextRelation2):
             if self.condition == '+':
                 lower = 1
             elif self.condition == '?':
-                higher = 1
+                upper = 1
 
         elif self.is_infinite():
             lower = upper
@@ -1138,23 +1142,6 @@ class LoopRelation2(NextRelation2):
 
             return reply
 
-    def can_break_general(self, *message, **context):
-        return has_first(message, ParsingProcess2.BREAK) and self.is_looping(context) and self.is_general()
-
-    def do_break_general(self, *message, **context):
-        reply = (Element.NEXT, StatefulProcess2.CLEAR_STATE)
-
-        if self.is_flexible():
-            reply += StatefulProcess2.FORGET_CONTEXT,
-
-        return reply
-
-    def can_continue_general(self, *message, **context):
-        return has_first(message, ParsingProcess2.CONTINUE) and self.is_looping(context) and self.is_general()
-
-    def do_continue_general(self, *message, **context):
-        return [Element.NEXT] + self.do_loop_general(*message, **context)
-
     def can_error_general(self, *message, **context):
         return has_first(message, ParsingProcess2.ERROR) and self.is_looping(context) and self.is_general()
 
@@ -1172,6 +1159,43 @@ class LoopRelation2(NextRelation2):
                 reply += [StatefulProcess2.FORGET_CONTEXT]
 
         return reply
+    
+    # Custom loop
+    def can_loop_custom(self, *message, **context):
+        return self.is_forward(message) and self.is_custom()
+
+    def do_loop_custom(self, *message, **context):
+        i = self.condition(*message, **context)
+
+        if i:
+            return {StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: i}}, self.object, self
+        else:
+            return False if not self.is_looping(context) else StatefulProcess2.CLEAR_STATE,
+
+    def can_error_custom(self, *message, **context):
+        return has_first(message, ParsingProcess2.ERROR) and self.is_custom()
+
+    def do_error_custom(self, *message, **context):
+        return StatefulProcess2.CLEAR_STATE,
+    
+    # Common handling
+    def can_break(self, *message, **context):
+        return has_first(message, ParsingProcess2.BREAK) and self.is_looping(context)
+
+    def do_break(self, *message, **context):
+        reply = (Element.NEXT, StatefulProcess2.CLEAR_STATE)
+
+        if self.is_flexible():
+            reply += StatefulProcess2.FORGET_CONTEXT,
+
+        return reply
+
+    def can_continue(self, *message, **context):
+        return has_first(message, ParsingProcess2.CONTINUE) and self.is_looping(context)
+
+    def do_continue(self, *message, **context):
+        return [Element.NEXT] + self.do_loop_general(*message, **context)
+
 
     ### Old ###
     def is_ranged(self):

@@ -1364,6 +1364,11 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 0)
 
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_loop_?_2'})
+
+        self.assertTrue(r is False)
+        check_loop_result(self, process, l, 1)
+
         # Loop test for endless count root -*!-> a's -a-> a for some number of a's
         l.condition = True
 
@@ -1376,19 +1381,29 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 5)
 
-        return
-
-        ## deb = ProcessDebugger(process).show_log(process)
         # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
-        l.n = if_loop
+        l.condition = lambda *m, **c: 5 if not 'i' in c['state'] else c['state']['i'] - 1
 
-        r = process.parse("new", root, text="aaaaa", test="test_loop_ext_func")
+        self.assertFalse(l.is_general())
+        self.assertFalse(l.is_flexible())
+        self.assertTrue(l.is_custom())
 
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 5)  # External functions stops at 5
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l)  # Returning to the loop
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaaa', 'test': 'test_loop_ext_func'})
+
+        self.assertTrue(r is None)
+        check_loop_result(self, process, l, 5)  # External functions stops at 5
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_ext_func_neg'})
+
+        self.assertTrue(r is False)
+        check_loop_result(self, process, l, 4)  # External functions stops at 5
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'b', 'test': 'test_loop_ext_func_neg_2'})
+
+        self.assertTrue(r is False)
+        check_loop_result(self, process, l, 0)  # External functions stops at 5
+
+        return
 
         # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
         del l.m
