@@ -489,12 +489,20 @@ class UtTests(unittest.TestCase):
 
         # Trying direct calls to relate
         r3 = Relation2(n1, n2)
-        self.assertFalse(cn.relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: None}))
-        self.assertFalse(cn.relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertFalse(cn.do_relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertFalse(cn.do_relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
-        self.assertTrue(cn.relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
-        self.assertFalse(cn.relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
-        self.assertTrue(cn.relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertTrue(cn.do_relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertFalse(cn.do_relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertTrue(cn.do_relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+
+        # Unrelating
+        cn2 = ComplexNotion2('cn2')
+        r1.subject = cn2
+
+        self.assertEqual(r1.subject, cn2)
+        self.assertNotIn(r1, cn.relations)
+        self.assertIn(r1, cn2.relations)
 
         # Next test
         nr = NextRelation2(n1, n2)
@@ -1222,6 +1230,7 @@ class UtTests(unittest.TestCase):
         # Simple loop test: root -5!-> aa -a-> a for 'aaaaa'
         root = ComplexNotion2('root')
         aa = ComplexNotion2('aa')
+
         l = LoopRelation2(root, aa, 5)
 
         self.assertTrue(l.is_numeric())
@@ -1381,7 +1390,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 5)
 
-        # Loop test for external function: root -function!-> a's -a-> a for "aaaa"
+        # Loop test for external function: root -function!-> a's -a-> a for 'aaaa'
         l.condition = lambda *m, **c: 5 if not 'i' in c['state'] else c['state']['i'] - 1
 
         self.assertFalse(l.is_general())
@@ -1393,51 +1402,40 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 5)  # External functions stops at 5
 
+        # Error in the custom loop
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_ext_func_neg'})
 
         self.assertTrue(r is False)
-        check_loop_result(self, process, l, 4)  # External functions stops at 5
+        check_loop_result(self, process, l, 4)
 
-        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'b', 'test': 'test_loop_ext_func_neg_2'})
+        # Error in custom loop start
+        l.condition = lambda: False
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_loop_ext_func_neg_2'})
 
         self.assertTrue(r is False)
-        check_loop_result(self, process, l, 0)  # External functions stops at 5
+        check_loop_result(self, process, l, 0)
 
-        return
+        # Nested loops
+        # Positive test: root -2!-> a2 -2!-> a's -a-> a for 'aaaa'
+        l.condition = 2
 
-        # Nested loops test: root -2!-> a2 -2!-> a's -a-> a for "aaaa"
-        del l.m
-        l.n = 2
-
-        aaa = ComplexNotion("a2")
+        aaa = ComplexNotion2('aaa')
         l.subject = aaa
 
-        l2 = LoopRelation(root, aaa, 2)
+        l2 = LoopRelation2(root, aaa, 2)
 
-        r = process.parse("new", root, text="aaaa", test="test_loop_nested")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaaa', 'test': 'test_loop_nested'})
 
-        self.assertEqual(process.context["result"], "aaaa")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 4)
-        self.assertNotIn(l, process.states)
-        self.assertNotIn(l2, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l2)  # Returning to the top loop
+        self.assertTrue(r is None)
+        check_loop_result(self, process, l2, 4)
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for "aaab"
-        r = process.parse("new", root, text="aaab", test="test_loop_nested_neg")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aaab', 'test': 'test_loop_nested_neg'})
 
-        self.assertEqual(process.context["result"], "aaa")
-        self.assertEqual(r, "error")
-        self.assertEqual(process.parsed_length, 3)
-        self.assertIn(l, process.errors)
-        self.assertIn(l2, process.errors)
-        self.assertIn(c, process.errors)
-        self.assertNotIn(l, process.states)
-        self.assertNotIn(l2, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, l2)  # Returning to the top loop
+        self.assertTrue(r is False)
+        check_loop_result(self, process, l2, 3)
 
+        return
         # Break test: root -2!-> a's (-a-> a, -!->)
         l.n = 2
         l.subject = root
@@ -1484,7 +1482,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.context_stack)
         self.assertEqual(process.current, c)  # Returning to the loop
 
-#deb = ProcessDebugger(process).show_log(process)
+#ProcessDebugger(process).show_log(process)
     '''
 
 logger = Analyzer()

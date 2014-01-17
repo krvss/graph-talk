@@ -284,6 +284,11 @@ class Element(Talker):
 
     # Set the property to the new value
     def do_set_property(self, *message, **context):
+        old_value = context.get(Element.OLD_VALUE)
+
+        if isinstance(old_value, Abstract):
+            old_value(*message, **context)
+
         new_value = context.get(Element.NEW_VALUE)
 
         setattr(self, '_%s' % context[Handler.CONDITION], new_value)
@@ -426,25 +431,22 @@ class ComplexNotion2(Notion2):
         super(ComplexNotion2, self).__init__(name, owner)
 
         self._relations = []
-        self._relate_event = self.add_prefix(Relation2.SUBJECT, Element.SET_PREFIX)
 
-        self.on(self._relate_event, self.relate)
-        self.on_forward(self.next)
+        self.on(self.add_prefix(Relation2.SUBJECT, Element.SET_PREFIX), self.do_relate)
+        self.on_forward(self.do_forward)
 
-    def relate(self, *message, **context):
+    def do_relate(self, *message, **context):
         relation = context.get(Handler.SENDER)
 
         if context[Element.OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
-            relation.off(self._relate_event, self)
             return True
 
         elif context[Element.NEW_VALUE] == self and relation not in self._relations:
             self._relations.append(relation)
-            relation.on(self._relate_event, self)
             return True
 
-    def next(self, *message, **context):
+    def do_forward(self, *message, **context):
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
@@ -977,8 +979,8 @@ class SelectiveNotion2(ComplexNotion2):
         if not context.get(StatefulProcess2.STATE):  # If we've been here before we need to try something different
             return super(SelectiveNotion2, self).can_go_forward(*message, **context)
 
-    def next(self, *message, **context):
-        reply = super(SelectiveNotion2, self).next(*message, **context)
+    def do_forward(self, *message, **context):
+        reply = super(SelectiveNotion2, self).do_forward(*message, **context)
 
         if is_list(reply):
             cases = self.get_best_cases(message, context)
@@ -1165,7 +1167,7 @@ class LoopRelation2(NextRelation2):
         return self.is_forward(message) and self.is_custom()
 
     def do_loop_custom(self, *message, **context):
-        i = self.condition(*message, **context)
+        i = self.var_call_result(self.condition, message, context)
 
         if i:
             return {StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: i}}, self.object, self
