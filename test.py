@@ -1435,52 +1435,57 @@ class UtTests(unittest.TestCase):
         self.assertTrue(r is False)
         check_loop_result(self, process, l2, 3)
 
-        return
         # Break test: root -2!-> a's (-a-> a, -!->)
-        l.n = 2
+        l2.subject = None
+
+        l.condition = 2
         l.subject = root
 
-        b = ActionNotion("b", add_to_result)
-        NextRelation(aa, b)
+        b = ActionNotion2('b', state_v_starter)
+        NextRelation2(aa, b)
 
-        c = ActionNotion("c", add_to_result)
-        NextRelation(root, c)
+        c = ActionNotion2('c', common_state_acc)
+        p = ParsingRelation(root, c, 'c')
 
-        a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'break']
+        # Try without break first
+        a.action = common_state_acc
 
-        r = process.parse("new", root, text="a", test="test_loop_break")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'ac', 'test': 'test_loop_break_neg'})
 
-        self.assertEqual(process.context["result"], "ac")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 1)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, c)
-        self.assertEqual(process.query, 'next')
+        self.assertTrue(r is False)
+        self.assertEqual(process.query, ParsingProcess2.ERROR)
+        self.assertEqual(process.states[b]['v'], 1)
+        check_loop_result(self, process, p, 1)
+
+        a.action = lambda *m, **c: [common_state_acc(*m, **c), ParsingProcess2.BREAK]
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'ac', 'test': 'test_loop_break'})
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.query, Element.NEXT)
+        self.assertNotIn(b, process.states)
+        check_loop_result(self, process, c, 2)
 
         # Continue test
-        a.action = lambda a, *m, **c: [add_to_result(a, *m, **c), 'continue']
+        a.action = common_state_acc
+        p.subject = None
 
-        r = process.parse("new", root, text="aa", test="test_loop_continue")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_loop_continue_neg'})
 
-        self.assertEqual(process.context["result"], "aac")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 2)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, c)
+        self.assertTrue(r is None)
+        self.assertEqual(process.states[b]['v'], 2)
+        self.assertEqual(process.query, Element.NEXT)
+        check_loop_result(self, process, l, 2)
 
-        # Final verification
-        a.action = add_to_result
+        a.action = lambda *m, **c: [common_state_acc(*m, **c), ParsingProcess2.CONTINUE]
 
-        r = process.parse("new", root, text="aa", test="test_loop_action")
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_loop_continue'})
 
-        self.assertEqual(process.context["result"], "ababc")
-        self.assertEqual(r, "ok")
-        self.assertEqual(process.parsed_length, 2)
-        self.assertNotIn(l, process.states)
-        self.assertFalse(process.context_stack)
-        self.assertEqual(process.current, c)  # Returning to the loop
+        self.assertTrue(r is None)
+        self.assertEqual(process.query, Element.NEXT)
+        self.assertNotIn(b, process.states)
+        check_loop_result(self, process, l, 2)
+
 
 #ProcessDebugger(process).show_log(process)
     '''
