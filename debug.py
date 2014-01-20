@@ -12,6 +12,7 @@ try:
 except ImportError:
     _DEBUGGER = 'pdb'
 
+#TODO: remove analyzer, make logger more friendly
 
 class ProcessDebugger(Handler):
     AT = 'at'
