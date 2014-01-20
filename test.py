@@ -35,12 +35,15 @@ def has_notification(*m, **context):
         return False
 
 
-def check_loop_result(test, process, loop, counter):
-    test.assertNotIn(loop, process.states)
+def check_test_result(test, process, current, length):
+    test.assertNotIn(current, process.states)
     test.assertFalse(process._context_stack)
-    test.assertEqual(process.current, loop)
+    test.assertEqual(process.current, current)
+    test.assertEqual(process.parsed_length, length)
 
-    test.assertEqual(process.parsed_length, counter)
+
+def check_loop_result(test, process, loop, counter):
+    check_test_result(test, process, loop, counter)
 
     if counter > 0:
         test.assertEqual(process.context['acc'], counter)
@@ -1103,21 +1106,15 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(process.last_parsed, 'b')
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 1)
         self.assertEqual(process.query, Element.NEXT)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, b)
+        check_test_result(self, process, b, 1)
 
         # Alternative negative test: same tree, message 'xx'
         r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: 'xx', 'test': 'test_selective_2'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.query, ParsingProcess2.ERROR)
-        self.assertEqual(process.parsed_length, 0)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, root)  # No case found
+        self.assertEqual(process.query, ParsingProcess2.ERROR)  # No case found
+        check_test_result(self, process, root, 0)
 
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa), -bb->bb ) ) for 'aa'
         c1.subject = None
@@ -1145,10 +1142,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(process.context['acc'], 1)
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 2)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, root)
+        check_test_result(self, process, root, 2)
 
         # Longest regex/selection
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), -a-> a2 -> (-c->aa), -a+->bb ) ) for 'aaaa'
@@ -1168,24 +1162,17 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(process.last_parsed, 'aaaa')
         self.assertTrue(r is None)
-        self.assertEqual(process.parsed_length, 4)
-        self.assertEqual(process.query, Element.NEXT)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, bb)
+        check_test_result(self, process, bb, 4)
 
         # Negative test: just wrong text input
         r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: 'x', 'test': 'test_selective_5'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 0)
         self.assertEqual(process.query, ParsingProcess2.ERROR)
         self.assertEqual(process.last_parsed, '')
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, a1a)
+        check_test_result(self, process, a1a, 0)
 
-        # Error test: 1 good case, but turns out to be invald
+        # Error test: 1 good case, but turns out to be invalid
         while root.relations:
             root.relations[0].subject = None
 
@@ -1196,35 +1183,40 @@ class UtTests(unittest.TestCase):
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_selective_6'})
 
         self.assertTrue(r is False)
-        self.assertEqual(process.parsed_length, 1)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, breaker)
+        self.assertEqual(process.query, ParsingProcess2.ERROR)
+        check_test_result(self, process, breaker, 1)
+
+        # Error test 2: 2 good cases, both invalid
+        c2.subject = root
+        c2.object = breaker
+        c2.condition = 'a'
+
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_selective_7'})
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.query, ParsingProcess2.ERROR)
+        check_test_result(self, process, root, 1)
+
+        c2.subject = None
 
         # No error, 1 good relation so there are no returns
         breaker.action = Process2.OK  # In this case Selective will not offer new cases
 
-        r = process(ParsingProcess2.NEW, root, ** {ParsingProcess2.TEXT: 'a', 'test': 'test_selective_7'})
+        r = process(ParsingProcess2.NEW, root, ** {ParsingProcess2.TEXT: 'a', 'test': 'test_selective_8'})
 
         self.assertTrue(r, ParsingProcess2.OK)
-        self.assertEqual(process.parsed_length, 1)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, breaker)
+        check_test_result(self, process, breaker, 1)
 
         # Testing non-parsing relations
         breaker.action = ParsingProcess2.ERROR
         c1.subject = None
         NextRelation2(root, breaker)
 
-        r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'test_selective_8'})
+        r = process(ParsingProcess2.NEW, root, **{ParsingProcess2.TEXT: '', 'test': 'test_selective_9'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.context['acc'], 1)
-        self.assertEqual(process.parsed_length, 0)
-        self.assertNotIn(root, process.states)
-        self.assertFalse(process._context_stack)
-        self.assertEqual(process.current, root)
+        check_test_result(self, process, root, 0)
 
     def test_h_loop(self):
         # Simple loop test: root -5!-> aa -a-> a for 'aaaaa'
@@ -1438,7 +1430,7 @@ class UtTests(unittest.TestCase):
         # Break test: root -2!-> a's (-a-> a, -!->)
         l2.subject = None
 
-        l.condition = 2
+        l.condition = (2, None)
         l.subject = root
 
         b = ActionNotion2('b', state_v_starter)
@@ -1467,6 +1459,7 @@ class UtTests(unittest.TestCase):
         check_loop_result(self, process, c, 2)
 
         # Continue test
+        l.condition = 2
         a.action = common_state_acc
         p.subject = None
 

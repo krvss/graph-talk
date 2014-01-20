@@ -1016,7 +1016,7 @@ class SelectiveNotion2(ComplexNotion2):
                     Element.NEXT,  # Go forward again
                     case,  # Try another case
                     self]  # Come back
-        else: # TODO: test this area
+        else:
             return self.do_finish(*message, **context)  # No more opportunities
 
     def can_finish(self, *message, **context):
@@ -1197,97 +1197,6 @@ class LoopRelation2(NextRelation2):
 
     def do_continue(self, *message, **context):
         return [Element.NEXT] + self.do_loop_general(*message, **context)
-
-
-    ### Old ###
-    def is_ranged(self):
-        if is_list(self.condition) and len(self.condition) >= 2:
-            for n in self.condition:
-                if not is_number(n):
-                    return False
-
-            return True
-
-    def has_finite_n(self):
-        return self.n is not True and (is_number(self.n) or self.n == '?')
-
-    def has_rollback(self):
-        return self.n == '*' or self.n == '+' or self.is_ranged()
-
-    def parse1(self, *message, **context):
-        if (not has_first(message, 'next') and not has_first(message, 'break') and not has_first(message, 'continue')) \
-                or (not self.n and not self.is_ranged()):
-            return None
-
-        repeat = True
-        error = restore = False
-        reply = []
-
-        if callable(self.n):
-            repeat = self.n(self, *message, **context)
-
-            if repeat:
-                iteration = repeat  # Storing for the future calls
-                reply.append({'set_state': {'n': iteration}})
-
-        elif context['state']:  # May be was here before
-            iteration = context['state'].get('n')
-
-            if context.get('errors') and self.n is not True:
-                repeat = False
-
-                if (self.n == '*' or self.n == '?') or (self.n == '+' and iteration > 1):
-                    restore = True  # Number of iterations is arbitrary if no restriction, so we need to restore
-                                    # last good context
-
-                elif (self.n == '+' and iteration <= 1) or not self.is_ranged():
-                    error = True  # '+' means more than 1 iterations and if there is no range we have a fixed count
-
-                elif self.is_ranged():
-                    if self.m is not None:
-                        if iteration <= self.m:  # Less than lower limit
-                            error = True
-                        else:
-                            restore = True
-
-                    elif iteration < self.n:
-                        restore = True
-            else:
-                if message[0] != 'next':
-                    reply.append('next')
-
-                if message[0] == 'break':  # Consider work done
-                    repeat = False
-
-                else:
-                    if self.has_finite_n() and (self.n == '?' or iteration >= self.n):
-                        repeat = False  # No more iterations
-
-                    if repeat and self.has_rollback():
-                        reply += ['forget_context', 'push_context']  # Prepare for the new iteration
-                                                                     # apply last changes and start new tracking
-                if repeat:
-                    iteration += 1
-                    reply.append({'set_state': {'n': iteration}})
-        else:
-            # A very first iteration - init the variable and store the context
-            reply += [{'set_state': {'n': 1}}, 'push_context']
-
-        if repeat:
-            reply += [self.object, self]  # We need to come back after the object to think should we repeat or not
-        else:
-            if restore:
-                reply.append('pop_context')  # If we need to restore we need to repair context
-
-            if not callable(self.n):
-                reply.append('forget_context')  # Nothing to forget in case of custom function
-
-            reply.append('clear_state')  # No more repeats, clearing
-
-            if error:
-                reply.append('error')
-
-        return reply
 
 
 ### Borderline between new and old ###
