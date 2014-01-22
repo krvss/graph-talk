@@ -12,8 +12,8 @@ try:
 except ImportError:
     _DEBUGGER = 'pdb'
 
-#TODO: remove analyzer, make logger more friendly
 
+# Process analyzer/debugger, sample usage: ProcessDebugger(process, True) to show the log
 class ProcessDebugger(Handler):
     AT = 'at'
     REPLY = 'reply'
@@ -23,21 +23,35 @@ class ProcessDebugger(Handler):
     AT_EVENT = Process2.add_prefix(get_object_name(Process2.do_queue_push), Talker.POST_PREFIX)
     LOG_EVENT = Process2.add_prefix(Process2.QUERY, Talker.POST_PREFIX)
 
-    def __init__(self, process=None):
+    def __init__(self, process=None, log=False):
         super(ProcessDebugger, self).__init__()
         self._points = defaultdict(dict)
+        self._process = None
 
         self.on(self.is_at, self.do_reply_at)
         self.on(self.is_log, None)
 
-        if process:
-            self.attach(process)
+        self.attach(process)
+
+        if log:
+            self.show_log()
 
     def attach(self, process):
+        if self._process == process:
+            return
+
+        elif self._process:
+            self.detach()
+
+        if process:
+            self._process = process
+
         process.on_any(self)
 
-    def detach(self, process):
-        process.off_handler(self)
+    def detach(self):
+        if self._process:
+            self._process.off_handler(self)
+            self._process = None
         
     def clear_points(self):
         self._points.clear()
@@ -45,8 +59,12 @@ class ProcessDebugger(Handler):
     def reply_at(self, abstract, reply):
         self._points[abstract] = {ProcessDebugger.REPLY: reply}
 
-    def show_log(self, process):
-        self._points[process] = {ProcessDebugger.LOG: True}
+    def show_log(self):
+        self._points[self._process] = {ProcessDebugger.LOG: True}
+
+    def hide_log(self):
+        if self._process in self._points:
+            del self._points[self._process]
 
     def is_at(self, *message, **context):
         process = context[Handler.SENDER]
@@ -73,70 +91,3 @@ class ProcessDebugger(Handler):
             query = process.text + ", " + process.query if hasattr(process, 'text') else process.query
             print "%s: '%s'? - '%s'" % (process.current, query, context.get(process.RESULT))
 
-
-# Debugger/logger
-class Analyzer(Abstract):
-    events = []
-
-    def __init__(self):
-        self.debug = None
-
-    def parse(self, *message, **context):
-        process = context.get('from')
-        result = False
-
-        for event in self.events:
-            if isinstance(event, dict):
-
-                if 'filter' in event and message and not message[0].startswith(event['filter']):
-                    continue
-
-                if 'abstract' in event and process and process.current != event['abstract']:
-                    continue
-
-                result = event['call'](*message, **context) if 'call' in event else \
-                    self.debug(*message, **context) if callable(self.debug) else None
-
-            elif callable(event):
-                result = event(*message, **context)
-
-            if result:
-                break
-
-        return result
-
-    def add_details(self):
-        self.events.append(Analyzer.print_details)
-
-    def add_queries(self, text = False):
-        if not text:
-            self.events.append(Analyzer.print_queries)
-        else:
-            self.events.append(Analyzer.print_queries_and_text)
-
-    @staticmethod
-    def print_details(*message, **context):
-        process = context['from']
-
-        log_str = '%s:' % message[0]
-        properties = ', '.join([('%s: %s' % (p, getattr(process, p))) for p in process._queueing_properties()])
-
-        print log_str + properties
-
-        return None
-
-    @staticmethod
-    def print_queries(*message, **context):
-        if message:
-            if message[0].startswith('query_pre'):
-                print '( %s )' % context['from'].current
-            elif message[0].startswith('result_pre'):
-                print ''
-
-    @staticmethod
-    def print_queries_and_text(*message, **context):
-        if message:
-            if message[0].startswith('query_pre'):
-                print '( %s : [%s] )' % (context['from'].current, context.get('context').get('text'))
-            elif message[0].startswith('result_pre'):
-                print ''

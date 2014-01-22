@@ -15,7 +15,7 @@ class Abstract(object):
         return self.parse(*message, **context)
 
     # A singular way to call
-    def __call__(self, *args, **kwargs):  # TODO Factory pattern to not bother about *, **?
+    def __call__(self, *args, **kwargs):
         return self.answer(*args, **kwargs)
 
 
@@ -486,7 +486,7 @@ class Process2(Talker):
     CURRENT = 'current'
     MESSAGE = 'message'
     QUERY = 'query'
-    # TODO: run functions without elements?
+
     def __init__(self):
         super(Process2, self).__init__()
 
