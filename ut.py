@@ -486,7 +486,7 @@ class Process2(Talker):
     CURRENT = 'current'
     MESSAGE = 'message'
     QUERY = 'query'
-
+    # TODO: run functions without elements?
     def __init__(self):
         super(Process2, self).__init__()
 
@@ -716,24 +716,21 @@ class StackingContextProcess2(SharedContextProcess2):
         super(StackingContextProcess2, self).do_new()
         del self._context_stack[:]
 
+    def run_tracking_operation(self, operation):
+        if self.is_tracking():
+            self._context_stack[-1].add(operation)
+        else:
+            operation.do()
+
     # Tracking changes in the context, if needed
     def _context_add(self, key, value):
-        if not self.is_tracking():
-            super(StackingContextProcess2, self)._context_add(key, value)
-        else:
-            self._context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.ADD, key, value))
+        self.run_tracking_operation(DictChangeOperation(self.context, DictChangeOperation.ADD, key, value))
 
     def _context_set(self, key, value):
-        if not self.is_tracking():
-            super(StackingContextProcess2, self)._context_set(key, value)
-        else:
-            self._context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.SET, key, value))
+        self.run_tracking_operation(DictChangeOperation(self.context, DictChangeOperation.SET, key, value))
 
     def _context_delete(self, key):
-        if not self.is_tracking():
-            super(StackingContextProcess2, self)._context_delete(key)
-        else:
-            self._context_stack[-1].add(DictChangeOperation(self.context, DictChangeOperation.DELETE, key))
+        self.run_tracking_operation(DictChangeOperation(self.context, DictChangeOperation.DELETE, key))
 
     # Events #
     def do_push_context(self):
@@ -778,7 +775,7 @@ class StatefulProcess2(StackingContextProcess2):
     def __init__(self):
         super(StatefulProcess2, self).__init__()
         self.states = {}
-    # TODO: include state to the stacking context
+
     def _add_current_state(self):
         self.context[StatefulProcess2.STATE] = self.states.get(self.current, {})
 
@@ -786,10 +783,14 @@ class StatefulProcess2(StackingContextProcess2):
         del self.context[StatefulProcess2.STATE]
 
     def _set_state(self, abstract, state):
-        if abstract in self.states:
-            self.states[abstract].update(state)
+        if not abstract in self.states:
+            self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.ADD, abstract, state))
         else:
-            self.states[abstract] = state
+            self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.SET, abstract, state))
+
+    def _clear_state(self, abstract):
+        if abstract in self.states:
+            self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.DELETE, abstract))
 
     # Clearing states if new
     def do_new(self):
@@ -821,8 +822,7 @@ class StatefulProcess2(StackingContextProcess2):
 
     def do_clear_state(self):
         self.message.pop(0)
-        if self.current in self.states:
-            del self.states[self.current]
+        self._clear_state(self.current)
 
     # Notifications
     def can_notify(self, *message):
@@ -837,10 +837,11 @@ class StatefulProcess2(StackingContextProcess2):
         if not to in self.states:
             self._set_state(to, {})
 
-        if not StatefulProcess2.NOTIFICATIONS in self.states[to]:
-            self.states[to][StatefulProcess2.NOTIFICATIONS] = {}
+        operation = DictChangeOperation.ADD if not StatefulProcess2.NOTIFICATIONS in self.states[to] \
+            else DictChangeOperation.SET
 
-        self.states[to][StatefulProcess2.NOTIFICATIONS].update(info)
+        self.run_tracking_operation(DictChangeOperation(self.states[to], operation,
+                                                        StatefulProcess2.NOTIFICATIONS, info))
 
     def setup_handlers(self):
         super(StatefulProcess2, self).setup_handlers()
@@ -1137,12 +1138,12 @@ class LoopRelation2(NextRelation2):
         if i < self.get_bounds()[1]:
             return self.get_next_iteration_reply(i + 1)
         else:
-            reply = [StatefulProcess2.CLEAR_STATE]
+            reply = []
 
             if self.is_flexible():
                 reply += [StatefulProcess2.FORGET_CONTEXT]
 
-            return reply
+            return reply + [StatefulProcess2.CLEAR_STATE]
 
     def can_error_general(self, *message, **context):
         return has_first(message, ParsingProcess2.ERROR) and self.is_looping(context) and self.is_general()
@@ -1151,7 +1152,7 @@ class LoopRelation2(NextRelation2):
         i = context.get(StatefulProcess2.STATE).get(LoopRelation2.ITERATION)
         lower, upper = self.get_bounds()
 
-        reply = [StatefulProcess2.CLEAR_STATE]
+        reply = []
 
         if self.is_flexible():
             # Roll back to the previous good result
@@ -1160,7 +1161,7 @@ class LoopRelation2(NextRelation2):
             else:
                 reply += [StatefulProcess2.FORGET_CONTEXT]
 
-        return reply
+        return reply + [StatefulProcess2.CLEAR_STATE]
     
     # Custom loop
     def can_loop_custom(self, *message, **context):
@@ -1185,12 +1186,12 @@ class LoopRelation2(NextRelation2):
         return has_first(message, ParsingProcess2.BREAK) and self.is_looping(context)
 
     def do_break(self, *message, **context):
-        reply = (Element.NEXT, StatefulProcess2.CLEAR_STATE)
+        reply = [Element.NEXT]
 
         if self.is_flexible():
-            reply += StatefulProcess2.FORGET_CONTEXT,
+            reply += [StatefulProcess2.FORGET_CONTEXT]
 
-        return reply
+        return reply + [StatefulProcess2.CLEAR_STATE]
 
     def can_continue(self, *message, **context):
         return has_first(message, ParsingProcess2.CONTINUE) and self.is_looping(context)

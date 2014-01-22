@@ -35,11 +35,11 @@ def has_notification(*m, **context):
         return False
 
 
-def check_test_result(test, process, current, length):
-    test.assertNotIn(current, process.states)
-    test.assertFalse(process._context_stack)
-    test.assertEqual(process.current, current)
-    test.assertEqual(process.parsed_length, length)
+def check_test_result(test_case, process, current, length):
+    test_case.assertNotIn(current, process.states)
+    test_case.assertFalse(process._context_stack)
+    test_case.assertEqual(process.current, current)
+    test_case.assertEqual(process.parsed_length, length)
 
 
 def check_loop_result(test, process, loop, counter):
@@ -898,13 +898,40 @@ class UtTests(unittest.TestCase):
         t = ActionNotion2('terminator', has_notification)
         NextRelation2(root, t)
 
-        r = process(Process2.NEW,
-                    {StatefulProcess2.NOTIFY: {StatefulProcess2.TO: t,
-                                               StatefulProcess2.INFO: {'note': Process2.OK}}},
-                    root, test='test_states_4')
+        notification = {StatefulProcess2.NOTIFY: {StatefulProcess2.TO: t, StatefulProcess2.INFO: {'note': Process2.OK}}}
+
+        r = process(Process2.NEW, dict(notification), root, test='test_states_4')
 
         self.assertEqual(r, Process2.OK)
         self.assertEqual(process.current, t)
+
+        # Test states and the stacking context
+        private = {'private': {'super_private': 'traveling'}}
+        t.action = lambda *m, **c: {StatefulProcess2.SET_STATE: private} if not 'private' in c[StatefulProcess2.STATE] else \
+                                   {StatefulProcess2.SET_STATE: {'private': {'super_private': 'home', 'more': 'none'}}}
+
+        t2 = ActionNotion2('terminator2', (StackingContextProcess2.PUSH_CONTEXT, ))
+        NextRelation2(root, t2)
+
+        NextRelation2(root, t)
+
+        t3 = ActionNotion2('terminator2', (StackingContextProcess2.POP_CONTEXT, ))
+        NextRelation2(root, t3)
+
+        r = process(Process2.NEW, root, test='test_states_5')
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.states.get(t), private)
+        self.assertNotIn('more', process.states.get(t)['private'])
+
+        # Test notifications and the stacking context
+        root.relations[0].subject = None
+        t.action = {StatefulProcess2.NOTIFY: {StatefulProcess2.TO: t, StatefulProcess2.INFO: {'note': False}}}
+
+        r = process(Process2.NEW, dict(notification), root, test='test_states_5')
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.states[t][StatefulProcess2.NOTIFICATIONS], notification[StatefulProcess2.NOTIFY][StatefulProcess2.INFO])
 
     def test_d_parsing(self):
         # Proceed test

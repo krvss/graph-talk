@@ -17,7 +17,7 @@ class DictChangeOperation(object):
 
     def do(self):
         if self._type == self.SET and not self._key in self._dict:
-            self._type = self.ADD # No old value, so it is rather add
+            self._type = self.ADD  # No old value, so it is rather add
 
         if self._type == self.ADD:
             self._dict[self._key] = self._value
@@ -78,7 +78,6 @@ class DictChangeGroup(object):
             c.undo()
 
 
-# TODO: remove unneccessary
 def is_number(n):
     return type(n) in (IntType, LongType)
 
