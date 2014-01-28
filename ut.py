@@ -258,6 +258,7 @@ class Talker(Handler):
 class Element(Talker):
     NEXT = 'next'
     PREVIOUS = 'previous'
+    OWNER = 'owner'
 
     SET_PREFIX = 'set'
     NAME = 'name'
@@ -432,10 +433,10 @@ class ComplexNotion2(Notion2):
 
         self._relations = []
 
-        self.on(self.add_prefix(Relation2.SUBJECT, Element.SET_PREFIX), self.do_relate)
+        self.on(self.add_prefix(Relation2.SUBJECT, Element.SET_PREFIX), self.do_relation)
         self.on_forward(self.do_forward)
 
-    def do_relate(self, *message, **context):
+    def do_relation(self, *message, **context):
         relation = context.get(Handler.SENDER)
 
         if context[Element.OLD_VALUE] == self and relation in self._relations:
@@ -1156,7 +1157,7 @@ class LoopRelation2(NextRelation2):
 
         if self.is_flexible():
             # Roll back to the previous good result
-            if i > lower and i <= upper:
+            if lower < i <= upper:
                 reply += [Element.NEXT, StatefulProcess2.POP_CONTEXT]
             else:
                 reply += [StatefulProcess2.FORGET_CONTEXT]
@@ -1198,6 +1199,135 @@ class LoopRelation2(NextRelation2):
 
     def do_continue(self, *message, **context):
         return [Element.NEXT] + self.do_loop_general(*message, **context)
+
+
+# Graph is a holder of Notions and Relation, it allows easy search and processing of them
+class Graph(Element):
+    def __init__(self, owner=None):
+        super(Graph, self).__init__(owner)
+
+        self._root = None
+        self._notions = []
+        self._relations = []
+
+        self.on(self.add_prefix(Element.OWNER, Element.SET_PREFIX), self.do_element)
+        self.on_forward(self.do_forward)
+
+    # Gets the rank of notion when searching by criteria
+    def get_notion_search_rank(self, notion, criteria):
+        if callable(criteria):
+            return criteria(notion)
+        else:
+            if is_regex(criteria):
+                match = criteria.match(notion.name)
+                if match:
+                    return match.end() - match.start()
+
+            elif notion.name == criteria:
+                return len(criteria)
+
+        return -1
+
+    def search_elements(self, collection, comparator, criteria):
+        rank = -1
+        found = []
+
+        for element in collection:
+            r = comparator(element, criteria)
+
+            if r >= rank and r >= 0:
+                if r > rank:
+                    rank = r
+                    del found[:]
+                found.append(element)
+
+        return found
+
+    def notions(self, criteria=None):
+        return self.search_elements(self._notions, self.get_notion_search_rank, criteria) if criteria else \
+            tuple(self._notions)
+
+    def notion(self, criteria):
+        found = self.notions(criteria)
+
+        return found[0] if found else None
+
+    # Gets the rank of relation when searching by criteria
+    def get_relation_search_rank(self, relation, criteria):
+        if callable(criteria):
+            return criteria(relation)
+        else:
+            if isinstance(criteria, dict):
+                req, rel = [], []
+
+                if Relation2.SUBJECT in criteria:
+                    req.append(criteria[Relation2.SUBJECT])
+                    rel.append(relation.subject)
+
+                if Relation2.OBJECT in criteria:
+                    req.append(criteria[Relation2.OBJECT])
+                    rel.append(relation.object)
+
+                return len(relation) if rel == req and rel else -1
+
+    def relations(self, criteria=None):
+        return self.search_elements(self._relations, self.get_relation_search_rank, criteria) if criteria else \
+            tuple(self._relations)
+
+    def relation(self, criteria):
+        found = self.relations(criteria)
+
+        return found[0] if found else None
+
+    def do_element(self, *message, **context):
+        element = context.get(Handler.SENDER)
+
+        if isinstance(element, Notion2) or isinstance(element, Graph):
+            collection = self._notions
+        elif isinstance(element, Relation2):
+            collection = self._relations
+        else:
+            return False
+
+        if context[Element.OLD_VALUE] == self and element in collection:
+            collection.remove(element)
+
+            if element == self.root:
+                self.root = None
+
+            return True
+
+        elif context[Element.NEW_VALUE] == self and element not in collection:
+            collection.append(element)
+            return True
+
+    def do_forward(self, *message, **context):
+        return self.root
+
+    @property
+    def root(self):
+        return self._root
+
+    @root.setter
+    def root(self, value):
+        if (self._root == value) or (value and (value.owner != self or not isinstance(value, Notion2))):
+            return
+
+        self.change_property('root', value)
+
+    def __str__(self):
+        return '{"%s"}' % (self.root.name if self.root else '')
+
+    def __repr__(self):
+        return '{%s(%s, %s)}' % (get_object_name(self.__class__), self.__str__(), self.owner)
+
+    @property
+    def name(self):
+        return self.root.name if self.root else None
+
+    @name.setter
+    def name(self, value):
+        self.root.name = value
 
 
 ### Borderline between new and old ###

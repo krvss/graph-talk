@@ -492,12 +492,12 @@ class UtTests(unittest.TestCase):
 
         # Trying direct calls to relate
         r3 = Relation2(n1, n2)
-        self.assertFalse(cn.do_relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: None}))
-        self.assertFalse(cn.do_relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertFalse(cn.do_relation(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertFalse(cn.do_relation(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
-        self.assertTrue(cn.do_relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
-        self.assertFalse(cn.do_relate(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
-        self.assertTrue(cn.do_relate(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertTrue(cn.do_relation(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertFalse(cn.do_relation(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertTrue(cn.do_relation(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
         # Unrelating
         cn2 = ComplexNotion2('cn2')
@@ -1506,6 +1506,74 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, l, 2)
 
+    # TODO complete and rename
+    def test_0_graph(self):
+        graph = Graph()
+
+        # Adding test
+        root = ComplexNotion2('root', graph)
+        self.assertEqual((root, ), graph.notions())
+
+        rave = Notion2('rave')
+        rave.owner = graph
+
+        self.assertEqual((root, rave), graph.notions())
+
+        # Removing test
+        rave.owner = None
+
+        self.assertEqual((root, ), graph.notions())
+
+        # Adding test 2
+        rel = NextRelation2(root, rave)
+        rel.owner = graph
+
+        self.assertEqual((rel,), graph.relations())
+
+        # Removing test 2
+        rel.owner = None
+
+        self.assertEqual((), graph.relations())
+
+        self.assertFalse(graph.do_element(graph.add_prefix(Element.OWNER, Element.SET_PREFIX), **{Handler.SENDER: self}))
+
+        # Root
+        graph.root = rel
+
+        self.assertIsNone(graph.root)
+
+        rave.owner = None
+        graph.root = rave
+
+        self.assertIsNone(graph.root)
+
+        graph.root = root
+
+        self.assertEqual(root, graph.root)
+
+        root.owner = None
+
+        self.assertIsNone(graph.root)
+
+        # Search
+        lock = Notion2('lock', graph)
+        NextRelation2(root, lock)
+
+        r = re.compile('r')
+
+        self.assertFalse(graph.notions(r))
+
+        root.owner = graph
+        rave.owner = graph
+
+        ns = graph.notions(r)
+        self.assertListEqual(ns, [root, rave])
+        self.assertEqual(graph.notion(r), ns[0])
+
+        self.assertListEqual([graph.notion('lock')], [lock])
+        self.assertEqual(graph.notion(lambda notion: notion == rave), rave)
+
+
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
         root = ComplexNotion2('root')
@@ -1546,4 +1614,3 @@ def test():
     suite = unittest.TestLoader().loadTestsFromTestCase(UtTests)
     #suite = unittest.TestLoader().loadTestsFromName('test.UtTests.test_special')
     unittest.TextTestRunner(verbosity=2).run(suite)
-
