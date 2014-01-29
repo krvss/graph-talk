@@ -1203,7 +1203,7 @@ class LoopRelation2(NextRelation2):
 
 # Graph is a holder of Notions and Relation, it allows easy search and processing of them
 class Graph(Element):
-    def __init__(self, owner=None):
+    def __init__(self, root=None, owner=None):
         super(Graph, self).__init__(owner)
 
         self._root = None
@@ -1212,6 +1212,12 @@ class Graph(Element):
 
         self.on(self.add_prefix(Element.OWNER, Element.SET_PREFIX), self.do_element)
         self.on_forward(self.do_forward)
+
+        if root:
+            if is_string(root):
+                root = ComplexNotion2(root, self)
+
+            self.root = root
 
     # Gets the rank of notion when searching by criteria
     def get_notion_search_rank(self, notion, criteria):
@@ -1268,13 +1274,13 @@ class Graph(Element):
                     req.append(criteria[Relation2.OBJECT])
                     rel.append(relation.object)
 
-                return len(relation) if rel == req and rel else -1
+                return len(rel) if rel == req and rel else -1
 
     def relations(self, criteria=None):
         return self.search_elements(self._relations, self.get_relation_search_rank, criteria) if criteria else \
             tuple(self._relations)
 
-    def relation(self, criteria):
+    def relation(self, criteria=None):
         found = self.relations(criteria)
 
         return found[0] if found else None

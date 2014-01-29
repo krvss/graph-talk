@@ -1514,7 +1514,7 @@ class UtTests(unittest.TestCase):
         root = ComplexNotion2('root', graph)
         self.assertEqual((root, ), graph.notions())
 
-        rave = Notion2('rave')
+        rave = ComplexNotion2('rave')
         rave.owner = graph
 
         self.assertEqual((root, rave), graph.notions())
@@ -1525,8 +1525,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual((root, ), graph.notions())
 
         # Adding test 2
-        rel = NextRelation2(root, rave)
-        rel.owner = graph
+        rel = NextRelation2(root, rave, None, graph)
 
         self.assertEqual((rel,), graph.relations())
 
@@ -1555,9 +1554,8 @@ class UtTests(unittest.TestCase):
 
         self.assertIsNone(graph.root)
 
-        # Search
+        # Search - Notions
         lock = Notion2('lock', graph)
-        NextRelation2(root, lock)
 
         r = re.compile('r')
 
@@ -1573,6 +1571,37 @@ class UtTests(unittest.TestCase):
         self.assertListEqual([graph.notion('lock')], [lock])
         self.assertEqual(graph.notion(lambda notion: notion == rave), rave)
 
+        # Search - Relations
+        rel.owner = graph
+        rel2 = NextRelation2(rave, lock, None, graph)
+
+        self.assertEqual(graph.relations(), (rel, rel2))
+        self.assertEqual(graph.relation(), rel)
+
+        rel3 = NextRelation2(root, None, None, graph)
+
+        self.assertListEqual(graph.relations({Relation2.SUBJECT: root}), [rel, rel3])
+        self.assertListEqual(graph.relations({Relation2.OBJECT: rave}), [rel])
+        self.assertListEqual(graph.relations({Relation2.SUBJECT: rave, Relation2.OBJECT: lock}), [rel2])
+        self.assertListEqual(graph.relations(lambda r: r == rel3), [rel3])
+
+        # Name, Str, and Next
+        self.assertEqual(graph.__str__(), '{""}')
+
+        graph.root = root
+        self.assertEqual(graph(Element.NEXT), root)
+
+        graph.name = 'graph'
+        self.assertEqual(root.name, graph.name)
+        self.assertEqual(graph.__str__(), '{"%s"}' % root.name)
+
+        sub_graph = Graph('sub', graph)
+        self.assertEqual(sub_graph.name, 'sub')
+
+        self.assertEqual(sub_graph.__repr__(), '{%s(%s, %s)}' % (get_object_name(sub_graph.__class__),
+                                                                 sub_graph.__str__(), graph))
+
+        self.assertEqual(graph.notion('sub'), sub_graph)
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
