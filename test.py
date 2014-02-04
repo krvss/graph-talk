@@ -1506,8 +1506,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, l, 2)
 
-    # TODO complete and rename
-    def test_0_graph(self):
+    def test_g_graph(self):
         graph = Graph()
 
         # Adding test

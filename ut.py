@@ -3,6 +3,7 @@
 
 from utils import *
 
+
 # Base abstract class for all communicable objects
 class Abstract(object):
 
@@ -1334,6 +1335,82 @@ class Graph(Element):
     @name.setter
     def name(self, value):
         self.root.name = value
+
+
+# Graph builder helps to create graph structures
+class GraphBuilder(object):
+    def __init__(self, graph=None):
+        if is_string(graph):
+            graph = Graph(graph)
+
+        self.graph = graph
+        self.last = graph.root if graph else None
+
+    def attach(self, new):
+        if isinstance(new, Notion2):
+            if isinstance(self.last, Relation2) and not self.last.object:
+                self.last.object = new
+
+        elif isinstance(new, Relation2):
+            if isinstance(self.last, Notion2) and not new.subject:
+                new.subject = self.last
+
+                if isinstance(self.last, ComplexNotion2):
+                    return self  # Do not update last, just connect
+
+        self.last = new
+
+        return self
+
+    def complex(self, name):
+        return self.attach(ComplexNotion2(name, self.graph))
+
+    def notion(self, name):
+        return self.attach(Notion2(name, self.graph))
+
+    def next(self, condition=None, obj=None):
+        return self.attach(NextRelation2(self.last, obj, condition, self.graph))
+
+    def parse(self, condition, obj=None):
+        return self.attach(ParsingRelation(self.last, obj, condition, self.graph))
+
+    def loop(self, condition, obj=None):
+        return self.attach(LoopRelation2(self.last, obj, condition, self.graph))
+
+    def select(self, name):
+        return self.attach(SelectiveNotion2(name, self.graph))
+
+    def act(self, name, action):
+        return self.attach(ActionNotion2(name, action, self.graph))
+
+    def graph(self, name):
+        new = Graph(name, self.graph if self.graph else None)
+
+        if not self.graph:
+            self.graph = new
+            self.last = self.graph.root
+        else:
+            self.attach(new.root)
+            self.graph = new
+
+        return self
+
+    def at(self, element):
+        if element != self.last:
+            self.last = element
+
+            if element and element.owner != self.graph:
+                self.graph = element.owner
+
+        return self
+
+    # Go to the higher level of the current element
+    def pop(self):
+        if self.last and self.last.owner:
+            self.graph = self.last.owner.owner
+            self.last = self.graph.root
+
+        return self
 
 
 ### Borderline between new and old ###
