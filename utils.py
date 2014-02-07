@@ -1,5 +1,4 @@
 from types import *
-from inspect import getargspec, isfunction, ismethod
 
 # Class to track dict changes: add, change and delete key
 # Operations of the same type are not stacked, latter one replaces earlier of the same type
@@ -124,20 +123,3 @@ def tupled(*args):
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
-
-
-def var_arg_count(func):
-    count = 0
-
-    if not isfunction(func) and not ismethod(func):
-        return -1
-
-    spec = getargspec(func)
-
-    if spec.varargs:
-        count += len(spec.varargs) if is_list(spec.varargs) else 1
-
-    if spec.keywords:
-        count += len(spec.keywords) if is_list(spec.keywords) else 1
-
-    return count

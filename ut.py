@@ -1,8 +1,8 @@
 # Universal Translator base classes
 # (c) krvss 2011-2013
 
+from inspect import getargspec, isfunction, ismethod
 from utils import *
-
 
 # Base abstract class for all communicable objects
 class Abstract(object):
@@ -70,14 +70,37 @@ class Handler(Abstract):
 
     # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
     def var_call_result(self, func, message, context):
-        c = var_arg_count(func)
+        if not isfunction(func) and not ismethod(func):
+            return func(*message, **context)
 
-        if c == 0:
-            return func()
-        elif c == 1:
+        spec = getargspec(func)
+        v_count, k_count = 0, 0
+
+        if spec.varargs:
+            v_count = len(spec.varargs) if is_list(spec.varargs) else 1
+
+        if spec.keywords:
+            k_count = len(spec.keywords) if is_list(spec.keywords) else 1
+
+        if v_count and not k_count:
             return func(*message)
 
-        return func(*message, **context)
+        elif k_count and not v_count:
+            return func(**context)
+
+        elif v_count and k_count:
+            return func(*message, **context)
+
+        elif not v_count and not k_count and not spec.args:
+            return func()
+
+        elif spec.args:
+            args = {}
+            for arg in spec.args:
+                if arg != 'self':
+                    args[arg] = context[arg] if arg in context else None
+
+            return func(**args)
 
     # Checking the condition to satisfy the message and context
     def can_handle(self, condition, message, context):
@@ -1344,21 +1367,21 @@ class GraphBuilder(object):
             graph = Graph(graph)
 
         self.graph = graph
-        self.last = graph.root if graph else None
+        self.current = graph.root if graph else None
 
     def attach(self, new):
         if isinstance(new, Notion2):
-            if isinstance(self.last, Relation2) and not self.last.object:
-                self.last.object = new
+            if isinstance(self.current, Relation2) and not self.current.object:
+                self.current.object = new
 
         elif isinstance(new, Relation2):
-            if isinstance(self.last, Notion2) and not new.subject:
-                new.subject = self.last
+            if isinstance(self.current, Notion2) and not new.subject:
+                new.subject = self.current
 
-                if isinstance(self.last, ComplexNotion2):
+                if isinstance(self.current, ComplexNotion2):
                     return self  # Do not update last, just connect
 
-        self.last = new
+        self.current = new
 
         return self
 
@@ -1369,13 +1392,13 @@ class GraphBuilder(object):
         return self.attach(Notion2(name, self.graph))
 
     def next(self, condition=None, obj=None):
-        return self.attach(NextRelation2(self.last, obj, condition, self.graph))
+        return self.attach(NextRelation2(self.current, obj, condition, self.graph))
 
     def parse(self, condition, obj=None):
-        return self.attach(ParsingRelation(self.last, obj, condition, self.graph))
+        return self.attach(ParsingRelation(self.current, obj, condition, self.graph))
 
     def loop(self, condition, obj=None):
-        return self.attach(LoopRelation2(self.last, obj, condition, self.graph))
+        return self.attach(LoopRelation2(self.current, obj, condition, self.graph))
 
     def select(self, name):
         return self.attach(SelectiveNotion2(name, self.graph))
@@ -1388,7 +1411,7 @@ class GraphBuilder(object):
 
         if not self.graph:
             self.graph = new
-            self.last = self.graph.root
+            self.current = self.graph.root
         else:
             self.attach(new.root)
             self.graph = new
@@ -1396,8 +1419,8 @@ class GraphBuilder(object):
         return self
 
     def at(self, element):
-        if element != self.last:
-            self.last = element
+        if element != self.current:
+            self.current = element
 
             if element and element.owner != self.graph:
                 self.graph = element.owner
@@ -1406,9 +1429,9 @@ class GraphBuilder(object):
 
     # Go to the higher level of the current element
     def pop(self):
-        if self.last and self.last.owner:
-            self.graph = self.last.owner.owner
-            self.last = self.graph.root
+        if self.current and self.current.owner:
+            self.graph = self.current.owner.owner
+            self.current = self.graph.root
 
         return self
 

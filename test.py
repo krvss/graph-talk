@@ -7,28 +7,28 @@ import re
 
 
 # Test functions
-def state_v_starter(*m, **context):
+def state_v_starter(**context):
     if StatefulProcess2.STATE in context and 'v' in context[StatefulProcess2.STATE]:
         return {StatefulProcess2.SET_STATE: {'v': context[StatefulProcess2.STATE]['v'] + 1}}
     else:
         return {StatefulProcess2.SET_STATE: {'v': 1}}
 
 
-def state_v_checker(*m, **context):
+def state_v_checker(**context):
     if StatefulProcess2.STATE in context and 'v' in context[StatefulProcess2.STATE]:
         return Process2.STOP
     else:
         return Process2.OK  # Others' state is not visible
 
 
-def common_state_acc(*m, **context):
+def common_state_acc(**context):
     if 'acc' in context:
         return {SharedContextProcess2.UPDATE_CONTEXT: {'acc': context['acc'] + 1}}
     else:
         return {SharedContextProcess2.ADD_CONTEXT: {'acc': 1}}
 
 
-def has_notification(*m, **context):
+def has_notification(**context):
     if StatefulProcess2.STATE in context and StatefulProcess2.NOTIFICATIONS in context[StatefulProcess2.STATE]:
         return context[StatefulProcess2.STATE][StatefulProcess2.NOTIFICATIONS]['note']
     else:
@@ -154,6 +154,8 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h.var_call_result(lambda: 1, [], {}), 1)
         self.assertEqual(h.var_call_result(lambda *m: m[0], [2], {}), 2)
         self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ['3'], {'3': 3}), 3)
+        self.assertEqual(h.var_call_result(lambda **c: c['4'], ['4'], {'4': 4}), 4)
+        self.assertEqual(h.var_call_result(lambda a, b: a + b, ['5'], {'a': 2, 'b': 3, 'c': 4 }), 5)
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
@@ -241,7 +243,7 @@ class UtTests(unittest.TestCase):
 
         # Call parameters check
         # Sender
-        handler4 = lambda *m, **c: c[Handler.SENDER]
+        handler4 = lambda **c: c[Handler.SENDER]
         h.on(Handler.SENDER, handler4)
 
         r = h.handle(Handler.SENDER)
@@ -251,7 +253,7 @@ class UtTests(unittest.TestCase):
         self.assertEquals(r, ('test', len(Handler.SENDER), handler4))
 
         # Condition & rank
-        handler5 = lambda *m, **c: (c[Handler.RANK], c[Handler.CONDITION])
+        handler5 = lambda **c: (c[Handler.RANK], c[Handler.CONDITION])
 
         h.on(Handler.CONDITION, handler5)
 
@@ -261,9 +263,6 @@ class UtTests(unittest.TestCase):
         # Answer check
         r = h('event', **{Handler.ANSWER: Handler.RANK})
         self.assertEquals(r, (True, len('event')))
-
-        # Args count test
-        self.assertEqual(var_arg_count(tc.parse), 2)
 
     def test_3_talker(self):
         t = Talker()
@@ -335,7 +334,7 @@ class UtTests(unittest.TestCase):
         # Overriding result
         t.off('pre_event', handler1)
 
-        handler2 = lambda *m, **c: 'handler2' if (c.get(Talker.RESULT) and c.get(Handler.RANK) == len('post_event')
+        handler2 = lambda **c: 'handler2' if (c.get(Talker.RESULT) and c.get(Handler.RANK) == len('post_event')
                                                        and c.get(Handler.HANDLER) == tc.return_true) else None
         t.on('post_event', handler2)
 
@@ -353,7 +352,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], tc.return_true)
 
         # Recursion test
-        t.on('r', lambda *m, **c: c[Handler.SENDER].handle('r', **c))
+        t.on('r', lambda **c: c[Handler.SENDER].handle('r', **c))
         self.assertTrue(t.handle('r'))
 
         # Result test
@@ -511,7 +510,7 @@ class UtTests(unittest.TestCase):
         nr = NextRelation2(n1, n2)
         self.assertEqual(nr(Element.NEXT), n2)
 
-        nr.condition = lambda *m, **c: 'event' in c
+        nr.condition = lambda **c: 'event' in c
         nr.object = [1]
         self.assertListEqual(nr(Element.NEXT, event=1), nr.object)
 
@@ -697,7 +696,7 @@ class UtTests(unittest.TestCase):
         l = lambda: {SharedContextProcess2.ADD_CONTEXT: {ctx_key: True}}
         a.on_forward(l)
 
-        b = ActionNotion2('b', lambda *m, **c: Process2.STOP if ctx_key in c else Process2.OK)
+        b = ActionNotion2('b', lambda **c: Process2.STOP if ctx_key in c else Process2.OK)
 
         NextRelation2(root, a)
         NextRelation2(root, b)
@@ -837,7 +836,7 @@ class UtTests(unittest.TestCase):
         NextRelation2(root, ActionNotion2('change_context2',
                                           {StackingContextProcess2.UPDATE_CONTEXT: {'alien': 'omnomnom'}}))
 
-        NextRelation2(root, ActionNotion2('check_context', lambda *m, **c: None if 'alien' in c else 'Ripley!'))
+        NextRelation2(root, ActionNotion2('check_context', lambda **c: None if 'alien' in c else 'Ripley!'))
 
         NextRelation2(root, ActionNotion2('push_context2', StackingContextProcess2.PUSH_CONTEXT))
 
@@ -867,7 +866,7 @@ class UtTests(unittest.TestCase):
         NextRelation2(root, inc)
         NextRelation2(root, inc)
 
-        check = ActionNotion('state_check', state_v_checker)
+        check = ActionNotion2('state_check', state_v_checker)
         NextRelation2(root, check)
 
         process = StatefulProcess2()
@@ -907,7 +906,7 @@ class UtTests(unittest.TestCase):
 
         # Test states and the stacking context
         private = {'private': {'super_private': 'traveling'}}
-        t.action = lambda *m, **c: {StatefulProcess2.SET_STATE: private} if not 'private' in c[StatefulProcess2.STATE] else \
+        t.action = lambda **c: {StatefulProcess2.SET_STATE: private} if not 'private' in c[StatefulProcess2.STATE] else \
                                    {StatefulProcess2.SET_STATE: {'private': {'super_private': 'home', 'more': 'none'}}}
 
         t2 = ActionNotion2('terminator2', (StackingContextProcess2.PUSH_CONTEXT, ))
@@ -985,7 +984,7 @@ class UtTests(unittest.TestCase):
         # Simple positive condition test root -a-> d for 'a'
         root = ComplexNotion2('root')
 
-        action = ActionNotion2('passed', lambda *m, **c: c.get(ParsingProcess2.LAST_PARSED, ParsingProcess2.ERROR))
+        action = ActionNotion2('passed', lambda **c: c.get(ParsingProcess2.LAST_PARSED, ParsingProcess2.ERROR))
 
         parsing = ParsingRelation(root, action, 'a')
 
@@ -1014,7 +1013,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, parsing)
 
         # Simple positive condition test root -function-> None for 'a'
-        parsing.condition = lambda *m, **c: 1 if c.get(ParsingProcess2.TEXT, '').startswith('a') else -1
+        parsing.condition = lambda **c: 1 if c.get(ParsingProcess2.TEXT, '').startswith('a') else -1
         parsing.object = None
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'conditions_4'})
@@ -1410,7 +1409,7 @@ class UtTests(unittest.TestCase):
         check_loop_result(self, process, l, 5)
 
         # Loop test for external function: root -function!-> a's -a-> a for 'aaaa'
-        l.condition = lambda *m, **c: 5 if not 'i' in c['state'] else c['state']['i'] - 1
+        l.condition = lambda state: 5 if not 'i' in state else state['i'] - 1
 
         self.assertFalse(l.is_general())
         self.assertFalse(l.is_flexible())
@@ -1476,7 +1475,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.states[b]['v'], 1)
         check_loop_result(self, process, p, 1)
 
-        a.action = lambda *m, **c: [common_state_acc(*m, **c), ParsingProcess2.BREAK]
+        a.action = lambda **c: [common_state_acc(**c), ParsingProcess2.BREAK]
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'ac', 'test': 'test_loop_break'})
 
@@ -1497,7 +1496,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.query, Element.NEXT)
         check_loop_result(self, process, l, 2)
 
-        a.action = lambda *m, **c: [common_state_acc(*m, **c), ParsingProcess2.CONTINUE]
+        a.action = lambda **c: [common_state_acc(**c), ParsingProcess2.CONTINUE]
 
         r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'aa', 'test': 'test_loop_continue'})
 
