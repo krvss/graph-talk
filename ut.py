@@ -70,7 +70,7 @@ class Handler(Abstract):
 
     # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
     def var_call_result(self, func, message, context):
-        if not isfunction(func) and not ismethod(func):
+        if isinstance(func, Abstract):
             return func(*message, **context)
 
         spec = getargspec(func)

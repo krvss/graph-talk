@@ -5,6 +5,8 @@ import fcntl
 
 from ut import *
 
+from debug import ProcessDebugger
+
 # From http://love-python.blogspot.ru/2010/03/getch-in-python-get-single-character.html
 def _getch():
     fd = sys.stdin.fileno()
@@ -34,6 +36,118 @@ def getch():
         return _getch()
     except Exception:
         return sys.stdin.read(1)
+
+
+# Brainfuck virtual machine that runs language commands
+class BFVM(object):  # TODO: to python with compressing
+    def __init__(self, test=False):
+        self.memory = bytearray(30000)
+        self.position = 0
+
+        self.test = test
+        self.input_buffer = ''
+        self.out_buffer = ''
+
+    def inc(self):
+        self.memory[self.position] = self.memory[self.position] + 1 \
+            if self.memory[self.position] < 255 else 0
+
+    def dec(self):
+        self.memory[self.position] = self.memory[self.position] - 1 \
+            if self.memory[self.position] > 0 else 255
+
+    def left(self):
+        if self.position > 0:
+            self.position -= 1
+            return True
+        else:
+            return False
+
+        # TODO: overflow/underflow
+
+    def right(self):
+        if self.position < len(self.memory):
+            self.position += 1
+            return True
+        else:
+            return False
+
+    def is_not_zero(self):
+        return self.memory[self.position] != 0
+
+    def input(self):
+        if self.test and self.input_buffer:
+            value = self.input_buffer[0]
+            self.input_buffer = self.input_buffer[1:]
+        else:
+            value = getch()
+
+        self.memory[self.position] = ord(value)
+
+    def output(self):
+        cell = self.memory[self.position]
+
+        if self.test:
+            self.out_buffer += chr(cell)
+        else:
+            # Printout in a friendly format
+            out = '\'%s\'' % cell if cell < 10 else chr(cell)
+            sys.stdout.write(out)
+
+
+# Create the parsing/interpreting graph for the specified VM
+def make_graph(vm):
+    simple = dict((('+', vm.inc), ('-', vm.dec), ('.', vm.output), (',', vm.input), ('>', vm.right), ('<', vm.left)))
+
+    def add_simple_command(top, last_parsed):
+        NextRelation2(top, ActionNotion2(last_parsed, simple[last_parsed], top.owner), top.owner)
+
+    def start_loop(top, stack):
+        stack.append(top)
+        new_top = ComplexNotion2('loop', top.owner)
+        LoopRelation2(top, new_top, lambda: None if not vm.is_not_zero() else True)
+        return {SharedContextProcess2.UPDATE_CONTEXT: {'top': new_top}}
+
+    def stop_loop(stack):
+        if stack:
+            new_top = stack.pop()
+            return {SharedContextProcess2.UPDATE_CONTEXT: {'top': new_top}}, ParsingProcess2.BREAK
+
+    b = GraphBuilder('Interpreter').next().complex('Source').next().complex('Commands')
+    b.loop(lambda text: text).select('Command')
+    command_root = b.current
+
+    b.at(b.graph.root).next().complex('Program')
+    program_root = b.current
+
+    # Simple parsing
+    b.at(command_root).parse(simple.keys()).act('Simple command', add_simple_command)
+
+    # Loops
+    # TODO: add_at?
+    b.at(command_root).parse('[').complex('Start Loop')
+    loop_root = b.current
+
+    b.at(loop_root).next().act('Init Loop', start_loop)
+    NextRelation2(loop_root, b.graph.notion('Commands'))
+
+    b.at(command_root).parse(']').act('Stop Loop', stop_loop)
+
+    # TODO: error
+    return {'root': b.graph, 'top': program_root, 'stack': []}
+
+
+# Interpretes specified string using buffer for testing
+def interprete(source, test=''):
+    vm = BFVM(test)
+
+    context = make_graph(vm)
+
+    process = ParsingProcess2()
+    #ProcessDebugger(process, True)
+
+    print process.parse(context['root'], text=source, **context)
+    pass
 
 
 # Execution commands
@@ -210,7 +324,10 @@ s = '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++
 def main():
     if len(sys.argv) == 2:
         f = open(sys.argv[1], "r")
-        print Parser.execute(f.read())
+        #print Parser.execute(f.read())
+        #interprete('++>++<[.->[.-]<]')
+        #interprete('+[-].')
+        interprete(s)
         f.close()
     else:
         print "Usage: " + sys.argv[0] + " filename"
