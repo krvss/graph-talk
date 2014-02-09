@@ -3,6 +3,8 @@ import os
 import termios
 import fcntl
 
+#import cProfile
+
 from ut import *
 
 from debug import ProcessDebugger
@@ -97,48 +99,52 @@ class BFVM(object):  # TODO: to python with compressing
 
 # Create the parsing/interpreting graph for the specified VM
 def make_graph(vm):
-    simple = dict((('+', vm.inc), ('-', vm.dec), ('.', vm.output), (',', vm.input), ('>', vm.right), ('<', vm.left)))
+    simple_commands = dict((('+', vm.inc), ('-', vm.dec), ('.', vm.output), (',', vm.input),
+                            ('>', vm.right), ('<', vm.left)))
 
     def add_simple_command(top, last_parsed):
-        NextRelation2(top, ActionNotion2(last_parsed, simple[last_parsed], top.owner), top.owner)
+        # Last_parsed works fine as the name of the notion
+        NextRelation2(top, ActionNotion2(last_parsed, simple_commands[last_parsed], top.owner), top.owner)
 
-    def start_loop(top, stack):
-        stack.append(top)
-        new_top = ComplexNotion2('loop', top.owner)
+    def init_loop(top, top_stack):
+        top_stack.append(top)
+        new_top = ComplexNotion2('Loop', top.owner)
+        # Loop becomes new top to add the commands
         LoopRelation2(top, new_top, lambda: None if not vm.is_not_zero() else True)
+
         return {SharedContextProcess2.UPDATE_CONTEXT: {'top': new_top}}
 
-    def stop_loop(stack):
-        if stack:
-            new_top = stack.pop()
-            return {SharedContextProcess2.UPDATE_CONTEXT: {'top': new_top}}, ParsingProcess2.BREAK
+    def stop_loop(top_stack):
+        if top_stack:
+            return {SharedContextProcess2.UPDATE_CONTEXT: {'top': top_stack.pop()}}, ParsingProcess2.BREAK
+        else:
+            return Process2.STOP
 
+    # Building interpreter graph, Source is responsible for parsing and Program for execution
     b = GraphBuilder('Interpreter').next().complex('Source').next().complex('Commands')
-    b.loop(lambda text: text).select('Command')
-    command_root = b.current
+    command_root = b.loop(lambda text: text).select('Command').current
 
-    b.at(b.graph.root).next().complex('Program')
-    program_root = b.current
-
-    # Simple parsing
-    b.at(command_root).parse(simple.keys()).act('Simple command', add_simple_command)
+    # Simple command parsing
+    b.parse(simple_commands.keys()).act('Simple command', add_simple_command)
 
     # Loops
-    # TODO: add_at?
-    b.at(command_root).parse('[').complex('Start Loop')
-    loop_root = b.current
-
-    b.at(loop_root).next().act('Init Loop', start_loop)
-    NextRelation2(loop_root, b.graph.notion('Commands'))
+    b.at(command_root).parse('[').complex('Start Loop').next().act('Init Loop', init_loop)
+    NextRelation2(b.graph.notion('Start Loop'), b.graph.notion('Commands'))  # Recursive definition
 
     b.at(command_root).parse(']').act('Stop Loop', stop_loop)
 
-    # TODO: error
-    return {'root': b.graph, 'top': program_root, 'stack': []}
+    # Errors (only one actually)
+    b.at(command_root).parse(re.compile('.')).act('Bad character', Process2.STOP)
+
+    # The program itself
+    # TODO moar errors
+    program_root = b.at(b.graph.root).next().complex('Program').current
+
+    return {'root': b.graph, 'top': program_root, 'top_stack': []}
 
 
 # Interpretes specified string using buffer for testing
-def interprete(source, test=''):
+def interprete(source, test=False):
     vm = BFVM(test)
 
     context = make_graph(vm)
@@ -146,156 +152,35 @@ def interprete(source, test=''):
     process = ParsingProcess2()
     #ProcessDebugger(process, True)
 
-    print process.parse(context['root'], text=source, **context)
-    pass
+    r = process(context['root'], text=source, **context)
+
+    if r == Process2.STOP:
+        if process.current.name == 'Bad character':
+            print 'Unknown char "%s" at position %s' % (process.last_parsed, process.parsed_length)
 
 
-# Execution commands
-class SimpleCommand(ActionNotion):
-    INC = '+'
-    DEC = '-'
-    NEXT = '>'
-    PREV = '<'
-    OUT = '.'
-    IN = ','
 
-    def __init__(self, name):
-        super(SimpleCommand, self).__init__(name, self.run)
+def execute(from_str):
+    process = ParsingProcess()
 
-    # Just select a proper command basing on name and execute it using memory and position
-    def run(self, *message, **context):
-        if not 'memory' in context:
-            return
+    root = ComplexNotion('root')
+    context = {'text': from_str, 'root': root, 'loops': []}
 
-        memory = context['memory']
-        position = context['position']
+    # Loading
+    r = process.parse(Parser.get_graph(), **context)
 
-        if self.name == SimpleCommand.INC:
-            memory[position] = memory[position] + 1 if memory[position] < 256 else 0
+    if r == 'error':
+        return 'Parsing error(s): %s' % process.errors
 
-        elif self.name == SimpleCommand.DEC:
-            memory[position] = memory[position] - 1 if memory[position] > 0 else 255
+    context = {'memory': [0] * len(from_str), 'position': 0}
 
-        elif self.name == SimpleCommand.NEXT:
-            if position == len(memory) - 1:
-                memory.append(0)
+    # Execution
+    r = process.parse('new', root, **context)
 
-            return {'update_context': {'position': position + 1}}
+    if r != 'ok':
+        return 'Runtime error(s): %s ' % process.errors
 
-        elif self.name == SimpleCommand.PREV:
-            if position > 0:
-                return {'update_context': {'position': position - 1}}
-            else:
-                return {'error': 'position underflow'}
-
-        elif self.name == SimpleCommand.OUT:
-            cell = memory[position]
-            # Printout in a friendly format
-            out = '\'%s\'' % cell if cell < 10 else chr(cell)
-
-            sys.stdout.write(out)
-
-        elif self.name == SimpleCommand.IN:
-            memory[position] = ord(getch())
-
-
-# Parser commands
-class ParseCommand(ActionNotion):
-    def __init__(self, name):
-        super(ParseCommand, self).__init__(name, self.make)
-
-    def get_top(self, context):
-        return context['loops'][len(context['loops']) - 1][0] if context['loops'] else context['root']
-
-    def make(self, *message, **context):
-        if not 'state' in context:
-            return
-
-        NextRelation(self.get_top(context), SimpleCommand(context['passed_condition']))
-
-
-class ParseLoopStart(ParseCommand):
-    def make(self, *message, **context):
-        if not 'root' in context:
-            return
-
-        new_top = ComplexNotion('Loop')
-
-        LoopRelation(self.get_top(context), new_top, lambda r, *m, **c: c['memory'][c['position']] != 0)
-        context['loops'].append((new_top, context['parsed_length'] - 1))
-
-
-class ParseLoopEnd(ParseCommand):
-    def make(self, *message, **context):
-        if not 'loops' in context:
-            return
-
-        if context['loops']:
-            context['loops'].pop()
-        else:
-            return {'error': 'no_loops'}
-
-
-# Language parser and interpreter
-class Parser:
-    @staticmethod
-    def parse_stop(notion, *message, **context):
-        if not 'text' in context:
-            return
-
-        if len(context['text']) > 0:
-            return {'error': 'unknown_command "%s" at position %s' % (context['text'][0], context['parsed_length'])}
-
-        elif context['loops']:
-            unclosed = [str(p[1]) for p in context['loops']]
-            return {'error': 'unclosed_loops at position %s' % ','.join(unclosed)}
-
-        else:
-            return 'stop'
-
-    @staticmethod
-    def get_graph():
-        root = ComplexNotion('Brainfuck Program')
-        command = SelectiveNotion('Command')
-        LoopRelation(root, command)
-
-        ConditionalRelation(command, ParseLoopStart('Loop start'), '[')
-        ConditionalRelation(command, ParseLoopEnd('Loop end'), ']')
-
-        simple_command = ParseCommand('Simple command')
-        ConditionalRelation(command, simple_command, SimpleCommand.INC)
-        ConditionalRelation(command, simple_command, SimpleCommand.DEC)
-        ConditionalRelation(command, simple_command, SimpleCommand.PREV)
-        ConditionalRelation(command, simple_command, SimpleCommand.NEXT)
-        ConditionalRelation(command, simple_command, SimpleCommand.OUT)
-        ConditionalRelation(command, simple_command, SimpleCommand.IN)
-
-        NextRelation(command, ActionNotion('Stop', Parser.parse_stop))
-
-        return root
-
-    @staticmethod
-    def execute(from_str):
-        process = ParsingProcess()
-
-        root = ComplexNotion('root')
-        context = {'text': from_str, 'root': root, 'loops': []}
-
-        # Loading
-        r = process.parse(Parser.get_graph(), **context)
-
-        if r == 'error':
-            return 'Parsing error(s): %s' % process.errors
-
-        context = {'memory': [0] * len(from_str), 'position': 0}
-
-        # Execution
-        r = process.parse('new', root, **context)
-
-        if r != 'ok':
-            return 'Runtime error(s): %s ' % process.errors
-
-        return 'ok'
+    return 'ok'
 
 # Tests
 
@@ -327,6 +212,8 @@ def main():
         #print Parser.execute(f.read())
         #interprete('++>++<[.->[.-]<]')
         #interprete('+[-].')
+        #cProfile.run('interprete(s)', sort=0)
+        #interprete(s)
         interprete(s)
         f.close()
     else:

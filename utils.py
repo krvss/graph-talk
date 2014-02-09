@@ -1,4 +1,5 @@
 from types import *
+from inspect import ismethod, CO_VARARGS, CO_VARKEYWORDS, ArgSpec
 
 # Class to track dict changes: add, change and delete key
 # Operations of the same type are not stacked, latter one replaces earlier of the same type
@@ -123,3 +124,23 @@ def tupled(*args):
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
+
+
+# Simplified version of getargspec
+def get_args(func):
+    co = func.func_code if not ismethod(func) else func.im_func.func_code
+
+    nargs = co.co_argcount
+    names = co.co_varnames
+    args = list(names[:nargs])
+
+    varargs = None
+    if co.co_flags & CO_VARARGS:
+        varargs = co.co_varnames[nargs]
+        nargs += 1
+
+    varkw = None
+    if co.co_flags & CO_VARKEYWORDS:
+        varkw = co.co_varnames[nargs]
+
+    return ArgSpec(args, varargs, varkw, func.func_defaults)

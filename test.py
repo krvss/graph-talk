@@ -155,7 +155,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h.var_call_result(lambda *m: m[0], [2], {}), 2)
         self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ['3'], {'3': 3}), 3)
         self.assertEqual(h.var_call_result(lambda **c: c['4'], ['4'], {'4': 4}), 4)
-        self.assertEqual(h.var_call_result(lambda a, b: a + b, ['5'], {'a': 2, 'b': 3, 'c': 4 }), 5)
+        self.assertEqual(h.var_call_result(lambda a, b: a + b, ['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
@@ -930,7 +930,8 @@ class UtTests(unittest.TestCase):
         r = process(Process2.NEW, dict(notification), root, test='test_states_5')
 
         self.assertTrue(r is None)
-        self.assertEqual(process.states[t][StatefulProcess2.NOTIFICATIONS], notification[StatefulProcess2.NOTIFY][StatefulProcess2.INFO])
+        self.assertEqual(process.states[t][StatefulProcess2.NOTIFICATIONS],
+                         notification[StatefulProcess2.NOTIFY][StatefulProcess2.INFO])
 
     def test_d_parsing(self):
         # Proceed test
@@ -1086,7 +1087,7 @@ class UtTests(unittest.TestCase):
         ParsingRelation(ab, a, 'a')
         r2 = ParsingRelation(ab, b, 'b')
 
-        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_complex_2', 'acc':0})
+        r = process(Process2.NEW, root, **{ParsingProcess2.TEXT: 'a', 'test': 'test_complex_2', 'acc': 0})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 1)

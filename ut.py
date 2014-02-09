@@ -1,8 +1,8 @@
 # Universal Translator base classes
 # (c) krvss 2011-2013
 
-from inspect import getargspec, isfunction, ismethod
 from utils import *
+
 
 # Base abstract class for all communicable objects
 class Abstract(object):
@@ -19,6 +19,7 @@ class Abstract(object):
     def __call__(self, *args, **kwargs):
         return self.answer(*args, **kwargs)
 
+# TODO: named tuples as well as dicts
 
 # Handler is a class for the routing of messages to processing functions (handlers) basing on specified conditions
 class Handler(Abstract):
@@ -73,7 +74,7 @@ class Handler(Abstract):
         if isinstance(func, Abstract):
             return func(*message, **context)
 
-        spec = getargspec(func)
+        spec = get_args(func)
         v_count, k_count = 0, 0
 
         if spec.varargs:
