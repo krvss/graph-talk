@@ -500,6 +500,23 @@ class NextRelation2(Relation2):
         return self.object
 
 
+# Action relation performs an action and moves forward
+class ActionRelation2(Relation2):
+    def __init__(self, subj, obj, action, owner=None):
+        super(ActionRelation2, self).__init__(subj, obj, owner)
+        self.action = action
+
+        self.on_forward(self.act_next)
+
+    def act_next(self, *message, **context):
+        action_result = self.var_call_result(self.action, message, context) if callable(self.action) else self.action
+
+        if action_result and self.object:
+            return action_result, self.object
+        else:
+            return action_result or self.object
+
+
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
 # It has the current abstract and the message to process; when new abstract appears,
 # the new queue item with current and message is created
@@ -1394,6 +1411,9 @@ class GraphBuilder(object):
 
     def next(self, condition=None, obj=None):
         return self.attach(NextRelation2(self.current, obj, condition, self.graph))
+
+    def act_rel(self, action, obj=None):
+        return self.attach(ActionRelation2(self.current, obj, action, self.graph))
 
     def parse(self, condition, obj=None):
         return self.attach(ParsingRelation(self.current, obj, condition, self.graph))

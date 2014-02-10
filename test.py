@@ -517,7 +517,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(nr(event=1) is False)
         self.assertTrue(nr(Element.NEXT) is False)
 
-        # Action test
+        # Action notion test
         na = ActionNotion2('action', 'action')
         self.assertEquals(na(Element.NEXT), na.name)
         self.assertEqual(na.action, na.name)
@@ -527,6 +527,22 @@ class UtTests(unittest.TestCase):
 
         na.off_forward()
         self.assertIsNone(na.action)
+
+        # Action relation test
+        ar = ActionRelation2('subj', 'obj', lambda: True)
+
+        self.assertEqual(ar(Element.NEXT), (True, ar.object))
+        ar.action = None
+
+        self.assertEqual(ar(Element.NEXT), ar.object)
+
+        ar.action = 3
+
+        self.assertEqual(ar(Element.NEXT), (3, ar.object))
+
+        ar.object = None
+
+        self.assertEqual(ar(Element.NEXT), 3)
 
     def test_6_process(self):
         process = Process2()

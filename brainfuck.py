@@ -6,6 +6,7 @@ import fcntl
 #import cProfile
 
 from ut import *
+import re
 
 from debug import ProcessDebugger
 
@@ -106,7 +107,7 @@ def make_graph(vm):
         # Last_parsed works fine as the name of the notion
         NextRelation2(top, ActionNotion2(last_parsed, simple_commands[last_parsed], top.owner), top.owner)
 
-    def init_loop(top, top_stack):
+    def start_loop(top, top_stack):
         top_stack.append(top)
         new_top = ComplexNotion2('Loop', top.owner)
         # Loop becomes new top to add the commands
@@ -128,9 +129,7 @@ def make_graph(vm):
     b.parse(simple_commands.keys()).act('Simple command', add_simple_command)
 
     # Loops
-    b.at(command_root).parse('[').complex('Start Loop').next().act('Init Loop', init_loop)
-    NextRelation2(b.graph.notion('Start Loop'), b.graph.notion('Commands'))  # Recursive definition
-
+    b.at(command_root).parse('[').complex('Start Loop').act_rel(start_loop, b.graph.notion('Commands'))
     b.at(command_root).parse(']').act('Stop Loop', stop_loop)
 
     # Errors (only one actually)
