@@ -19,18 +19,19 @@ class Abstract(object):
     def __call__(self, *args, **kwargs):
         return self.answer(*args, **kwargs)
 
-# TODO: named tuples as well as dicts
+
+# Handler dialect
+ANSWER = 'answer'
+SENDER = 'sender'
+CONDITION = 'condition'
+HANDLER = 'handler'
+RANK = 'rank'
+
+NO_PARSE = (False, -1, None)
+
 
 # Handler is a class for the routing of messages to processing functions (handlers) basing on specified conditions
 class Handler(Abstract):
-    ANSWER = 'answer'
-    SENDER = 'sender'
-    CONDITION = 'condition'
-    HANDLER = 'handler'
-    RANK = 'rank'
-
-    NO_PARSE = (False, -1, None)
-
     def __init__(self):
         self.handlers = []
 
@@ -147,17 +148,17 @@ class Handler(Abstract):
 
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
-        check, rank, handler_found = Handler.NO_PARSE
+        check, rank, handler_found = NO_PARSE
 
-        if not Handler.SENDER in context:
-            context[Handler.SENDER] = self
+        if not SENDER in context:
+            context[SENDER] = self
 
         # Searching for the best handler
         for handler in self.handlers:
             handler_func = handler if not is_list(handler) else handler[1]
 
             # Avoiding recursive calls
-            if context.get(Handler.HANDLER) == handler_func:
+            if context.get(HANDLER) == handler_func:
                 continue
 
             # Condition check, if no condition the result is true with zero rank
@@ -170,10 +171,10 @@ class Handler(Abstract):
 
         # Running the best handler
         if rank >= 0:
-            if not Handler.HANDLER in context:
-                context[Handler.HANDLER] = handler_found
+            if not HANDLER in context:
+                context[HANDLER] = handler_found
 
-            context.update({Handler.RANK: rank, Handler.CONDITION: check})
+            context.update({RANK: rank, CONDITION: check})
 
             # Call handler, add the condition result to the context
             result, handler_found = self.run_handler(handler_found, message, context)
@@ -188,24 +189,27 @@ class Handler(Abstract):
 
     # Answer depends on the context
     def answer(self, *message, **context):
-        answer_mode = context.pop(Handler.ANSWER, None)  # Applicable only for a top level
+        answer_mode = context.pop(ANSWER, None)  # Applicable only for a top level
         result = super(Handler, self).answer(*message, **context)
 
-        if answer_mode == Handler.RANK:
+        if answer_mode == RANK:
             return result[0], result[1]
 
         return result[0]  # No need to know the details
 
 
+# Talker dialect
+PRE_PREFIX = 'pre'
+POST_PREFIX = 'post'
+RESULT = 'result'
+UNKNOWN = 'unknown'
+
+SEP = '_'
+SILENT = (RESULT, UNKNOWN)
+
+
 # Handler which uses pre and post handling notifications
 class Talker(Handler):
-    PRE_PREFIX = 'pre'
-    POST_PREFIX = 'post'
-    RESULT = 'result'
-    UNKNOWN = 'unknown'
-
-    SEP = '_'
-    SILENT = (RESULT, UNKNOWN)
 
     # Add prefix to the message
     @staticmethod
@@ -213,7 +217,7 @@ class Talker(Handler):
         event = str(message[0] if is_list(message) else message)
 
         if not event.startswith(prefix):
-            event = Talker.SEP.join([prefix, event])
+            event = SEP.join([prefix, event])
 
         return tupled(event, message[1:]) if is_list(message) else event
 
@@ -222,18 +226,18 @@ class Talker(Handler):
     def remove_prefix(message, prefix=None):
         event = str(message[0] if message and is_list(message) else message)
 
-        if not Talker.SEP in event or (prefix and not event.startswith(prefix + Talker.SEP)):
+        if not SEP in event or (prefix and not event.startswith(prefix + SEP)):
             return None
 
-        return event.split(Talker.SEP, 1)[-1]
+        return event.split(SEP, 1)[-1]
 
     # Should event go silent or not, useful to avoid recursions
     def is_silent(self, event):
         if not is_string(event):
             event = str(event)
 
-        return event.startswith(Talker.PRE_PREFIX) or event.startswith(Talker.POST_PREFIX) \
-            or event in Talker.SILENT
+        return event.startswith(PRE_PREFIX) or event.startswith(POST_PREFIX) \
+            or event in SILENT
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
@@ -241,10 +245,10 @@ class Talker(Handler):
         silent = self.is_silent(event[0])
 
         if not silent:
-            context[Handler.HANDLER] = handler
+            context[HANDLER] = handler
 
             # Pre-processing, adding prefix to event or handler name
-            pre_result = self.handle(*self.add_prefix(event, Talker.PRE_PREFIX), **context)
+            pre_result = self.handle(*self.add_prefix(event, PRE_PREFIX), **context)
 
             if pre_result[0]:
                 return pre_result[0], pre_result[2]
@@ -252,10 +256,10 @@ class Talker(Handler):
         result = super(Talker, self).run_handler(handler, message, context)
 
         if not silent:
-            context.update({Talker.RESULT: result[0], Handler.RANK: result[1]})
+            context.update({RESULT: result[0], RANK: result[1]})
 
             # Post-processing, adding postfix and results
-            post_result = self.handle(*self.add_prefix(event, Talker.POST_PREFIX), **context)
+            post_result = self.handle(*self.add_prefix(event, POST_PREFIX), **context)
 
             if post_result[0]:
                 return post_result[0], post_result[2]
@@ -268,30 +272,33 @@ class Talker(Handler):
 
         # There is a way to override result and handle unknown message
         if result[0] is not False:
-            context.update({Talker.RESULT: result[0], Handler.RANK: result[1], Handler.HANDLER: result[2]})
-            after_result = super(Talker, self).parse(Talker.RESULT, *message, **context)
+            context.update({RESULT: result[0], RANK: result[1], HANDLER: result[2]})
+            after_result = super(Talker, self).parse(RESULT, *message, **context)
 
             if after_result[0]:
                 result = after_result  # override has priority
         else:
-            result = super(Talker, self).parse(Talker.UNKNOWN, *message, **context)
+            result = super(Talker, self).parse(UNKNOWN, *message, **context)
 
         return result
 
 
+# Element dialect
+NEXT = 'next'
+PREVIOUS = 'previous'
+OWNER = 'owner'
+
+SET_PREFIX = 'set'
+NAME = 'name'
+OLD_VALUE = 'old-value'
+NEW_VALUE = 'new-value'
+
+FORWARD = [NEXT]
+BACKWARD = [PREVIOUS]
+
+
 # Element is a part of a bigger system
 class Element(Talker):
-    NEXT = 'next'
-    PREVIOUS = 'previous'
-    OWNER = 'owner'
-
-    SET_PREFIX = 'set'
-    NAME = 'name'
-    OLD_VALUE = 'old-value'
-    NEW_VALUE = 'new-value'
-
-    FORWARD = NEXT,
-    BACKWARD = PREVIOUS,
 
     def __init__(self, owner=None):
         super(Element, self).__init__()
@@ -300,24 +307,24 @@ class Element(Talker):
         self._owner, self.owner = None, owner
 
     def can_set_property(self, *message, **context):
-        property_name = self.remove_prefix(message, Element.SET_PREFIX)
+        property_name = self.remove_prefix(message, SET_PREFIX)
 
         if property_name and hasattr(self, property_name) and \
-                has_keys(context, Element.OLD_VALUE, Element.NEW_VALUE) and \
-                getattr(self, property_name) != context.get(Element.NEW_VALUE):
+                has_keys(context, OLD_VALUE, NEW_VALUE) and \
+                getattr(self, property_name) != context.get(NEW_VALUE):
 
                 return len(property_name), property_name  # To select the best property
 
     # Set the property to the new value
     def do_set_property(self, *message, **context):
-        old_value = context.get(Element.OLD_VALUE)
+        old_value = context.get(OLD_VALUE)
 
         if isinstance(old_value, Abstract):
             old_value(*message, **context)
 
-        new_value = context.get(Element.NEW_VALUE)
+        new_value = context.get(NEW_VALUE)
 
-        setattr(self, '_%s' % context[Handler.CONDITION], new_value)
+        setattr(self, '_%s' % context[CONDITION], new_value)
 
         if isinstance(new_value, Abstract):
             new_value(*message, **context)
@@ -326,20 +333,20 @@ class Element(Talker):
 
     def change_property(self, name, value):
         # We change property via handler to allow notifications
-        return self(self.add_prefix(name, Element.SET_PREFIX),
-                    **{Element.NEW_VALUE: value, Element.OLD_VALUE: getattr(self, name)})
+        return self(self.add_prefix(name, SET_PREFIX),
+                    **{NEW_VALUE: value, OLD_VALUE: getattr(self, name)})
 
     def can_go_forward(self, *message, **context):
-        return self.can_handle(Element.FORWARD, message, context)
+        return self.can_handle(FORWARD, message, context)
 
     def can_go_backward(self, *message, **context):
-        return self.can_handle(Element.BACKWARD, message, context)
+        return self.can_handle(BACKWARD, message, context)
 
     def is_forward(self, message):
-        return message and message[0] in Element.FORWARD
+        return message and message[0] in FORWARD
 
     def is_backward(self, message):
-        return message and message[0] in Element.BACKWARD
+        return message and message[0] in BACKWARD
 
     def on_forward(self, handler):
         self.on(self.can_go_forward, handler)
@@ -352,24 +359,6 @@ class Element(Talker):
 
     def off_backward(self):
         self.off_condition(self.can_go_backward)
-
-    @staticmethod
-    def add_forward_command(command):
-        if not command in Element.FORWARD:
-            Element.FORWARD = Element.FORWARD + (command, )
-
-    @staticmethod
-    def remove_forward_command(command):
-        Element.FORWARD = tuple(c for c in Element.FORWARD if c != command)
-
-    @staticmethod
-    def add_backward_command(command):
-        if not command in Element.BACKWARD:
-            Element.BACKWARD = Element.BACKWARD + (command, )
-
-    @staticmethod
-    def remove_backward_command(command):
-        Element.BACKWARD = tuple(c for c in Element.BACKWARD if c != command)
 
     @property
     def owner(self):
@@ -398,7 +387,7 @@ class Notion2(Element):
 
     @name.setter
     def name(self, value):
-        self.change_property(Element.NAME, value)
+        self.change_property(NAME, value)
 
 
 # Action notion is a notion with specified forward handler
@@ -418,10 +407,13 @@ class ActionNotion2(Notion2):
         self.on_forward(value)
 
 
+# Relation dialect
+SUBJECT = 'subject'
+OBJECT = 'object'
+
+
 # Relation is a connection between one or more elements: subject -> object
 class Relation2(Element):
-    SUBJECT = 'subject'
-    OBJECT = 'object'
 
     def __init__(self, subj, obj, owner=None):
         super(Relation2, self).__init__(owner)
@@ -434,7 +426,7 @@ class Relation2(Element):
 
     @subject.setter
     def subject(self, value):
-        self.change_property(Relation2.SUBJECT, value)
+        self.change_property(SUBJECT, value)
 
     @property
     def object(self):
@@ -442,7 +434,7 @@ class Relation2(Element):
 
     @object.setter
     def object(self, value):
-        self.change_property(Relation2.OBJECT, value)
+        self.change_property(OBJECT, value)
 
     def __str__(self):
         return '<%s - %s>' % (self.subject, self.object)
@@ -458,17 +450,17 @@ class ComplexNotion2(Notion2):
 
         self._relations = []
 
-        self.on(self.add_prefix(Relation2.SUBJECT, Element.SET_PREFIX), self.do_relation)
+        self.on(self.add_prefix(SUBJECT, SET_PREFIX), self.do_relation)
         self.on_forward(self.do_forward)
 
     def do_relation(self, *message, **context):
-        relation = context.get(Handler.SENDER)
+        relation = context.get(SENDER)
 
-        if context[Element.OLD_VALUE] == self and relation in self._relations:
+        if context[OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
             return True
 
-        elif context[Element.NEW_VALUE] == self and relation not in self._relations:
+        elif context[NEW_VALUE] == self and relation not in self._relations:
             self._relations.append(relation)
             return True
 
@@ -517,18 +509,21 @@ class ActionRelation2(Relation2):
             return action_result or self.object
 
 
+# Process dialect
+NEW = 'new'
+OK = 'ok'
+STOP = 'stop'
+SKIP = 'skip'
+
+CURRENT = 'current'
+MESSAGE = 'message'
+QUERY = 'query'
+
+
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
 # It has the current abstract and the message to process; when new abstract appears,
 # the new queue item with current and message is created
 class Process2(Talker):
-    NEW = 'new'
-    OK = 'ok'
-    STOP = 'stop'
-    SKIP = 'skip'
-
-    CURRENT = 'current'
-    MESSAGE = 'message'
-    QUERY = 'query'
 
     def __init__(self):
         super(Process2, self).__init__()
@@ -537,14 +532,14 @@ class Process2(Talker):
         self.new_queue_item({})
 
         self.context = {}
-        self.query = Element.NEXT
+        self.query = NEXT
 
         self.setup_handlers()
 
     # Generate the new queue item and add it to the queue updated with values
     def new_queue_item(self, values):
-        item = {Process2.CURRENT: values.get(Process2.CURRENT) or None,
-                Process2.MESSAGE: values.get(Process2.MESSAGE) or []}
+        item = {CURRENT: values.get(CURRENT) or None,
+                MESSAGE: values.get(MESSAGE) or []}
 
         self._queue.append(item)
 
@@ -555,8 +550,8 @@ class Process2(Talker):
         if not self.message:
             self.queue_top.update(values)  # No need to keep the empty one in the queue
         else:
-            if not Process2.CURRENT in values:
-                values[Process2.CURRENT] = self.current  # It is better to keep the current current
+            if not CURRENT in values:
+                values[CURRENT] = self.current  # It is better to keep the current current
 
             self.new_queue_item(values)
 
@@ -571,7 +566,7 @@ class Process2(Talker):
         if insert:
             message.extend(self.message)
 
-        self.queue_top[Process2.MESSAGE] = message
+        self.queue_top[MESSAGE] = message
 
     # Events #
     # New: cleaning up the queue
@@ -579,15 +574,15 @@ class Process2(Talker):
         self.message.pop(0)
         del self._queue[:-1]
 
-        self.queue_top[Process2.CURRENT] = None
+        self.queue_top[CURRENT] = None
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def can_push_queue(self, *message):
         return self.message and isinstance(message[0], Abstract)
 
     def do_queue_push(self):
-        self.to_queue({Process2.CURRENT: self.message.pop(0),
-                       Process2.MESSAGE: [Process2.QUERY]})  # Adding query command to start from asking
+        self.to_queue({CURRENT: self.message.pop(0),
+                       MESSAGE: [QUERY]})  # Adding query command to start from asking
 
     # Queue pop: when current queue item is empty we can remove it
     def can_pop_queue(self, *message):
@@ -598,7 +593,7 @@ class Process2(Talker):
 
     # Query: should we ask the query to the current current
     def can_query(self, *message):
-        return self.current and has_first(message, Process2.QUERY)
+        return self.current and has_first(message, QUERY)
 
     def do_query(self):
         self.message.pop(0)
@@ -626,8 +621,8 @@ class Process2(Talker):
 
     # Init handlers
     def setup_handlers(self):
-        self.on(Process2.NEW, self.do_new)
-        self.on(Process2.SKIP, self.do_skip)
+        self.on(NEW, self.do_new)
+        self.on(SKIP, self.do_skip)
 
         self.on(self.can_query, self.do_query)
         self.on(self.can_push_queue, self.do_queue_push)
@@ -636,23 +631,23 @@ class Process2(Talker):
 
     # Start new parsing
     def start_parsing(self, new_message, new_context):
-        if has_first(new_message, Process2.NEW):
+        if has_first(new_message, NEW):
             self.context = new_context
         else:
             self.context.update(new_context)
 
-        self.to_queue({Process2.MESSAGE: list(new_message)})
+        self.to_queue({MESSAGE: list(new_message)})
 
     # Process' parse works in step-by-step manner, processing message and then popping the queue
     def parse(self, *message, **context):
         self.start_parsing(message, context)
 
-        result = Handler.NO_PARSE
+        result = NO_PARSE
 
         while self.message or len(self._queue) > 1:
             result = super(Process2, self).parse(*self.message, **self.context)
 
-            if result[0] in (Process2.OK, Process2.STOP, False):
+            if result[0] in (OK, STOP, False):
                 break
 
             elif result[0] in (None, True):
@@ -668,18 +663,21 @@ class Process2(Talker):
 
     @property
     def message(self):
-        return self.queue_top.get(Process2.MESSAGE)
+        return self.queue_top.get(MESSAGE)
 
     @property
     def current(self):
-        return self.queue_top.get(Process2.CURRENT)
+        return self.queue_top.get(CURRENT)
+
+
+# Shared context dialect
+ADD_CONTEXT = 'add_context'
+UPDATE_CONTEXT = 'update_context'
+DELETE_CONTEXT = 'delete_context'
 
 
 # Shared context process supports context modification commands
 class SharedContextProcess2(Process2):
-    ADD_CONTEXT = 'add_context'
-    UPDATE_CONTEXT = 'update_context'
-    DELETE_CONTEXT = 'delete_context'
 
     def _context_add(self, key, value):
         self.context[key] = value
@@ -694,11 +692,11 @@ class SharedContextProcess2(Process2):
     # Do we have add context command
     def can_add_context(self, *message):
         return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(SharedContextProcess2.ADD_CONTEXT), dict)
+            and isinstance(message[0].get(ADD_CONTEXT), dict)
 
     # Adding items to context, do not replacing existing ones
     def do_add_context(self):
-        add = self.message[0].pop(SharedContextProcess2.ADD_CONTEXT)
+        add = self.message[0].pop(ADD_CONTEXT)
 
         for k, v in add.items():
             if not k in self.context:
@@ -707,10 +705,10 @@ class SharedContextProcess2(Process2):
     # Updating the context
     def can_update_context(self, *message):
         return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(SharedContextProcess2.UPDATE_CONTEXT), dict)
+            and isinstance(message[0].get(UPDATE_CONTEXT), dict)
 
     def do_update_context(self):
-        update = self.message[0].pop(SharedContextProcess2.UPDATE_CONTEXT)
+        update = self.message[0].pop(UPDATE_CONTEXT)
 
         for k, v in update.items():
             self._context_set(k, v)
@@ -718,10 +716,10 @@ class SharedContextProcess2(Process2):
     # Deleting items from the context
     def can_delete_context(self, *message):
         return message and isinstance(message[0], dict) \
-            and SharedContextProcess2.DELETE_CONTEXT in message[0]
+            and DELETE_CONTEXT in message[0]
 
     def do_delete_context(self):
-        delete = self.message[0].pop(SharedContextProcess2.DELETE_CONTEXT)
+        delete = self.message[0].pop(DELETE_CONTEXT)
 
         if is_list(delete):
             for k in delete:
@@ -739,12 +737,15 @@ class SharedContextProcess2(Process2):
         self.on(self.can_delete_context, self.do_delete_context)
 
 
+# StackingContextProcess2 dialect
+PUSH_CONTEXT = 'push_context'
+POP_CONTEXT = 'pop_context'
+FORGET_CONTEXT = 'forget_context'
+
+
 # Process that can save and restore context
 # Useful for cases when process needs to try various paths in the graph
 class StackingContextProcess2(SharedContextProcess2):
-    PUSH_CONTEXT = 'push_context'
-    POP_CONTEXT = 'pop_context'
-    FORGET_CONTEXT = 'forget_context'
 
     def __init__(self):
         super(StackingContextProcess2, self).__init__()
@@ -781,7 +782,7 @@ class StackingContextProcess2(SharedContextProcess2):
         self._context_stack.append(DictChangeGroup())
 
     def can_pop_context(self, *message):
-        return self.is_tracking() and has_first(message, StackingContextProcess2.POP_CONTEXT)
+        return self.is_tracking() and has_first(message, POP_CONTEXT)
 
     def do_pop_context(self):
         self.message.pop(0)
@@ -789,7 +790,7 @@ class StackingContextProcess2(SharedContextProcess2):
         self._context_stack.pop()
 
     def can_forget_context(self, *message):
-        return self.is_tracking() and has_first(message, StackingContextProcess2.FORGET_CONTEXT)
+        return self.is_tracking() and has_first(message, FORGET_CONTEXT)
 
     def do_forget_context(self):
         self.message.pop(0)
@@ -798,32 +799,35 @@ class StackingContextProcess2(SharedContextProcess2):
     def setup_handlers(self):
         super(StackingContextProcess2, self).setup_handlers()
 
-        self.on(StackingContextProcess2.PUSH_CONTEXT, self.do_push_context)
+        self.on(PUSH_CONTEXT, self.do_push_context)
         self.on(self.can_pop_context, self.do_pop_context)
         self.on(self.can_forget_context, self.do_forget_context)
+
+
+# StatefulProcess2 dialect
+STATE = 'state'
+SET_STATE = 'set_state'
+CLEAR_STATE = 'clear_state'
+
+NOTIFY = 'notify'
+TO = 'to'
+INFO = 'info'
+NOTIFICATIONS = 'notifications'
 
 
 # Process with support of abstract states and notifications between them
 # Useful to preserve private a state of an abstract
 class StatefulProcess2(StackingContextProcess2):
-    STATE = 'state'
-    SET_STATE = 'set_state'
-    CLEAR_STATE = 'clear_state'
-
-    NOTIFY = 'notify'
-    TO = 'to'
-    INFO = 'info'
-    NOTIFICATIONS = 'notifications'
 
     def __init__(self):
         super(StatefulProcess2, self).__init__()
         self.states = {}
 
     def _add_current_state(self):
-        self.context[StatefulProcess2.STATE] = self.states.get(self.current, {})
+        self.context[STATE] = self.states.get(self.current, {})
 
     def _del_current_state(self):
-        del self.context[StatefulProcess2.STATE]
+        del self.context[STATE]
 
     def _set_state(self, abstract, state):
         if not abstract in self.states:
@@ -853,15 +857,15 @@ class StatefulProcess2(StackingContextProcess2):
     # Events #
     # Set state
     def can_set_state(self, *message):
-        return self.current and message and isinstance(message[0], dict) and StatefulProcess2.SET_STATE in message[0]
+        return self.current and message and isinstance(message[0], dict) and SET_STATE in message[0]
 
     def do_set_state(self):
-        value = self.message[0].pop(StatefulProcess2.SET_STATE)
+        value = self.message[0].pop(SET_STATE)
         self._set_state(self.current, value)
 
     # Clear state
     def can_clear_state(self, *message):
-        return self.current and message and has_first(message, StatefulProcess2.CLEAR_STATE)
+        return self.current and message and has_first(message, CLEAR_STATE)
 
     def do_clear_state(self):
         self.message.pop(0)
@@ -869,22 +873,22 @@ class StatefulProcess2(StackingContextProcess2):
 
     # Notifications
     def can_notify(self, *message):
-        return message and isinstance(message[0], dict) and isinstance(message[0].get(StatefulProcess2.NOTIFY), dict) \
-            and has_keys(message[0].get(StatefulProcess2.NOTIFY), StatefulProcess2.TO, StatefulProcess2.INFO)
+        return message and isinstance(message[0], dict) and isinstance(message[0].get(NOTIFY), dict) \
+            and has_keys(message[0].get(NOTIFY), TO, INFO)
 
     def do_notify(self):
-        notification = self.message[0].pop(StatefulProcess2.NOTIFY)
-        to = notification[StatefulProcess2.TO]
-        info = notification[StatefulProcess2.INFO]
+        notification = self.message[0].pop(NOTIFY)
+        to = notification[TO]
+        info = notification[INFO]
 
         if not to in self.states:
             self._set_state(to, {})
 
-        operation = DictChangeOperation.ADD if not StatefulProcess2.NOTIFICATIONS in self.states[to] \
+        operation = DictChangeOperation.ADD if not NOTIFICATIONS in self.states[to] \
             else DictChangeOperation.SET
 
         self.run_tracking_operation(DictChangeOperation(self.states[to], operation,
-                                                        StatefulProcess2.NOTIFICATIONS, info))
+                                                        NOTIFICATIONS, info))
 
     def setup_handlers(self):
         super(StatefulProcess2, self).setup_handlers()
@@ -894,25 +898,28 @@ class StatefulProcess2(StackingContextProcess2):
         self.on(self.can_notify, self.do_notify)
 
 
+# ParsingProcess2 dialect
+ERROR = 'error'
+PROCEED = 'proceed'
+BREAK = 'break'
+CONTINUE = 'continue'
+
+PARSED_LENGTH = 'parsed_length'
+TEXT = 'text'
+LAST_PARSED = 'last_parsed'
+
+
 # Parsing process supports error and move commands for text processing
 class ParsingProcess2(StatefulProcess2):
-    ERROR = 'error'
-    PROCEED = 'proceed'
-    BREAK = 'break'
-    CONTINUE = 'continue'
-
-    PARSED_LENGTH = 'parsed_length'
-    TEXT = 'text'
-    LAST_PARSED = 'last_parsed'
 
     def do_new(self):
         super(ParsingProcess2, self).do_new()
-        self.query = Element.NEXT
-        self._context_set(ParsingProcess2.PARSED_LENGTH, 0)
-        self._context_set(ParsingProcess2.LAST_PARSED, '')
+        self.query = NEXT
+        self._context_set(PARSED_LENGTH, 0)
+        self._context_set(LAST_PARSED, '')
 
     def is_parsed(self):
-        return self.query == Element.NEXT and not self.text
+        return self.query == NEXT and not self.text
 
     def parse(self, *message, **context):
         result = super(ParsingProcess2, self).parse(*message, **context)
@@ -925,22 +932,22 @@ class ParsingProcess2(StatefulProcess2):
         if not message or not isinstance(message[0], dict):
             return False
 
-        distance = message[0].get(ParsingProcess2.PROCEED)
-        return is_number(distance) and len(self.context.get(ParsingProcess2.TEXT)) >= distance
+        distance = message[0].get(PROCEED)
+        return is_number(distance) and len(self.context.get(TEXT)) >= distance
 
     def do_proceed(self):
-        proceed = self.message[0].pop(ParsingProcess2.PROCEED)
-        last_parsed = self.context[ParsingProcess2.TEXT][0:proceed]
+        proceed = self.message[0].pop(PROCEED)
+        last_parsed = self.context[TEXT][0:proceed]
 
-        self._context_set(ParsingProcess2.TEXT, self.context[ParsingProcess2.TEXT][proceed:])
-        self._context_set(ParsingProcess2.PARSED_LENGTH, self.parsed_length + proceed)
-        self._context_set(ParsingProcess2.LAST_PARSED, last_parsed)
+        self._context_set(TEXT, self.context[TEXT][proceed:])
+        self._context_set(PARSED_LENGTH, self.parsed_length + proceed)
+        self._context_set(LAST_PARSED, last_parsed)
 
     # Next, Break, Error or Continue
     def do_turn(self):
         new_query = self.message.pop(0)
 
-        if new_query in Element.BACKWARD:
+        if new_query in BACKWARD:
             del self.message[:]
 
         self.query = new_query
@@ -948,26 +955,24 @@ class ParsingProcess2(StatefulProcess2):
     def setup_handlers(self):
         super(ParsingProcess2, self).setup_handlers()
 
-        self.on((Element.NEXT, ParsingProcess2.ERROR, ParsingProcess2.BREAK, ParsingProcess2.CONTINUE), self.do_turn)
+        self.on((NEXT, ERROR, BREAK, CONTINUE), self.do_turn)
         self.on(self.can_proceed, self.do_proceed)
 
     @property
     def text(self):
-        return self.context.get(ParsingProcess2.TEXT, '')
+        return self.context.get(TEXT, '')
 
     @property
     def parsed_length(self):
-        return self.context.get(ParsingProcess2.PARSED_LENGTH, 0)
+        return self.context.get(PARSED_LENGTH, 0)
 
     @property
     def last_parsed(self):
-        return self.context.get(ParsingProcess2.LAST_PARSED, '')
+        return self.context.get(LAST_PARSED, '')
 
 
 # Adding new backward commands
-Element.add_backward_command(ParsingProcess2.ERROR)
-Element.add_backward_command(ParsingProcess2.BREAK)
-Element.add_backward_command(ParsingProcess2.CONTINUE)
+BACKWARD += [ERROR, BREAK, CONTINUE]
 
 
 # Parsing relation: should be passable in forward direction (otherwise returns Error)
@@ -975,27 +980,30 @@ class ParsingRelation(NextRelation2):
     def __init__(self, subj, obj, condition=None, owner=None):
         super(ParsingRelation, self).__init__(subj, obj, condition, owner)
         self.optional = False
-        self.on(Talker.UNKNOWN, self.on_error)
+        self.on(UNKNOWN, self.on_error)
 
     # Here we check condition against the parsing text
     def check_condition(self, message, context):
-        return self.can_handle(self.condition, tupled(context.get(ParsingProcess2.TEXT), message), context)
+        return self.can_handle(self.condition, tupled(context.get(TEXT), message), context)
 
     def next_handler(self, *message, **context):
         next_result = super(ParsingRelation, self).next_handler(*message, **context)
-        rank = context.get(Handler.RANK)
+        rank = context.get(RANK)
 
-        return ({ParsingProcess2.PROCEED: rank}, next_result) if rank else next_result
+        return ({PROCEED: rank}, next_result) if rank else next_result
 
     def on_error(self, *message, **context):
-        if not self.optional and len(message) > 1 and message[1] in Element.FORWARD:
-            return ParsingProcess2.ERROR
+        if not self.optional and len(message) > 1 and message[1] in FORWARD:
+            return ERROR
+
+
+# SelectiveNotion2 dialect
+CASES = 'cases'
 
 
 # Selective notion: complex notion that can consist of one of its objects
 # It tries all relations and uses the one without errors
 class SelectiveNotion2(ComplexNotion2):
-    CASES = 'cases'
 
     def __init__(self, name, owner=None):
         super(SelectiveNotion2, self).__init__(name, owner)
@@ -1005,14 +1013,14 @@ class SelectiveNotion2(ComplexNotion2):
 
     # Searching for the longest case
     def get_best_cases(self, message, context):
-        context[Handler.ANSWER] = Handler.RANK
+        context[ANSWER] = RANK
 
         cases = []
         max_len = -1
         for rel in self.relations:
             result, length = rel(*message, **context)  # With the rank, please
 
-            if result != ParsingProcess2.ERROR and length >= 0:
+            if result != ERROR and length >= 0:
                 max_len = max(length, max_len)
                 cases.append((rel, length))
 
@@ -1020,7 +1028,7 @@ class SelectiveNotion2(ComplexNotion2):
 
     # Events #
     def can_go_forward(self, *message, **context):
-        if not context.get(StatefulProcess2.STATE):  # If we've been here before we need to try something different
+        if not context.get(STATE):  # If we've been here before we need to try something different
             return super(SelectiveNotion2, self).can_go_forward(*message, **context)
 
     def do_forward(self, *message, **context):
@@ -1035,47 +1043,50 @@ class SelectiveNotion2(ComplexNotion2):
                 if not cases:
                     reply = case
                 else:
-                    reply = (StackingContextProcess2.PUSH_CONTEXT,  # Keep the context if re-try will needed
-                             {StatefulProcess2.SET_STATE: {SelectiveNotion2.CASES: cases}},  # Store what to try next
+                    reply = (PUSH_CONTEXT,  # Keep the context if re-try will needed
+                             {SET_STATE: {CASES: cases}},  # Store what to try next
                              case,  # Try first case
                              self)  # And come back again
             else:
-                return ParsingProcess2.ERROR
+                return ERROR
 
         return reply
 
     def can_retry(self, *message, **context):
-        return context.get(StatefulProcess2.STATE) and has_first(message, ParsingProcess2.ERROR)
+        return context.get(STATE) and has_first(message, ERROR)
 
     def do_retry(self, *message, **context):
-        cases = context[StatefulProcess2.STATE][SelectiveNotion2.CASES]
+        cases = context[STATE][CASES]
 
         if cases:
             case = cases.pop(0)  # Try another case, if any
 
             # Pop context and update state, then try another case and come back here
-            return [StackingContextProcess2.POP_CONTEXT,  # Roll back to the initial context
-                    {StatefulProcess2.SET_STATE: {SelectiveNotion2.CASES: cases}},  # Update cases
-                    StackingContextProcess2.PUSH_CONTEXT,  # Save updated context
-                    Element.NEXT,  # Go forward again
+            return [POP_CONTEXT,  # Roll back to the initial context
+                    {SET_STATE: {CASES: cases}},  # Update cases
+                    PUSH_CONTEXT,  # Save updated context
+                    NEXT,  # Go forward again
                     case,  # Try another case
                     self]  # Come back
         else:
             return self.do_finish(*message, **context)  # No more opportunities
 
     def can_finish(self, *message, **context):
-        return context.get(StatefulProcess2.STATE) and self.is_forward(message)
+        return context.get(STATE) and self.is_forward(message)
 
     def do_finish(self, *message, **context):
-        return [StatefulProcess2.FORGET_CONTEXT, StatefulProcess2.CLEAR_STATE]
+        return [FORGET_CONTEXT, CLEAR_STATE]
+
+
+# LoopRelation2 dialect
+ITERATION = 'i'
+WILDCARDS = ('*', '?', '+')
+INFINITY = float('inf')
 
 
 # Loop relation specifies counts of the related object.
 # Possible conditions are: numeric (n; m..n; m..; ..n), wildcards (*, ?, +), true (infinite loop), and iterator function
 class LoopRelation2(NextRelation2):
-    ITERATION = 'i'
-    WILDCARDS = ('*', '?', '+')
-    INFINITY = float('inf')
 
     def __init__(self, subj, obj, condition=None, owner=None):
         super(LoopRelation2, self).__init__(subj, obj, condition, owner)
@@ -1099,7 +1110,7 @@ class LoopRelation2(NextRelation2):
 
     # Is a wildcard loop
     def is_wildcard(self):
-        return self.condition in LoopRelation2.WILDCARDS
+        return self.condition in WILDCARDS
 
     # Is a numeric loop
     def is_numeric(self):
@@ -1127,11 +1138,11 @@ class LoopRelation2(NextRelation2):
 
     # Checking is we are in loop now
     def is_looping(self, context):
-        return LoopRelation2.ITERATION in context.get(StatefulProcess2.STATE)
+        return ITERATION in context.get(STATE)
 
     # Get the limits of the loop
     def get_bounds(self):
-        lower, upper = 0, LoopRelation2.INFINITY
+        lower, upper = 0, INFINITY
 
         if self.is_numeric():
             if is_number(self.condition):
@@ -1155,12 +1166,12 @@ class LoopRelation2(NextRelation2):
 
     # Make the iteration reply
     def get_next_iteration_reply(self, i=1):
-        reply = [{StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: i}}]
+        reply = [{SET_STATE: {ITERATION: i}}]
 
         if self.is_flexible():
             if i != 1:
-                reply.insert(0, StatefulProcess2.FORGET_CONTEXT)  # Forget the past
-            reply += [StackingContextProcess2.PUSH_CONTEXT]  # Save state if needed
+                reply.insert(0, FORGET_CONTEXT)  # Forget the past
+            reply += [PUSH_CONTEXT]  # Save state if needed
 
         return reply + [self.object, self]  # Try and come back
 
@@ -1176,7 +1187,7 @@ class LoopRelation2(NextRelation2):
         return self.is_forward(message) and self.is_looping(context) and self.is_general()
 
     def do_loop_general(self, *message, **context):
-        i = context.get(StatefulProcess2.STATE).get(LoopRelation2.ITERATION)
+        i = context.get(STATE).get(ITERATION)
 
         if i < self.get_bounds()[1]:
             return self.get_next_iteration_reply(i + 1)
@@ -1184,15 +1195,15 @@ class LoopRelation2(NextRelation2):
             reply = []
 
             if self.is_flexible():
-                reply += [StatefulProcess2.FORGET_CONTEXT]
+                reply += [FORGET_CONTEXT]
 
-            return reply + [StatefulProcess2.CLEAR_STATE]
+            return reply + [CLEAR_STATE]
 
     def can_error_general(self, *message, **context):
-        return has_first(message, ParsingProcess2.ERROR) and self.is_looping(context) and self.is_general()
+        return has_first(message, ERROR) and self.is_looping(context) and self.is_general()
 
     def do_error_general(self, *message, **context):
-        i = context.get(StatefulProcess2.STATE).get(LoopRelation2.ITERATION)
+        i = context.get(STATE).get(ITERATION)
         lower, upper = self.get_bounds()
 
         reply = []
@@ -1200,11 +1211,11 @@ class LoopRelation2(NextRelation2):
         if self.is_flexible():
             # Roll back to the previous good result
             if lower < i <= upper:
-                reply += [Element.NEXT, StatefulProcess2.POP_CONTEXT]
+                reply += [NEXT, POP_CONTEXT]
             else:
-                reply += [StatefulProcess2.FORGET_CONTEXT]
+                reply += [FORGET_CONTEXT]
 
-        return reply + [StatefulProcess2.CLEAR_STATE]
+        return reply + [CLEAR_STATE]
     
     # Custom loop
     def can_loop_custom(self, *message, **context):
@@ -1214,33 +1225,33 @@ class LoopRelation2(NextRelation2):
         i = self.var_call_result(self.condition, message, context)
 
         if i:
-            return {StatefulProcess2.SET_STATE: {LoopRelation2.ITERATION: i}}, self.object, self
+            return {SET_STATE: {ITERATION: i}}, self.object, self
         else:
-            return False if not self.is_looping(context) else StatefulProcess2.CLEAR_STATE,
+            return False if not self.is_looping(context) else CLEAR_STATE,
 
     def can_error_custom(self, *message, **context):
-        return has_first(message, ParsingProcess2.ERROR) and self.is_custom()
+        return has_first(message, ERROR) and self.is_custom()
 
     def do_error_custom(self, *message, **context):
-        return StatefulProcess2.CLEAR_STATE,
+        return CLEAR_STATE,
     
     # Common handling
     def can_break(self, *message, **context):
-        return has_first(message, ParsingProcess2.BREAK) and self.is_looping(context)
+        return has_first(message, BREAK) and self.is_looping(context)
 
     def do_break(self, *message, **context):
-        reply = [Element.NEXT]
+        reply = [NEXT]
 
         if self.is_flexible():
-            reply += [StatefulProcess2.FORGET_CONTEXT]
+            reply += [FORGET_CONTEXT]
 
-        return reply + [StatefulProcess2.CLEAR_STATE]
+        return reply + [CLEAR_STATE]
 
     def can_continue(self, *message, **context):
-        return has_first(message, ParsingProcess2.CONTINUE) and self.is_looping(context)
+        return has_first(message, CONTINUE) and self.is_looping(context)
 
     def do_continue(self, *message, **context):
-        return [Element.NEXT] + self.do_loop_general(*message, **context)
+        return [NEXT] + self.do_loop_general(*message, **context)
 
 
 # Graph is a holder of Notions and Relation, it allows easy search and processing of them
@@ -1252,7 +1263,7 @@ class Graph(Element):
         self._notions = []
         self._relations = []
 
-        self.on(self.add_prefix(Element.OWNER, Element.SET_PREFIX), self.do_element)
+        self.on(self.add_prefix(OWNER, SET_PREFIX), self.do_element)
         self.on_forward(self.do_forward)
 
         if root:
@@ -1308,12 +1319,12 @@ class Graph(Element):
             if isinstance(criteria, dict):
                 req, rel = [], []
 
-                if Relation2.SUBJECT in criteria:
-                    req.append(criteria[Relation2.SUBJECT])
+                if SUBJECT in criteria:
+                    req.append(criteria[SUBJECT])
                     rel.append(relation.subject)
 
-                if Relation2.OBJECT in criteria:
-                    req.append(criteria[Relation2.OBJECT])
+                if OBJECT in criteria:
+                    req.append(criteria[OBJECT])
                     rel.append(relation.object)
 
                 return len(rel) if rel == req and rel else -1
@@ -1328,7 +1339,7 @@ class Graph(Element):
         return found[0] if found else None
 
     def do_element(self, *message, **context):
-        element = context.get(Handler.SENDER)
+        element = context.get(SENDER)
 
         if isinstance(element, Notion2) or isinstance(element, Graph):
             collection = self._notions
@@ -1337,7 +1348,7 @@ class Graph(Element):
         else:
             return False
 
-        if context[Element.OLD_VALUE] == self and element in collection:
+        if context[OLD_VALUE] == self and element in collection:
             collection.remove(element)
 
             if element == self.root:
@@ -1345,7 +1356,7 @@ class Graph(Element):
 
             return True
 
-        elif context[Element.NEW_VALUE] == self and element not in collection:
+        elif context[NEW_VALUE] == self and element not in collection:
             collection.append(element)
             return True
 

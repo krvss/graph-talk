@@ -113,13 +113,13 @@ def make_graph(vm):
         # Loop becomes new top to add the commands
         LoopRelation2(top, new_top, lambda: None if not vm.is_not_zero() else True)
 
-        return {SharedContextProcess2.UPDATE_CONTEXT: {'top': new_top}}
+        return {UPDATE_CONTEXT: {'top': new_top}}
 
     def stop_loop(top_stack):
         if top_stack:
-            return {SharedContextProcess2.UPDATE_CONTEXT: {'top': top_stack.pop()}}, ParsingProcess2.BREAK
+            return {UPDATE_CONTEXT: {'top': top_stack.pop()}}, BREAK
         else:
-            return Process2.STOP
+            return STOP
 
     # Building interpreter graph, Source is responsible for parsing and Program for execution
     b = GraphBuilder('Interpreter').next().complex('Source').next().complex('Commands')
@@ -133,7 +133,7 @@ def make_graph(vm):
     b.at(command_root).parse(']').act('Stop Loop', stop_loop)
 
     # Errors (only one actually)
-    b.at(command_root).parse(re.compile('.')).act('Bad character', Process2.STOP)
+    b.at(command_root).parse(re.compile('.')).act('Bad character', STOP)
 
     # The program itself
     # TODO moar errors
@@ -153,7 +153,7 @@ def interprete(source, test=False):
 
     r = process(context['root'], text=source, **context)
 
-    if r == Process2.STOP:
+    if r == STOP:
         if process.current.name == 'Bad character':
             print 'Unknown char "%s" at position %s' % (process.last_parsed, process.parsed_length)
 

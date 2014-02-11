@@ -3,7 +3,7 @@
 
 from collections import defaultdict
 
-from ut import Abstract, Handler, Process2, Talker
+from ut import *
 from utils import has_first, get_object_name
 
 try:
@@ -20,8 +20,8 @@ class ProcessDebugger(Handler):
     LOG = 'log'
     EVENT = 'event'
 
-    AT_EVENT = Process2.add_prefix(get_object_name(Process2.do_queue_push), Talker.POST_PREFIX)
-    LOG_EVENT = Process2.add_prefix(Process2.QUERY, Talker.POST_PREFIX)
+    AT_EVENT = Process2.add_prefix(get_object_name(Process2.do_queue_push), POST_PREFIX)
+    LOG_EVENT = Process2.add_prefix(QUERY, POST_PREFIX)
 
     def __init__(self, process=None, log=False):
         super(ProcessDebugger, self).__init__()
@@ -67,7 +67,7 @@ class ProcessDebugger(Handler):
             del self._points[self._process]
 
     def is_at(self, *message, **context):
-        process = context[Handler.SENDER]
+        process = context[SENDER]
         point = self._points.get(process.current)
 
         if not point:
@@ -77,11 +77,11 @@ class ProcessDebugger(Handler):
             return has_first(message, ProcessDebugger.AT_EVENT)
 
     def do_reply_at(self, *message, **context):
-        process = context.get(self.SENDER)
+        process = context.get(SENDER)
         return self._points[process.current].get(self.REPLY)
 
     def is_log(self, *message, **context):
-        process = context[Handler.SENDER]
+        process = context[SENDER]
         point = self._points.get(process)
 
         if not point:
