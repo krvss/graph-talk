@@ -89,5 +89,5 @@ class ProcessDebugger(Handler):
 
         if self.LOG in point and has_first(message, ProcessDebugger.LOG_EVENT):
             query = process.text + ", " + process.query if hasattr(process, 'text') else process.query
-            print "%s: '%s'? - '%s'" % (process.current, query, context.get(process.RESULT))
+            print "%s: '%s'? - '%s'" % (process.current, query, context.get(RESULT))
 

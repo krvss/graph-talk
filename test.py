@@ -564,7 +564,7 @@ class UtTests(unittest.TestCase):
         # Testing the correct processing of list replies
         cn = ComplexNotion2('CN')
         n1 = Notion2('N1')
-        n2 = ActionNotion2('N2', STOP)
+        n2 = ActionNotion2('N2', [STOP, OK])
 
         NextRelation2(cn, n1)
         NextRelation2(cn, n2)
@@ -574,7 +574,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r, STOP)
         self.assertEquals(process.current, n2)
         self.assertEquals(len(process._queue), 1)
-        self.assertFalse(process.message)
+        self.assertListEqual(process.message, [OK])
 
         # Skip test
         r = process(NEW, strange)

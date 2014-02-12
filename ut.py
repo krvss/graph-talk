@@ -619,10 +619,14 @@ class Process2(Talker):
     def do_clear_message(self):
         self.message.pop(0)
 
+    def do_finish(self):
+        return self.message.pop(0)
+
     # Init handlers
     def setup_handlers(self):
         self.on(NEW, self.do_new)
         self.on(SKIP, self.do_skip)
+        self.on((STOP, OK), self.do_finish)
 
         self.on(self.can_query, self.do_query)
         self.on(self.can_push_queue, self.do_queue_push)
@@ -1426,7 +1430,7 @@ class GraphBuilder(object):
     def act_rel(self, action, obj=None):
         return self.attach(ActionRelation2(self.current, obj, action, self.graph))
 
-    def parse(self, condition, obj=None):
+    def parse_rel(self, condition, obj=None):
         return self.attach(ParsingRelation(self.current, obj, condition, self.graph))
 
     def loop(self, condition, obj=None):
