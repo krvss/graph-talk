@@ -503,10 +503,10 @@ class ActionRelation2(Relation2):
     def act_next(self, *message, **context):
         action_result = self.var_call_result(self.action, message, context) if callable(self.action) else self.action
 
-        if action_result and self.object:
+        if action_result is not None and self.object is not None:
             return action_result, self.object
         else:
-            return action_result or self.object
+            return action_result if action_result is not None else self.object
 
 
 # Process dialect
@@ -619,14 +619,14 @@ class Process2(Talker):
     def do_clear_message(self):
         self.message.pop(0)
 
-    def do_finish(self):
+    def do_return(self):
         return self.message.pop(0)
 
     # Init handlers
     def setup_handlers(self):
         self.on(NEW, self.do_new)
         self.on(SKIP, self.do_skip)
-        self.on((STOP, OK), self.do_finish)
+        self.on((STOP, OK, True, False), self.do_return)
 
         self.on(self.can_query, self.do_query)
         self.on(self.can_push_queue, self.do_queue_push)

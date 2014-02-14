@@ -39,13 +39,14 @@ def getch():
 
 # Brainfuck virtual machine that runs language commands
 class BFVM(object):  # TODO: to python with compressing
-    def __init__(self, test=False):
+    def __init__(self, test=None):
         self.memory = bytearray(30000)
         self.position = 0
 
         self.test = test
-        self.input_buffer = ''
-        self.out_buffer = ''
+        if self.test:
+            self.input_buffer = test
+            self.out_buffer = ''
 
     def inc(self):
         self.memory[self.position] = self.memory[self.position] + 1 \
@@ -77,12 +78,12 @@ class BFVM(object):  # TODO: to python with compressing
 
     def output(self):
         cell = self.memory[self.position]
+        # Printout in a friendly format
+        out = '(%s)' % cell if cell < 10 else chr(cell)
 
         if self.test:
-            self.out_buffer += chr(cell)
+            self.out_buffer += out
         else:
-            # Printout in a friendly format
-            out = '\'%s\'' % cell if cell < 10 else chr(cell)
             sys.stdout.write(out)
 
 
@@ -127,7 +128,7 @@ def make_graph(vm):
 
     # The program itself
     program_root = b.at(b.graph.root).act_rel(
-        lambda top_stack: True if not top_stack else STOP).complex('Program').current
+        lambda top_stack: None if not top_stack else STOP).complex('Program').current
 
     return {'root': b.graph, 'top': program_root, 'top_stack': []}
 
@@ -143,57 +144,53 @@ def interpret(source, test=None):
     r = process(context['root'], text=source, **context)
 
     if r == STOP:
+        message = 'Parsing error'
+
         if isinstance(process.current, Relation2):
-            print 'Start loop without end at position %s' % context['top_stack'][0][1]
+            message = 'Start loop without end at position %s' % context['top_stack'][0][1]
 
         elif isinstance(process.current, Notion2):
             if process.current.name == 'Bad character':
-                print 'Unknown char "%s" at position %s' % (process.last_parsed, process.parsed_length)
+                message = 'Unknown char "%s" at position %s' % (process.last_parsed, process.parsed_length)
 
             elif process.current.name == 'Stop loop':
-                print 'End loop without start at position %s' % process.parsed_length
+                message = 'End loop without start at position %s' % process.parsed_length
+
+        return message
+
+    if test:
+        return vm.out_buffer
 
 
-# Tests
+# Self-test
+def test_interpreter():
+    result = interpret(',>,.<.', 'ab')
+    assert result == 'ba'
 
-# Input and output 2 chars
-s = ',>,<.>.'
+    result = interpret('++[.-]', True)
+    assert result == '(2)(1)'
 
-# Simple loop
-s = '++[.-]'
+    result = interpret('++>++<[.->[.-]<]', True)
+    assert result == '(2)(2)(1)(1)'
 
-# Underflow error
-s = '+<'
+    result = interpret('[.[[]', True)
+    assert result.startswith('Start loop') and result.endswith('1')
 
-# Nested loops: print 2,2,1,1
-s = '++>++<[.->[.-]<]'
+    result = interpret('+++a', True)
+    assert result.startswith('Unknown char') and result.endswith('4')
 
-# Loops level error
-s = '[.[[]'
-
-# Bad command error
-s = '+++a'
-
-# Hello, World!
-s = '++++++++++[>+++++++>++++++++++>+++>+<<<<-]>++.>+.+++++++..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.'
+    result = interpret('--]', True)
+    assert result.startswith('End loop') and result.endswith('3')
 
 
 def main():
-    import cProfile
     if len(sys.argv) == 2:
-        f = open(sys.argv[1], "r")
-        #print Parser.execute(f.read())
-        #interprete('++>++<[.->[.-]<]')
-        #interprete('+[-].')
-        cProfile.run('interpret(s)', sort=0)
-        #interprete('[')
-        #interprete(s)
-        #interprete('-[-[+]')
+        f = open(sys.argv[1], 'r')
+        interpret(f.read())
         f.close()
     else:
+        test_interpreter()
         print "Usage: " + sys.argv[0] + " filename"
 
 if __name__ == "__main__":
     main()
-else:
-    print Parser.execute(s)
