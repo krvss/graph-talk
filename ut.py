@@ -928,7 +928,7 @@ class ParsingProcess2(StatefulProcess2):
     def parse(self, *message, **context):
         result = super(ParsingProcess2, self).parse(*message, **context)
 
-        return False if not self.is_parsed() else result[0], self.parsed_length, result[2]
+        return False if not self.is_parsed() and not result[0] == STOP else result[0], self.parsed_length, result[2]
 
     # Events #
     # Proceed: part of the Text was parsed

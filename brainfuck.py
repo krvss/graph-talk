@@ -1,44 +1,11 @@
 import sys
-import os
-import termios
-import fcntl
 
 from ut import *
-
-
-# From http://love-python.blogspot.ru/2010/03/getch-in-python-get-single-character.html
-def _getch():
-    fd = sys.stdin.fileno()
-
-    oldterm = termios.tcgetattr(fd)
-    newattr = termios.tcgetattr(fd)
-    newattr[3] = newattr[3] & ~termios.ICANON & ~termios.ECHO
-    termios.tcsetattr(fd, termios.TCSANOW, newattr)
-
-    oldflags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, oldflags | os.O_NONBLOCK)
-
-    try:
-        while 1:
-            try:
-                c = sys.stdin.read(1)
-                break
-            except IOError: pass
-    finally:
-        termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
-        fcntl.fcntl(fd, fcntl.F_SETFL, oldflags)
-    return c
-
-
-def getch():
-    try:
-        return _getch()
-    except Exception:
-        return sys.stdin.read(1)
+import re
 
 
 # Brainfuck virtual machine that runs language commands
-class BFVM(object):  # TODO: to python with compressing
+class BFVM(object):
     def __init__(self, test=None):
         self.memory = bytearray(30000)
         self.position = 0
@@ -72,7 +39,7 @@ class BFVM(object):  # TODO: to python with compressing
             value = self.input_buffer[0]
             self.input_buffer = self.input_buffer[1:]
         else:
-            value = getch()
+            value = sys.stdin.read(1)
 
         self.memory[self.position] = ord(value)
 
@@ -88,7 +55,7 @@ class BFVM(object):  # TODO: to python with compressing
 
 
 # Create the parsing/interpreting graph for the specified VM
-def make_graph(vm):
+def make_interpreter_graph(vm):
     simple_commands = dict((('+', vm.inc), ('-', vm.dec), ('.', vm.output), (',', vm.input),
                             ('>', vm.right), ('<', vm.left)))
 
@@ -133,12 +100,7 @@ def make_graph(vm):
     return {'root': b.graph, 'top': program_root, 'top_stack': []}
 
 
-# Interprets specified string using buffer for testing
-def interpret(source, test=None):
-    vm = BFVM(test)
-
-    context = make_graph(vm)
-
+def run(source, context):
     process = ParsingProcess2()
 
     r = process(context['root'], text=source, **context)
@@ -158,8 +120,14 @@ def interpret(source, test=None):
 
         return message
 
-    if test:
-        return vm.out_buffer
+
+# Interprets specified string using buffer for testing
+def interpret(source, test=None):
+    vm = BFVM(test)
+
+    result = run(source, make_interpreter_graph(vm))
+
+    return result if not test else result or vm.out_buffer
 
 
 # Self-test
@@ -183,14 +151,83 @@ def test_interpreter():
     assert result.startswith('End loop') and result.endswith('3')
 
 
+def make_converter_graph():
+    def add_with_tabs(s, code, tabs=0):
+        code.append(" " * tabs * 4 + s)
+
+    def start_loop(code, level):
+        add_with_tabs('\nwhile mem[i]:', code, level)
+
+        return {UPDATE_CONTEXT: {'level': level + 1}}
+
+    def stop_loop(code, level):
+        add_with_tabs('\n', code, 0)
+
+        if level:
+            return {UPDATE_CONTEXT: {'level': level - 1}}
+        else:
+            return STOP
+
+    # Building converter graph
+    b = GraphBuilder('Interpreter').next().complex('code').next().complex('Commands')
+    command_root = b.loop(lambda text: text).select('Command').current
+
+    # Commands
+    b.at(command_root).parse_rel(re.compile('\++')).act('+',
+                    lambda level, code, last_parsed: add_with_tabs('mem[i] += %s' % len(last_parsed), code, level))
+
+    b.at(command_root).parse_rel(re.compile('-+')).act('-',
+                    lambda level, code, last_parsed: add_with_tabs('mem[i] -= %s' % len(last_parsed), code, level))
+
+    b.at(command_root).parse_rel(re.compile('>+')).act('>',
+                    lambda level, code, last_parsed: add_with_tabs('i += %s' % len(last_parsed), code, level))
+
+    b.at(command_root).parse_rel(re.compile('<+')).act('>',
+                    lambda level, code, last_parsed: add_with_tabs('i -= %s' % len(last_parsed), code, level))
+
+    b.at(command_root).parse_rel('.').act('.',
+                    lambda level, code: add_with_tabs('sys.stdout.write(chr(mem[i]))', code, level))
+
+    b.at(command_root).parse_rel(',').act(',',
+                    lambda level, code: add_with_tabs('mem[i] = ord(sys.stdin.read(1))', code, level))
+
+    b.at(command_root).parse_rel('[').act('Start loop', start_loop)
+    b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
+
+    # Invalid character error
+    b.at(command_root).parse_rel(re.compile('.')).act('Bad character', STOP)
+    
+    # Initial source
+    code = []
+    code.append('import sys\n')
+    code.append('i, mem = 0, bytearray(30000)\n')
+
+    return {'root': b.graph, 'code': code, 'level': 0, }
+
+
+def convert(source):
+    context = make_converter_graph()
+
+    result = run(source, context)
+
+    if result is None:
+        for line in context['code']:
+            print line
+    else:
+        print result
+
+
 def main():
-    if len(sys.argv) == 2:
-        f = open(sys.argv[1], 'r')
-        interpret(f.read())
-        f.close()
+    if len(sys.argv) >= 2:
+        with open(sys.argv[1], 'r') as f:
+            source = f.read()
+            result = convert(source) if 'c' in sys.argv else interpret(source)
+
+            if result:
+                print result
     else:
         test_interpreter()
-        print "Usage: " + sys.argv[0] + " filename"
+        print "Usage: " + sys.argv[0] + " filename [c]"
 
 if __name__ == "__main__":
     main()

@@ -974,6 +974,9 @@ class UtTests(unittest.TestCase):
         self.assertFalse(r)
         self.assertEqual(process.query, ERROR)
 
+        r = process(NEW, STOP, **{TEXT: 1})
+        self.assertEqual(r, STOP)
+
     def test_e_conditions(self):
         # Simple positive condition test root -a-> d for 'a'
         root = ComplexNotion2('root')
