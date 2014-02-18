@@ -34,6 +34,7 @@ NO_PARSE = (False, -1, None)
 class Handler(Abstract):
     def __init__(self):
         self.handlers = []
+        self.ignore_case = False
 
     # Adding the condition - handler pair
     def on(self, condition, handler):
@@ -129,7 +130,12 @@ class Handler(Abstract):
 
             for c in condition:
                 if is_string(c) and message:
-                    if str(message[0]).startswith(c):
+                    if self.ignore_case:
+                        c, m = c.upper(), str(message[0]).upper()
+                    else:
+                        m = str(message[0])
+
+                    if m.startswith(c):
                         rank, check = len(c), c
 
                 elif has_first(message, c):
