@@ -1021,20 +1021,37 @@ class SelectiveNotion2(ComplexNotion2):
         self.on(self.can_retry, self.do_retry)
         self.on(self.can_finish, self.do_finish)
 
-    # Searching for the longest case
+        self._default = None
+
+    # Searching for the longest case, use default if none and it is specified
     def get_best_cases(self, message, context):
         context[ANSWER] = RANK
 
         cases = []
         max_len = -1
         for rel in self.relations:
+            if rel == self.default:  # Not now
+                continue
+
             result, length = rel(*message, **context)  # With the rank, please
 
             if result != ERROR and length >= 0:
                 max_len = max(length, max_len)
                 cases.append((rel, length))
 
-        return [case for case, length in cases if length == max_len]
+        best_cases = [case for case, length in cases if length == max_len]
+
+        if not best_cases and self.default:  # Right time to use the default
+            best_cases = [self.default]
+
+        return best_cases
+
+    # Default should be the part of relations
+    def do_relation(self, *message, **context):
+        super(SelectiveNotion2, self).do_relation(*message, **context)
+
+        if self.default and not self.default in self.relations:
+            self.default = None
 
     # Events #
     def can_go_forward(self, *message, **context):
@@ -1086,6 +1103,17 @@ class SelectiveNotion2(ComplexNotion2):
 
     def do_finish(self, *message, **context):
         return [FORGET_CONTEXT, CLEAR_STATE]
+
+    @property
+    def default(self):
+        return self._default
+
+    @default.setter
+    def default(self, value):
+        if self._default == value or (value and value.subject != self):
+            return
+
+        self._default = value
 
 
 # LoopRelation2 dialect

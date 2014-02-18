@@ -1144,6 +1144,33 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.query, ERROR)  # No case found
         check_test_result(self, process, root, 0)
 
+        # Default test
+        default = ParsingRelation(root, None, re.compile('.'))
+        root.default = default
+
+        r = root(NEXT, **{TEXT: 'x'})
+
+        self.assertEqual(r, default)
+
+        default.subject = None
+
+        self.assertIsNone(root.default)
+
+        root.default = default
+
+        self.assertIsNone(root.default)
+
+        r = root(NEXT, **{TEXT: 'x'})
+
+        self.assertEqual(r, ERROR)
+
+        default.subject = root
+
+        r = root(NEXT, **{TEXT: 'a'})
+        self.assertEqual(r[0], PUSH_CONTEXT)
+
+        default.subject = None
+
         # Alternative test: root ->( a1 -> (-a-> a, -b->b) ), a2 -> (-aa->aa), -bb->bb ) ) for 'aa'
         c1.subject = None
         c2.subject = None

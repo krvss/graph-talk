@@ -90,8 +90,8 @@ def make_interpreter_graph(vm):
     b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
 
     # Invalid character error
-    b.at(command_root).parse_rel(
-        lambda text: 1 if text[0] not in simple_commands else 0).act('Bad character', STOP)
+    b.at(command_root).parse_rel(re.compile('.')).act('Bad character', STOP)
+    command_root.default = command_root.relations[-1]
 
     # The program itself
     program_root = b.at(b.graph.root).act_rel(
@@ -196,6 +196,7 @@ def make_converter_graph():
 
     # Invalid character error
     b.at(command_root).parse_rel(re.compile('.')).act('Bad character', STOP)
+    command_root.default = command_root.relations[-1]
     
     # Initial source
     code = []
