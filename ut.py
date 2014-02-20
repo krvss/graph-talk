@@ -1458,14 +1458,20 @@ class GraphBuilder(object):
     def notion(self, name):
         return self.attach(Notion2(name, self.graph))
 
-    def next(self, condition=None, obj=None):
-        return self.attach(NextRelation2(self.current, obj, condition, self.graph))
+    def next(self, condition=None, obj=None, ignore_case=None):
+        rel = NextRelation2(self.current, obj, condition, self.graph)
+        rel.ignore_case = ignore_case
+
+        return self.attach(rel)
 
     def act_rel(self, action, obj=None):
         return self.attach(ActionRelation2(self.current, obj, action, self.graph))
 
-    def parse_rel(self, condition, obj=None):
-        return self.attach(ParsingRelation(self.current, obj, condition, self.graph))
+    def parse_rel(self, condition, obj=None, ignore_case=None, optional=None):
+        rel = ParsingRelation(self.current, obj, condition, self.graph)
+        rel.ignore_case, rel.optional = ignore_case, optional
+
+        return self.attach(rel)
 
     def loop(self, condition, obj=None):
         return self.attach(LoopRelation2(self.current, obj, condition, self.graph))
