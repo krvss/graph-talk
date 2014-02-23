@@ -192,6 +192,9 @@ class UtTests(unittest.TestCase):
         self.assertEquals(h.can_handle(('A', 'bb'), ['aa'], {}), (1, 'A'))
         h.ignore_case = False
 
+        condition_r_2 = re.compile('aa')
+        self.assertEquals(h.can_handle((condition_r, condition_r_2, 'aa'), ['aa'], {}), (2, 'aa'))
+
         self.assertEquals(h.can_handle(1, [1], {}), (0, 1))
         self.assertEquals(h.can_handle(1, [0], {}), cant_handle)
 

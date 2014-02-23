@@ -108,38 +108,36 @@ class Handler(Abstract):
     # Checking the condition to satisfy the message and context
     def can_handle(self, condition, message, context):
         rank, check = -1, None
+        conditions = condition if is_list(condition) else [condition]
 
-        if callable(condition):
-            check = self.var_call_result(condition, message, context)
+        for condition in conditions:
+            if callable(condition):
+                check = self.var_call_result(condition, message, context)
 
-            # Do we work with (rank, check) format?
-            if is_list(check) and len(check) == 2 and is_number(check[0]):
-                rank, check = check
-            elif check:
-                rank = check if is_number(check) else 0  # If check result is numeric - this is a rank
+                # Do we work with (rank, check) format?
+                if is_list(check) and len(check) == 2 and is_number(check[0]):
+                    rank, check = check
+                elif check:
+                    rank = check if is_number(check) else 0  # If check result is numeric - this is a rank
 
-        elif is_regex(condition):
-            check = condition.match(message[0]) if message else None
+            elif is_regex(condition):
+                check = condition.match(message[0]) if message else None
 
-            if check:
-                rank = check.end() - check.start()  # Match length is the rank
+                if check:
+                    rank = check.end() - check.start()  # Match length is the rank
 
-        else:
-            if not is_list(condition):
-                condition = [condition]
+            elif is_string(condition) and message:
+                message0 = str(message[0])
 
-            for c in condition:
-                if is_string(c) and message:
-                    if self.ignore_case:
-                        c, m = c.upper(), str(message[0]).upper()
-                    else:
-                        m = str(message[0])
+                if self.ignore_case:
+                    message0 = message0.upper()
+                    condition = condition.upper()
 
-                    if m.startswith(c):
-                        rank, check = len(c), c
+                if message0.startswith(condition):
+                    rank, check = len(condition), condition
 
-                elif has_first(message, c):
-                    rank, check = max(get_len(c), 0), c
+            elif has_first(message, condition):
+                rank, check = max(get_len(condition), 0), condition
 
         if rank < 0:
             check = None  # Little cleanup
@@ -1458,7 +1456,7 @@ class GraphBuilder(object):
     def notion(self, name):
         return self.attach(Notion2(name, self.graph))
 
-    def next(self, condition=None, obj=None, ignore_case=None):
+    def next_rel(self, condition=None, obj=None, ignore_case=None):
         rel = NextRelation2(self.current, obj, condition, self.graph)
         rel.ignore_case = ignore_case
 
@@ -1472,6 +1470,12 @@ class GraphBuilder(object):
         rel.ignore_case, rel.optional = ignore_case, optional
 
         return self.attach(rel)
+
+    def default(self):
+        if isinstance(self.current, Relation2) and isinstance(self.current.subject, SelectiveNotion2):
+            self.current.subject.default = self.current
+
+        return self
 
     def loop(self, condition, obj=None):
         return self.attach(LoopRelation2(self.current, obj, condition, self.graph))

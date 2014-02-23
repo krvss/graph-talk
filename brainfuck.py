@@ -79,7 +79,7 @@ def make_interpreter_graph(vm):
             return STOP
 
     # Building interpreter graph, Source is responsible for parsing and Program for execution
-    b = GraphBuilder('Interpreter').next().complex('Source').next().complex('Commands')
+    b = GraphBuilder('Interpreter').next_rel().complex('Source').next_rel().complex('Commands')
     command_root = b.loop(lambda text: text).select('Command').current
 
     # Simple command parsing
@@ -90,8 +90,7 @@ def make_interpreter_graph(vm):
     b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
 
     # Invalid character error
-    b.at(command_root).parse_rel(re.compile('.')).act('Bad character', STOP)
-    command_root.default = command_root.relations[-1]
+    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', STOP)
 
     # The program itself
     program_root = b.at(b.graph.root).act_rel(
@@ -169,7 +168,7 @@ def make_converter_graph():
             return STOP
 
     # Building converter graph
-    b = GraphBuilder('Interpreter').next().complex('code').next().complex('Commands')
+    b = GraphBuilder('Interpreter').next_rel().complex('code').next_rel().complex('Commands')
     command_root = b.loop(lambda text: text).select('Command').current
 
     # Commands
@@ -195,8 +194,7 @@ def make_converter_graph():
     b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
 
     # Invalid character error
-    b.at(command_root).parse_rel(re.compile('.')).act('Bad character', STOP)
-    command_root.default = command_root.relations[-1]
+    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', STOP)
     
     # Initial source
     code = []
