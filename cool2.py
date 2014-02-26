@@ -4,6 +4,7 @@ import re
 
 # Shared variables
 LINE_NO = 'line_no'
+ERROR_TOKEN = 'ERROR'
 
 # Constants
 EOF = chr(255)
@@ -28,7 +29,7 @@ TOKEN_DICT = dict((
     ('ISVOID', 'ISVOID'),
     ('<-', 'ASSIGN'),
     ('NOT', 'NOT'),
-    ('ERROR', 'ERROR'),
+    (ERROR_TOKEN, ERROR_TOKEN),
     ('LET_STMT', 'LET_STMT'),
     ('<=', 'LE')
 ))
@@ -59,6 +60,17 @@ def print_token(line_no, token, data=''):
     print '# %s %s %s' % (line_no, token, data)
 
 
+def print_and_error(line_no, token, data=''):
+    print_token(line_no, token, data)
+
+    if token == ERROR_TOKEN:
+        return ERROR
+
+
+def inc_line_no(line_no):
+    return {UPDATE_CONTEXT: {LINE_NO: line_no + 1}}
+
+
 def build_root():
     global builder
     statement = builder.loop(True).select('Statement').current
@@ -87,27 +99,50 @@ def build_root():
                                    lambda line_no, last_parsed: print_token(line_no, 'TYPEID', last_parsed))
 
     # New line: increment the counter
-    builder.at(statement).parse_rel(R_EOL).act('New Line',
-                                   lambda line_no: {UPDATE_CONTEXT: {LINE_NO: line_no + 1}})
+    builder.at(statement).parse_rel(R_EOL).act('New Line', inc_line_no)
 
     # Skipping white space
     builder.at(statement).parse_rel(R_WHITE_SPACE, None)
 
     # Complex notions
     add_inline_comment(statement)
+    add_multiline_comment(statement)
+
+    # Errors
+    add_errors(statement)
 
     # Stopping
     builder.at(statement).parse_rel(EOF, OK)
 
 
+# One-line comment notion
 def add_inline_comment(statement):
     builder.at(statement).parse_rel('--').complex('Inline comment')
     inline_comment_chars = builder.loop('*').select('Inline comment chars').current
 
-    builder.at(inline_comment_chars).next_rel([R_EOL, EOF], BREAK)  # No need to parse here, just done
+    builder.at(inline_comment_chars).parse_rel([R_EOL, EOF], BREAK).check_only()  # No need to parse here, just done
     builder.at(inline_comment_chars).parse_rel(R_ANY_CHAR).default()  # Just skip
 
 
+# Multi-line comment notion
+def add_multiline_comment(statement):
+    multiline_comment = builder.at(statement).parse_rel('(*').complex('Multi-line comment').current
+    multiline_comment_body = builder.loop('*').select('Multi-line comment body').current
+    builder.at(multiline_comment).parse_rel('*)')  # It is necessary to have the comment closed
+
+    builder.at(multiline_comment_body).parse_rel(R_EOL).act('New Line in comment', inc_line_no)
+    builder.at(multiline_comment_body).parse_rel(EOF).act('EOF in comment',
+                                          lambda line_no: print_and_error(line_no, ERROR_TOKEN, 'EOF in comment'))
+
+    builder.at(multiline_comment_body).parse_rel('(*', statement.owner.notion('Multi-line comment'))  # Nested comment
+    builder.at(multiline_comment_body).parse_rel('*)').check_only().act('End Multi-line comment', BREAK)  # Done with the body
+
+    builder.at(multiline_comment_body).parse_rel(R_ANY_CHAR).default()  # Consuming chars (gulp!)
+
+
+def add_errors(statement):
+    builder.at(statement).parse_rel('*)').act('Unmatched multi-line',
+                                          lambda line_no: print_and_error(line_no, ERROR_TOKEN, 'Unmatched multi-line'))
 
 
 
@@ -119,7 +154,7 @@ name = 'grading/all_else_true.cl.cool'
 
 with open(name) as f:
     #content = f.read()
-    content = ''' 14 -- 1 \n 22'''
+    content = '''(* (* *) \n*) 2 -- lol \n 3'''
     content += EOF
     parser = ParsingProcess2()
     #ProcessDebugger(parser, True)

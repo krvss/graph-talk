@@ -1063,6 +1063,25 @@ class UtTests(unittest.TestCase):
         parsing.object = 1
         self.assertEqual(parsing(NEXT), 1)
 
+        # Check only test
+        parsing.condition = 'x'
+        parsing.check_only = True
+        parsing.optional = False
+
+        r = process(NEW, root, **{TEXT: 'x', 'test': 'conditions_9'})
+
+        self.assertTrue(r is False)
+        self.assertEqual(process.parsed_length, 0)
+        self.assertEqual(process.current, parsing)
+
+        parsing.check_only = False
+
+        r = process(NEW, root, **{TEXT: 'x', 'test': 'conditions_10'})
+
+        self.assertEqual(r, 1)
+        self.assertEqual(process.parsed_length, 1)
+        self.assertEqual(process.current, parsing)
+
     def test_f_complex(self):
         # Complex notion test: root -> ab -> (a , b) with empty message
         root = ComplexNotion2('root')

@@ -987,7 +987,10 @@ BACKWARD += [ERROR, BREAK, CONTINUE]
 class ParsingRelation(NextRelation2):
     def __init__(self, subj, obj, condition=None, owner=None):
         super(ParsingRelation, self).__init__(subj, obj, condition, owner)
+
         self.optional = False
+        self.check_only = False
+
         self.on(UNKNOWN, self.on_error)
 
     # Here we check condition against the parsing text
@@ -998,7 +1001,7 @@ class ParsingRelation(NextRelation2):
         next_result = super(ParsingRelation, self).next_handler(*message, **context)
         rank = context.get(RANK)
 
-        return ({PROCEED: rank}, next_result) if rank else next_result
+        return ({PROCEED: rank}, next_result) if rank and not self.check_only else next_result
 
     def on_error(self, *message, **context):
         if not self.optional and len(message) > 1 and message[1] in FORWARD:
@@ -1474,6 +1477,12 @@ class GraphBuilder(object):
     def default(self):
         if isinstance(self.current, Relation2) and isinstance(self.current.subject, SelectiveNotion2):
             self.current.subject.default = self.current
+
+        return self
+
+    def check_only(self, value=True):
+        if isinstance(self.current, ParsingRelation):
+            self.current.check_only = value
 
         return self
 
