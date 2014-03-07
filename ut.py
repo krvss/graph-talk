@@ -98,10 +98,11 @@ class Handler(Abstract):
             return func()
 
         elif spec.args:
-            args = {}
-            for arg in spec.args:
+            i, args = len(spec.defaults) - 1 if spec.defaults else -1, {}
+            for arg in reversed(spec.args):
                 if arg != 'self':
-                    args[arg] = context[arg] if arg in context else None
+                    args[arg] = context[arg] if arg in context else spec.defaults[i] if i >= 0 else None
+                    i -= 1
 
             return func(**args)
 
@@ -582,7 +583,7 @@ class Process2(Talker):
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def can_push_queue(self, *message):
-        return self.message and isinstance(message[0], Abstract)
+        return self.message and (isinstance(message[0], Abstract) or callable(message[0]))
 
     def do_queue_push(self):
         self.to_queue({CURRENT: self.message.pop(0),
@@ -601,7 +602,10 @@ class Process2(Talker):
 
     def do_query(self):
         self.message.pop(0)
-        reply = self.current(self.query, **self.context)
+
+        reply = self.current(self.query, **self.context) if isinstance(self.current, Abstract) \
+            else self.var_call_result(self.current, self.message, self.context)
+
         return reply or True  # if it is False/None, we just continue to the next one
 
     # Skip: remove current and the next item from the queue

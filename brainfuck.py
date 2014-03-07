@@ -83,7 +83,7 @@ def make_interpreter_graph(vm):
     command_root = b.loop(lambda text: text).select('Command').current
 
     # Simple command parsing
-    b.parse_rel(simple_commands.keys()).act('Simple command', add_simple_command)
+    b.parse_rel(simple_commands.keys(), add_simple_command)
 
     # Loops
     b.at(command_root).parse_rel('[').act('Start loop', start_loop)

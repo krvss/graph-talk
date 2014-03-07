@@ -121,6 +121,8 @@ def tupled(*args):
 
     return res
 
+def no_nones(*args):
+    return (i for i in args if i is not None)
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)

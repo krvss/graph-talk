@@ -155,6 +155,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ['3'], {'3': 3}), 3)
         self.assertEqual(h.var_call_result(lambda **c: c['4'], ['4'], {'4': 4}), 4)
         self.assertEqual(h.var_call_result(lambda a, b: a + b, ['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
+        self.assertEqual(h.var_call_result(lambda a, b=1: a + b, ['6'], {'a': 3}), 4)
 
         # Conditions
         condition1 = lambda *m: m[0] == 1
@@ -596,6 +597,13 @@ class UtTests(unittest.TestCase):
         self.assertIsNone(process.current)
         self.assertFalse(process.message)
         self.assertEquals(len(process._queue), 1)
+
+        # Non-abstract returns
+        n2.action = lambda: lambda: n1
+
+        r = process(n2)
+        self.assertTrue(r)
+        self.assertEqual(process.current, n1)
 
     def test_7_debug(self):
         root = ComplexNotion2('here')
