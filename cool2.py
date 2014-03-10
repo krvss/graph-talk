@@ -5,12 +5,15 @@ import re
 # Shared variables
 LINE_NO = 'line_no'
 ERROR_TOKEN = 'ERROR'
+STRING_CONST = 'STR_CONST'
+
 STRING_BODY = 'string_body'
+STRING_ERROR = 'string_error'
 
 # Constants
 EOF = chr(255)
 ZERO_CHAR = chr(0)
-MAX_STR_CONST = 1
+MAX_STR_CONST = 1024
 
 TOKEN_DICT = dict((
     ('CLASS', 'CLASS'),
@@ -62,16 +65,11 @@ R_TYPE_ID = re.compile('[A-Z]' + IDENTIFIER)
 # Graph builder
 builder = GraphBuilder('COOL program')
 
-
 def print_token(line_no, token, data=''):
+    if token in (ERROR_TOKEN, STRING_CONST) :
+        data = '"' + data + '"'
+
     print '# %s %s %s' % (line_no, token, data)
-
-
-def print_and_error(line_no, token, data=''):  # TODO Generalize
-    print_token(line_no, token, data)
-
-    if token == ERROR_TOKEN:
-        return ERROR
 
 
 def inc_line_no(line_no, inc=1):
@@ -83,27 +81,27 @@ def build_root():
     statement = builder.loop(True).select('Statement').current
 
     # Operators
-    builder.at(statement).parse_rel(TOKEN_DICT.keys(), ignore_case=True).act('Operator',
-                                   lambda line_no, last_parsed: print_token(line_no, TOKEN_DICT[last_parsed.upper()]))
+    builder.at(statement).parse_rel(TOKEN_DICT.keys(), ignore_case=True).\
+        act('Operator', lambda line_no, last_parsed: print_token(line_no, TOKEN_DICT[last_parsed.upper()]))
 
-    builder.at(statement).parse_rel(SINGLE_CHAR_OP).act('Single Char Operator',
-                                   lambda line_no, last_parsed: print_token(line_no, last_parsed))
+    builder.at(statement).parse_rel(SINGLE_CHAR_OP).\
+        act('Single Char Operator', lambda line_no, last_parsed: print_token(line_no, '\'' + last_parsed + '\''))
 
     # Integers
-    builder.at(statement).parse_rel(R_INTEGER).act('Integer',
-                                   lambda line_no, last_parsed: print_token(line_no, 'INT_CONST', last_parsed))
+    builder.at(statement).parse_rel(R_INTEGER).\
+        act('Integer', lambda line_no, last_parsed: print_token(line_no, 'INT_CONST', last_parsed))
 
     # Booleans
-    builder.at(statement).parse_rel(R_BOOLEAN).act('Boolean',
-                                   lambda line_no, last_parsed: print_token(line_no, 'BOOL_CONST', last_parsed.upper()))
+    builder.at(statement).parse_rel(R_BOOLEAN).\
+        act('Boolean', lambda line_no, last_parsed: print_token(line_no, 'BOOL_CONST', last_parsed.upper()))
 
     # Object ID
-    builder.at(statement).parse_rel(R_OBJECT_ID).act('Object ID',
-                                   lambda line_no, last_parsed: print_token(line_no, 'OBJECTID', last_parsed))
+    builder.at(statement).parse_rel(R_OBJECT_ID).\
+        act('Object ID', lambda line_no, last_parsed: print_token(line_no, 'OBJECTID', last_parsed))
 
     # Type ID
-    builder.at(statement).parse_rel(R_TYPE_ID).act('Object ID',
-                                   lambda line_no, last_parsed: print_token(line_no, 'TYPEID', last_parsed))
+    builder.at(statement).parse_rel(R_TYPE_ID).\
+        act('Object ID', lambda line_no, last_parsed: print_token(line_no, 'TYPEID', last_parsed))
 
     # New line: increment the counter
     builder.at(statement).parse_rel(R_EOL).act('New Line', inc_line_no)
@@ -129,17 +127,17 @@ def add_inline_comment(statement):
     inline_comment_chars = builder.loop('*').select('Inline comment chars').current
 
     builder.at(inline_comment_chars).parse_rel([R_EOL, EOF], BREAK).check_only()  # No need to parse here, just done
-    builder.at(inline_comment_chars).parse_rel(R_ANY_CHAR).default()  # Just skip
+    builder.at(inline_comment_chars).parse_rel(R_ANY_CHAR).default()  # Skip the chars
 
 
 # Multi-line comment notion
 def add_multiline_comment(statement):
     builder.at(statement).parse_rel('(*').complex('Multi-line comment')
-    multiline_comment_body = builder.loop('*').select('Multi-line comment body').current
+    multiline_comment_body = builder.loop(True).select('Multi-line comment body').current
 
     builder.at(multiline_comment_body).parse_rel(R_EOL, inc_line_no)
-    builder.at(multiline_comment_body).parse_rel(EOF).act('EOF in comment',
-                                                lambda line_no: print_and_error(line_no, ERROR_TOKEN, 'EOF in comment'))
+    builder.at(multiline_comment_body).parse_rel(EOF).check_only().\
+        act('EOF in comment', lambda line_no: [print_token(line_no, ERROR_TOKEN, 'EOF in comment'), BREAK])
 
     builder.at(multiline_comment_body).parse_rel('(*', statement.owner.notion('Multi-line comment'))  # Nested comment
     builder.at(multiline_comment_body).parse_rel('*)', BREAK)
@@ -148,66 +146,85 @@ def add_multiline_comment(statement):
 
 
 # Strings
-def add_to_string(line_no, last_parsed, string_body):
+# Adding character to the string
+def add_to_string(last_parsed, string_body, string_error):
     if not string_body:
         string_body = ''
     else:
         if len(string_body) == MAX_STR_CONST:
-            return skip_string, print_token(line_no, ERROR_TOKEN, 'String constant too long')  # Too much!
+            return {UPDATE_CONTEXT: {STRING_ERROR: 'overflow'}} if not string_error else None
 
-    string_body += last_parsed
-    return {UPDATE_CONTEXT: {STRING_BODY: string_body}}
+    return {UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
 
 
-def skip_string(line_no, text):
-    end = re.search(r'[^\\]' + EOL, text)
-    end_pos = end.span()[1] + 1 if end else len(text) - 2
-    lines_count = len(re.findall(R_ESC_EOL, text[:end_pos]))
-
-    if end_pos:
-        lines_count += 1
-
-    if lines_count:
-        res = [inc_line_no(line_no, lines_count)]
+# Print the string and clean-up
+def out_string(line_no, string_body, string_error):
+    if string_error == 'unescaped_eol':
+        print_token(line_no + 1, ERROR_TOKEN, 'Unterminated string constant')
+    elif string_error == 'null_char':
+        print_token(line_no, ERROR_TOKEN, 'String contains null character.')
+    elif string_error == 'null_char_esc':
+        print_token(line_no, ERROR_TOKEN, 'String contains escaped null character.')
+    elif string_error == 'overflow':
+        print_token(line_no, ERROR_TOKEN, 'String constant too long')
+    elif string_error == 'eof':
+        print_token(line_no, ERROR_TOKEN, 'EOF in string constant')
     else:
-        res = []
+        if not string_body:
+            string_body = ''
+        print_token(line_no, STRING_CONST, string_body)
 
-    res += [{PROCEED: end_pos}, BREAK]  # Keep the last char for further processing
-
-    return res
-
-
-def out_string(line_no, string_body):
-    print_token(line_no, 'STR_CONST', string_body)
-    return {DELETE_CONTEXT: STRING_BODY}
+    return {DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
 
 
-# String notion
+# String notion itself
 def add_strings(statement):
-    builder.at(statement).parse_rel('"').complex('String')
-    string_chars = builder.loop('*').select('String char').current
+    string = builder.at(statement).parse_rel('"').complex('String').current
+    string_chars = builder.loop(True).select('String chars').current
+    builder.at(string).next_rel().act('Out string', out_string)
 
-    # If EOL matched stop the string
-    builder.at(string_chars).parse_rel(R_EOL).check_only().act('Unescaped EOL',
-        lambda line_no: [print_and_error(line_no, ERROR_TOKEN, 'Unterminated string constant'), skip_string])
+    # 0 character error
+    builder.at(string_chars).parse_rel(ZERO_CHAR).act('Null character error',
+                                                      lambda line_no: {UPDATE_CONTEXT: {STRING_ERROR: 'null_char'}})
 
-    # If 0 character matched - skip the rest of the string
-    builder.at(string_chars).parse_rel(ZERO_CHAR).act_rel(
-        lambda line_no: [print_and_error(line_no, ERROR_TOKEN, 'String contains null character.'), skip_string])
+    # If EOL matched stop the string with error or just break
+    builder.at(string_chars).parse_rel(R_EOL).\
+        check_only().act('EOL', lambda string_error: [BREAK if string_error == 'overflow' else None,
+                                                      {UPDATE_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, BREAK])
 
+    # Stop if EOF
+    builder.at(string_chars).parse_rel(EOF).\
+        check_only().act('EOF error', lambda line_no: [{UPDATE_CONTEXT: {STRING_ERROR: 'eof'}}, BREAK])
+
+    # Escapes
+    escapes = builder.at(string_chars).parse_rel('\\').select('Escapes').current
+    builder.at(escapes).parse_rel(R_EOL,
+                  lambda string_body, string_error: tupled(add_to_string('\n', string_body, string_error), inc_line_no))
+
+    builder.at(escapes).parse_rel('n', lambda string_body, string_error: add_to_string('\n', string_body, string_error))
+    builder.at(escapes).parse_rel('t', lambda string_body, string_error: add_to_string('\t', string_body, string_error))
+    builder.at(escapes).parse_rel('b', lambda string_body, string_error: add_to_string('\b', string_body, string_error))
+    builder.at(escapes).parse_rel('f', lambda string_body, string_error: add_to_string('\f', string_body, string_error))
+
+    builder.at(escapes).parse_rel(ZERO_CHAR).\
+        act('Escaped null character error', lambda line_no: {UPDATE_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
+
+    builder.at(escapes).parse_rel(R_ANY_CHAR, add_to_string)
+
+    # Finishing the string
     builder.at(string_chars).parse_rel('"', BREAK)
 
     # Just a good char
-    builder.at(string_chars).parse_rel(R_ANY_CHAR, add_to_string)
-
-
-
+    builder.at(string_chars).parse_rel(R_ANY_CHAR, add_to_string).default()
 
 
 def add_errors(statement):
     builder.at(statement).parse_rel('*)').act('Unmatched multi-line',
-                                          lambda line_no: print_and_error(line_no, ERROR_TOKEN, 'Unmatched multi-line'))
+                                          lambda line_no: print_token(line_no, ERROR_TOKEN, 'Unmatched *)'))
 
+    builder.at(statement).parse_rel(R_ANY_CHAR).default().\
+        act('Unexpected character',
+            lambda line_no, last_parsed: print_token(line_no, ERROR_TOKEN, '\'' + last_parsed + '\''))
 
 #p = ParsingProcess2()
 #r = p(1)
@@ -216,14 +233,35 @@ build_root()
 
 root = builder.graph
 
-name = 'grading/nestedcomment.cool'
+
+name = 'hello.cool'
+
+#name = '/Users/skravets/Projects/virtualenvs/ut/ut/grading/wq0607-c4.cool'
+
+import cProfile, pstats, StringIO, hotshot
 
 with open(name) as f:
-    #content = f.read()
-    #content = '''"qb\\\na\n"1'''
-    content = '''"q\\\nb\\\ndddd"1'''
-    #content = '''(* \n '''
+    content = f.read()
     content += EOF
     parser = ParsingProcess2()
     #ProcessDebugger(parser, True)
-    parser(root, text=content, line_no=1)
+
+    #pr = cProfile.Profile()
+    #pr.enable()
+
+
+    #prof = hotshot.Profile("ut.prof")
+    #prof.start()
+
+    r = parser(root, text=content, line_no=1)
+    print "Result - %s, remainder - %s, current - %s" % (r, parser.text, parser.current)
+
+    #pr.disable()
+    #s = StringIO.StringIO()
+    #sortby = 'time'
+    #ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    #ps.print_stats()
+    #print s.getvalue()
+
+    #prof.stop()
+    #prof.close()

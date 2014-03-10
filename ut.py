@@ -604,7 +604,7 @@ class Process2(Talker):
         self.message.pop(0)
 
         reply = self.current(self.query, **self.context) if isinstance(self.current, Abstract) \
-            else self.var_call_result(self.current, self.message, self.context)
+            else self.var_call_result(self.current, self.message, self.context)  # TODO: check non-callable lists
 
         return reply or True  # if it is False/None, we just continue to the next one
 
@@ -622,7 +622,7 @@ class Process2(Talker):
     # Cleanup: remove empty message item
     def can_clear_message(self, *message):
         if message:
-            return ((is_list(message[0]) or isinstance(message[0], dict)) and not message[0]) or message[0] is None
+            return not message[0]
 
     def do_clear_message(self):
         self.message.pop(0)
@@ -704,7 +704,7 @@ class SharedContextProcess2(Process2):
     # Do we have add context command
     def can_add_context(self, *message):
         return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(ADD_CONTEXT), dict)
+            and isinstance(message[0].get(ADD_CONTEXT), dict)  # TODO less isinstances
 
     # Adding items to context, do not replacing existing ones
     def do_add_context(self):
