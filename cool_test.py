@@ -1,4 +1,4 @@
-from cool import lex_file, get_content
+from cool2 import lex_file, get_content
 
 import glob
 

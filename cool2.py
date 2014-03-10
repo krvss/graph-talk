@@ -1,6 +1,7 @@
 from ut import *
 from debug import ProcessDebugger
 import re
+import sys
 
 # Shared variables
 LINE_NO = 'line_no'
@@ -65,11 +66,21 @@ R_TYPE_ID = re.compile('[A-Z]' + IDENTIFIER)
 # Graph builder
 builder = GraphBuilder('COOL program')
 
+result = ''
+
 def print_token(line_no, token, data=''):
-    if token in (ERROR_TOKEN, STRING_CONST) :
+    global result
+
+    if token in (ERROR_TOKEN, STRING_CONST):
+        data = data.replace("\\", "\\\\")
+        data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
+               replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+               replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
+               replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
+
         data = '"' + data + '"'
 
-    print '# %s %s %s' % (line_no, token, data)
+    result += '#%s %s %s\n' % (line_no, token, data) if data else '#%s %s\n' % (line_no, token)
 
 
 def inc_line_no(line_no, inc=1):
@@ -93,7 +104,7 @@ def build_root():
 
     # Booleans
     builder.at(statement).parse_rel(R_BOOLEAN).\
-        act('Boolean', lambda line_no, last_parsed: print_token(line_no, 'BOOL_CONST', last_parsed.upper()))
+        act('Boolean', lambda line_no, last_parsed: print_token(line_no, 'BOOL_CONST', last_parsed.lower()))
 
     # Object ID
     builder.at(statement).parse_rel(R_OBJECT_ID).\
@@ -189,9 +200,9 @@ def add_strings(statement):
 
     # If EOL matched stop the string with error or just break
     builder.at(string_chars).parse_rel(R_EOL).\
-        check_only().act('EOL', lambda string_error: [BREAK if string_error == 'overflow' else None,
+        check_only().act('EOL', lambda string_error: [BREAK if string_error else None,
                                                       {UPDATE_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, BREAK])
-
+    # TODO: overriding errors
     # Stop if EOF
     builder.at(string_chars).parse_rel(EOF).\
         check_only().act('EOF error', lambda line_no: [{UPDATE_CONTEXT: {STRING_ERROR: 'eof'}}, BREAK])
@@ -224,7 +235,7 @@ def add_errors(statement):
 
     builder.at(statement).parse_rel(R_ANY_CHAR).default().\
         act('Unexpected character',
-            lambda line_no, last_parsed: print_token(line_no, ERROR_TOKEN, '\'' + last_parsed + '\''))
+            lambda line_no, last_parsed: print_token(line_no, ERROR_TOKEN, last_parsed))
 
 #p = ParsingProcess2()
 #r = p(1)
@@ -236,14 +247,25 @@ root = builder.graph
 
 name = 'hello.cool'
 
-#name = '/Users/skravets/Projects/virtualenvs/ut/ut/grading/wq0607-c4.cool'
-
 import cProfile, pstats, StringIO, hotshot
 
-with open(name) as f:
-    content = f.read()
+
+def get_content(filename):
+    with open(filename) as f:
+        return f.read()
+
+
+def lex_file(filename):
+    return lex(get_content(filename))
+
+
+def lex(content):
+    global result
+    result =''
+
     content += EOF
     parser = ParsingProcess2()
+
     #ProcessDebugger(parser, True)
 
     #pr = cProfile.Profile()
@@ -254,6 +276,7 @@ with open(name) as f:
     #prof.start()
 
     r = parser(root, text=content, line_no=1)
+    #print result
     print "Result - %s, remainder - %s, current - %s" % (r, parser.text, parser.current)
 
     #pr.disable()
@@ -265,3 +288,10 @@ with open(name) as f:
 
     #prof.stop()
     #prof.close()
+
+    return result
+
+
+# Read file if any
+if len(sys.argv) >= 2:
+    print lex_file(sys.argv[1])
