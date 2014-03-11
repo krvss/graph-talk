@@ -1,5 +1,5 @@
 # Universal Translator base classes
-# (c) krvss 2011-2013
+# (c) krvss 2011-2014
 
 from utils import *
 
