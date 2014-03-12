@@ -20,8 +20,8 @@ class ProcessDebugger(Handler):
     LOG = 'log'
     EVENT = 'event'
 
-    AT_EVENT = Process2.add_prefix(get_object_name(Process2.do_queue_push), POST_PREFIX)
-    LOG_EVENT = Process2.add_prefix(QUERY, POST_PREFIX)
+    AT_EVENT = Process.add_prefix(get_object_name(Process.do_queue_push), POST_PREFIX)
+    LOG_EVENT = Process.add_prefix(QUERY, POST_PREFIX)
 
     def __init__(self, process=None, log=False):
         super(ProcessDebugger, self).__init__()

@@ -127,7 +127,7 @@ def no_nones(*args):
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
 
-
+# TODO: use full spec cached
 # Simplified version of getargspec
 def get_args(func):
     co = func.func_code if not ismethod(func) else func.im_func.func_code

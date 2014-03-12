@@ -438,8 +438,8 @@ class UtTests(unittest.TestCase):
 
     def test_5_objects(self):
         # Notions test
-        n1 = Notion2('n1')
-        n2 = Notion2('n2')
+        n1 = Notion('n1')
+        n2 = Notion('n2')
         n1.owner = n2
 
         self.assertEqual(n1.name, 'n1')
@@ -450,7 +450,7 @@ class UtTests(unittest.TestCase):
         n1.owner = None
 
         # Relations test
-        r1 = Relation2(n1, n2)
+        r1 = Relation(n1, n2)
 
         # Generic relation test
         self.assertEqual(r1.subject, n1)
@@ -460,13 +460,13 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r1.__str__(), r1.__repr__())
 
         # Complex notion test
-        cn = ComplexNotion2('cn')
+        cn = ComplexNotion('cn')
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it, not a list
         self.assertEqual(cn(NEXT), r1)
 
-        r2 = Relation2(n2, n1)
+        r2 = Relation(n2, n1)
         r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
@@ -476,7 +476,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(cn.relations), 1)
 
         # Trying direct calls to relate
-        r3 = Relation2(n1, n2)
+        r3 = Relation(n1, n2)
         self.assertFalse(cn.do_relation(**{OLD_VALUE: None, SENDER: r3, NEW_VALUE: None}))
         self.assertFalse(cn.do_relation(**{OLD_VALUE: cn, SENDER: r3, NEW_VALUE: None}))
 
@@ -485,7 +485,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(cn.do_relation(**{OLD_VALUE: cn, SENDER: r3, NEW_VALUE: None}))
 
         # Unrelating
-        cn2 = ComplexNotion2('cn2')
+        cn2 = ComplexNotion('cn2')
         r1.subject = cn2
 
         self.assertEqual(r1.subject, cn2)
@@ -493,7 +493,7 @@ class UtTests(unittest.TestCase):
         self.assertIn(r1, cn2.relations)
 
         # Next test
-        nr = NextRelation2(n1, n2)
+        nr = NextRelation(n1, n2)
         self.assertEqual(nr(NEXT), n2)
 
         nr.condition = lambda **c: 'event' in c
@@ -504,7 +504,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(nr(NEXT) is False)
 
         # Action notion test
-        na = ActionNotion2('action', 'action')
+        na = ActionNotion('action', 'action')
         self.assertEquals(na(NEXT), na.name)
         self.assertEqual(na.action, na.name)
 
@@ -515,7 +515,7 @@ class UtTests(unittest.TestCase):
         self.assertIsNone(na.action)
 
         # Action relation test
-        ar = ActionRelation2('subj', 'obj', lambda: True)
+        ar = ActionRelation('subj', 'obj', lambda: True)
 
         self.assertEqual(ar(NEXT), (True, ar.object))
         ar.action = None
@@ -531,10 +531,10 @@ class UtTests(unittest.TestCase):
         self.assertEqual(ar(NEXT), 3)
 
     def test_6_process(self):
-        process = Process2()
+        process = Process()
 
         # Testing the default
-        n = Notion2('N')
+        n = Notion('N')
 
         process.context = {'preserved': True}
         r = process(n, test='process_default')
@@ -571,12 +571,12 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.message)
 
         # Testing the correct processing of list replies
-        cn = ComplexNotion2('CN')
-        n1 = Notion2('N1')
-        n2 = ActionNotion2('N2', [True, STOP])
+        cn = ComplexNotion('CN')
+        n1 = Notion('N1')
+        n2 = ActionNotion('N2', [True, STOP])
 
-        NextRelation2(cn, n1)
-        NextRelation2(cn, n2)
+        NextRelation(cn, n1)
+        NextRelation(cn, n2)
 
         # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
         r = process(NEW, cn, test='process_list')
@@ -606,13 +606,13 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, n1)
 
     def test_7_debug(self):
-        root = ComplexNotion2('here')
-        a = ComplexNotion2('a')
+        root = ComplexNotion('here')
+        a = ComplexNotion('a')
 
-        NextRelation2(root, a)
+        NextRelation(root, a)
 
         # Simple debugger test: reply with unknown message at the abstract
-        process = Process2()
+        process = Process()
         debugger = ProcessDebugger(process)
 
         unk = 'oh noes!'
@@ -628,12 +628,12 @@ class UtTests(unittest.TestCase):
         # Now let's test skipping the unknowns by the debugger
         debugger.clear_points()
 
-        b = Notion2('b')
+        b = Notion('b')
         b.on(QUERY, unk)
-        NextRelation2(a, b)
+        NextRelation(a, b)
 
-        c = ActionNotion2('c', STOP)
-        NextRelation2(a, c)
+        c = ActionNotion('c', STOP)
+        NextRelation(a, c)
 
         debugger.on(UNKNOWN, SKIP)
 
@@ -644,27 +644,27 @@ class UtTests(unittest.TestCase):
 
     def test_8_queue(self):
         # Stack test: root -> (a, e); a -> (b, c, d)
-        root = ComplexNotion2('root')
-        a = ComplexNotion2('a')
+        root = ComplexNotion('root')
+        a = ComplexNotion('a')
 
-        NextRelation2(root, a)
+        NextRelation(root, a)
 
-        b = Notion2('b')
-        c = ActionNotion2('c', [])  # Test of empty array
+        b = Notion('b')
+        c = ActionNotion('c', [])  # Test of empty array
 
         unk = 'unk'
 
-        d = ActionNotion2('d', unk)  # Stop here
+        d = ActionNotion('d', unk)  # Stop here
 
-        NextRelation2(a, b)
-        NextRelation2(a, c)
-        NextRelation2(a, d)
+        NextRelation(a, b)
+        NextRelation(a, c)
+        NextRelation(a, d)
 
-        e = ActionNotion2('e', unk)  # And stop here too
+        e = ActionNotion('e', unk)  # And stop here too
 
-        NextRelation2(root, e)
+        NextRelation(root, e)
 
-        process = Process2()
+        process = Process()
 
         r = process(root, test='test_queue')
 
@@ -698,19 +698,19 @@ class UtTests(unittest.TestCase):
     def test_9_context(self):
         # Verify correctness of adding
         # Root -> (a, b)
-        root = ComplexNotion2('root')
-        a = Notion2('a')
+        root = ComplexNotion('root')
+        a = Notion('a')
 
         ctx_key = 'ctx'
         l = lambda: {ADD_CONTEXT: {ctx_key: True}}
         a.on_forward(l)
 
-        b = ActionNotion2('b', lambda **c: STOP if ctx_key in c else OK)
+        b = ActionNotion('b', lambda **c: STOP if ctx_key in c else OK)
 
-        NextRelation2(root, a)
-        NextRelation2(root, b)
+        NextRelation(root, a)
+        NextRelation(root, b)
 
-        process = SharedContextProcess2()
+        process = SharedContextProcess()
 
         r = process(root, test='test_context_add_1')
         self.assertEqual(r, STOP)
@@ -810,20 +810,20 @@ class UtTests(unittest.TestCase):
 
     def test_b_stacking_context(self):
         # Testing without tracking
-        root = ComplexNotion2('root')
+        root = ComplexNotion('root')
 
-        NextRelation2(root, ActionNotion2('change_context',
+        NextRelation(root, ActionNotion('change_context',
                                           {ADD_CONTEXT: {'inject': 'ninja'}}))
 
-        NextRelation2(root, ActionNotion2('change_context2',
+        NextRelation(root, ActionNotion('change_context2',
                                           {UPDATE_CONTEXT: {'inject': 'revenge of ninja'}}))
 
-        NextRelation2(root, ActionNotion2('del_context', {DELETE_CONTEXT: 'inject'}))
+        NextRelation(root, ActionNotion('del_context', {DELETE_CONTEXT: 'inject'}))
 
-        p = ActionNotion2('pop_context', POP_CONTEXT)
-        NextRelation2(root, p)
+        p = ActionNotion('pop_context', POP_CONTEXT)
+        NextRelation(root, p)
 
-        process = StackingContextProcess2()
+        process = StackingContextProcess()
 
         r = process(root, test='test_stacking_1')
 
@@ -832,30 +832,30 @@ class UtTests(unittest.TestCase):
         self.assertNotIn('inject', process.context)
 
         # Now tracking is on!
-        root = ComplexNotion2('root')
+        root = ComplexNotion('root')
 
-        NextRelation2(root, ActionNotion2('push_context', PUSH_CONTEXT))
+        NextRelation(root, ActionNotion('push_context', PUSH_CONTEXT))
 
-        NextRelation2(root, ActionNotion2('change_context',
+        NextRelation(root, ActionNotion('change_context',
                                           {ADD_CONTEXT: {'terminator': '2'}}))
 
-        NextRelation2(root, ActionNotion2('delete_context',
+        NextRelation(root, ActionNotion('delete_context',
                                           {DELETE_CONTEXT: 'terminator'}))
 
-        NextRelation2(root, ActionNotion2('change_context2',
+        NextRelation(root, ActionNotion('change_context2',
                                           {UPDATE_CONTEXT: {'alien': 'omnomnom'}}))
 
-        NextRelation2(root, ActionNotion2('check_context', lambda **c: None if 'alien' in c else 'Ripley!'))
+        NextRelation(root, ActionNotion('check_context', lambda **c: None if 'alien' in c else 'Ripley!'))
 
-        NextRelation2(root, ActionNotion2('push_context2', PUSH_CONTEXT))
+        NextRelation(root, ActionNotion('push_context2', PUSH_CONTEXT))
 
-        NextRelation2(root, ActionNotion2('change_context3',
+        NextRelation(root, ActionNotion('change_context3',
                                           {UPDATE_CONTEXT: {'test': 'predator'}}))
 
-        NextRelation2(root, ActionNotion2('forget_context', FORGET_CONTEXT))
+        NextRelation(root, ActionNotion('forget_context', FORGET_CONTEXT))
 
-        pop = ActionNotion2('pop_context', POP_CONTEXT)
-        NextRelation2(root, pop)
+        pop = ActionNotion('pop_context', POP_CONTEXT)
+        NextRelation(root, pop)
 
         r = process(NEW, root, test='test_stacking_2')
 
@@ -868,17 +868,17 @@ class UtTests(unittest.TestCase):
 
     def test_c_states(self):
         # Root -> (inc, inc, 'state_check')
-        root = ComplexNotion2('root')
+        root = ComplexNotion('root')
 
-        inc = ActionNotion2('+1', state_v_starter)
+        inc = ActionNotion('+1', state_v_starter)
 
-        NextRelation2(root, inc)
-        NextRelation2(root, inc)
+        NextRelation(root, inc)
+        NextRelation(root, inc)
 
-        check = ActionNotion2('state_check', state_v_checker)
-        NextRelation2(root, check)
+        check = ActionNotion('state_check', state_v_checker)
+        NextRelation(root, check)
 
-        process = StatefulProcess2()
+        process = StatefulProcess()
         r = process(root, test='test_states_1')
 
         self.assertEqual(r, OK)
@@ -903,8 +903,8 @@ class UtTests(unittest.TestCase):
         while root.relations:
             root.relations[0].subject = None
 
-        t = ActionNotion2('terminator', has_notification)
-        NextRelation2(root, t)
+        t = ActionNotion('terminator', has_notification)
+        NextRelation(root, t)
 
         notification = {NOTIFY: {TO: t, INFO: {'note': OK}}}
 
@@ -918,13 +918,13 @@ class UtTests(unittest.TestCase):
         t.action = lambda **c: {SET_STATE: private} if not 'private' in c[STATE] else \
                                    {SET_STATE: {'private': {'super_private': 'home', 'more': 'none'}}}
 
-        t2 = ActionNotion2('terminator2', (PUSH_CONTEXT, ))
-        NextRelation2(root, t2)
+        t2 = ActionNotion('terminator2', (PUSH_CONTEXT, ))
+        NextRelation(root, t2)
 
-        NextRelation2(root, t)
+        NextRelation(root, t)
 
-        t3 = ActionNotion2('terminator2', (POP_CONTEXT, ))
-        NextRelation2(root, t3)
+        t3 = ActionNotion('terminator2', (POP_CONTEXT, ))
+        NextRelation(root, t3)
 
         r = process(NEW, root, test='test_states_5')
 
@@ -944,11 +944,11 @@ class UtTests(unittest.TestCase):
 
     def test_d_parsing(self):
         # Proceed test
-        root = ComplexNotion2('root')
-        mover = ActionNotion2('move', lambda: {PROCEED: 2})
-        NextRelation2(root, mover)
+        root = ComplexNotion('root')
+        mover = ActionNotion('move', lambda: {PROCEED: 2})
+        NextRelation(root, mover)
 
-        process = ParsingProcess2()
+        process = ParsingProcess()
         # Good (text fully parsed)
         r = process(root, **{TEXT: 'go', 'test': 'test_parsing_1', ANSWER: RANK})
 
@@ -995,9 +995,9 @@ class UtTests(unittest.TestCase):
 
     def test_e_conditions(self):
         # Simple positive condition test root -a-> d for 'a'
-        root = ComplexNotion2('root')
+        root = ComplexNotion('root')
 
-        action = ActionNotion2('passed', lambda **c: c.get(LAST_PARSED, ERROR))
+        action = ActionNotion('passed', lambda **c: c.get(LAST_PARSED, ERROR))
 
         parsing = ParsingRelation(root, action, 'a')
 
@@ -1010,7 +1010,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(parsing(BREAK) is None)
 
         # Using in process
-        process = ParsingProcess2()
+        process = ParsingProcess()
 
         r = process(root, **{TEXT: 'a', 'test': 'conditions_2'})
 
@@ -1092,17 +1092,17 @@ class UtTests(unittest.TestCase):
 
     def test_f_complex(self):
         # Complex notion test: root -> ab -> (a , b) with empty message
-        root = ComplexNotion2('root')
-        ab = ComplexNotion2('ab')
-        NextRelation2(root, ab)
+        root = ComplexNotion('root')
+        ab = ComplexNotion('ab')
+        NextRelation(root, ab)
 
-        a = ActionNotion2('a', common_state_acc)
-        r1 = NextRelation2(ab, a)
+        a = ActionNotion('a', common_state_acc)
+        r1 = NextRelation(ab, a)
 
-        b = ActionNotion2('b', common_state_acc)
-        r2 = NextRelation2(ab, b)
+        b = ActionNotion('b', common_state_acc)
+        r2 = NextRelation(ab, b)
 
-        process = ParsingProcess2()
+        process = ParsingProcess()
 
         r = process(root, test='test_complex_1')
 
@@ -1128,16 +1128,16 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, r2)  # Finished at error
 
         # Nested complex notion test: root -> ab -> ( (-a-> a) , (-b-> b)  -> c -> (d, e), f) for 'abf'
-        c = ComplexNotion2('c')
-        NextRelation2(ab, c)
+        c = ComplexNotion('c')
+        NextRelation(ab, c)
 
-        d = ActionNotion2('d', common_state_acc)
-        NextRelation2(c, d)
+        d = ActionNotion('d', common_state_acc)
+        NextRelation(c, d)
 
-        e = ActionNotion2('e', common_state_acc)
-        NextRelation2(c, e)
+        e = ActionNotion('e', common_state_acc)
+        NextRelation(c, e)
 
-        f = ActionNotion2('f', True)
+        f = ActionNotion('f', True)
         ParsingRelation(ab, f, 'f')
 
         r = process(NEW, root, **{TEXT: 'abf', 'test': 'test_complex_3', 'acc': 0})
@@ -1149,15 +1149,15 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.context['acc'], 4)
 
     def test_g_selective(self):
-        process = ParsingProcess2()
+        process = ParsingProcess()
 
         # Simple selective test: root -a-> a, -b-> b for 'b'
-        root = SelectiveNotion2('root')
-        a = ActionNotion2('a', common_state_acc)
+        root = SelectiveNotion('root')
+        a = ActionNotion('a', common_state_acc)
 
         c1 = ParsingRelation(root, a, 'a')
 
-        b = ActionNotion2('b', common_state_acc)
+        b = ActionNotion('b', common_state_acc)
         c2 = ParsingRelation(root, b, 'b')
 
         r = process(root, **{TEXT: 'b', 'test': 'test_selective_1'})
@@ -1205,23 +1205,23 @@ class UtTests(unittest.TestCase):
         c1.subject = None
         c2.subject = None
 
-        a1 = ComplexNotion2('a1')
-        NextRelation2(root, a1)
+        a1 = ComplexNotion('a1')
+        NextRelation(root, a1)
 
-        a = ComplexNotion2('a')
+        a = ComplexNotion('a')
         a1a = ParsingRelation(a1, a, 'a')
 
-        b = ActionNotion2('b', common_state_acc)
+        b = ActionNotion('b', common_state_acc)
         ParsingRelation(a, b, 'b')
 
-        a2 = ComplexNotion2('a2')
-        na2 = NextRelation2(root, a2)
+        a2 = ComplexNotion('a2')
+        na2 = NextRelation(root, a2)
 
-        aa = ActionNotion2('aa', common_state_acc)
+        aa = ActionNotion('aa', common_state_acc)
         caa = ParsingRelation(a2, aa, 'aa')
 
-        bb = ActionNotion2('bb', common_state_acc)
-        nbb = NextRelation2(root, bb)
+        bb = ActionNotion('bb', common_state_acc)
+        nbb = NextRelation(root, bb)
 
         r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_selective_3'})
 
@@ -1240,7 +1240,7 @@ class UtTests(unittest.TestCase):
         nbb.object = None
         ParsingRelation(root, bb, re.compile("(a)+"))
 
-        s = ActionNotion2('stop', ERROR)
+        s = ActionNotion('stop', ERROR)
         ParsingRelation(root, s, 'a')
 
         r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_selective_4'})
@@ -1261,9 +1261,9 @@ class UtTests(unittest.TestCase):
         while root.relations:
             root.relations[0].subject = None
 
-        breaker = ActionNotion2('breaker', ERROR)
+        breaker = ActionNotion('breaker', ERROR)
         c1 = ParsingRelation(root, breaker, 'a')
-        NextRelation2(root, ActionNotion2('adder', common_state_acc))
+        NextRelation(root, ActionNotion('adder', common_state_acc))
 
         r = process(NEW, root, **{TEXT: 'a', 'test': 'test_selective_6'})
 
@@ -1295,7 +1295,7 @@ class UtTests(unittest.TestCase):
         # Testing non-parsing relations
         breaker.action = ERROR
         c1.subject = None
-        NextRelation2(root, breaker)
+        NextRelation(root, breaker)
 
         r = process(NEW, root, **{TEXT: '', 'test': 'test_selective_9'})
 
@@ -1305,18 +1305,18 @@ class UtTests(unittest.TestCase):
 
     def test_h_loop(self):
         # Simple loop test: root -5!-> aa -a-> a for 'aaaaa'
-        root = ComplexNotion2('root')
-        aa = ComplexNotion2('aa')
+        root = ComplexNotion('root')
+        aa = ComplexNotion('aa')
 
-        l = LoopRelation2(root, aa, 5)
+        l = LoopRelation(root, aa, 5)
 
         self.assertTrue(l.is_numeric())
         self.assertFalse(l.is_flexible())
 
-        a = ActionNotion2('acc', common_state_acc)
+        a = ActionNotion('acc', common_state_acc)
         ParsingRelation(aa, a, 'a')
 
-        process = ParsingProcess2()
+        process = ParsingProcess()
 
         r = process(root, **{TEXT: 'aaaaa', 'test': 'test_loop_basic'})
 
@@ -1496,10 +1496,10 @@ class UtTests(unittest.TestCase):
         # Positive test: root -2!-> a2 -2!-> a's -a-> a for 'aaaa'
         l.condition = 2
 
-        aaa = ComplexNotion2('aaa')
+        aaa = ComplexNotion('aaa')
         l.subject = aaa
 
-        l2 = LoopRelation2(root, aaa, 2)
+        l2 = LoopRelation(root, aaa, 2)
 
         r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_nested'})
 
@@ -1518,10 +1518,10 @@ class UtTests(unittest.TestCase):
         l.condition = (2, None)
         l.subject = root
 
-        b = ActionNotion2('b', state_v_starter)
-        NextRelation2(aa, b)
+        b = ActionNotion('b', state_v_starter)
+        NextRelation(aa, b)
 
-        c = ActionNotion2('c', common_state_acc)
+        c = ActionNotion('c', common_state_acc)
         p = ParsingRelation(root, c, 'c')
 
         # Try without break first
@@ -1568,10 +1568,10 @@ class UtTests(unittest.TestCase):
         graph = Graph()
 
         # Adding test
-        root = ComplexNotion2('root', graph)
+        root = ComplexNotion('root', graph)
         self.assertEqual((root, ), graph.notions())
 
-        rave = ComplexNotion2('rave')
+        rave = ComplexNotion('rave')
         rave.owner = graph
 
         self.assertEqual((root, rave), graph.notions())
@@ -1582,7 +1582,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual((root, ), graph.notions())
 
         # Adding test 2
-        rel = NextRelation2(root, rave, None, graph)
+        rel = NextRelation(root, rave, None, graph)
 
         self.assertEqual((rel,), graph.relations())
 
@@ -1612,7 +1612,7 @@ class UtTests(unittest.TestCase):
         self.assertIsNone(graph.root)
 
         # Search - Notions
-        lock = Notion2('lock', graph)
+        lock = Notion('lock', graph)
 
         r = re.compile('r')
 
@@ -1630,12 +1630,12 @@ class UtTests(unittest.TestCase):
 
         # Search - Relations
         rel.owner = graph
-        rel2 = NextRelation2(rave, lock, None, graph)
+        rel2 = NextRelation(rave, lock, None, graph)
 
         self.assertEqual(graph.relations(), (rel, rel2))
         self.assertEqual(graph.relation(), rel)
 
-        rel3 = NextRelation2(root, None, None, graph)
+        rel3 = NextRelation(root, None, None, graph)
 
         self.assertListEqual(graph.relations({SUBJECT: root}), [rel, rel3])
         self.assertListEqual(graph.relations({OBJECT: rave}), [rel])
@@ -1662,24 +1662,24 @@ class UtTests(unittest.TestCase):
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
-        root = ComplexNotion2('root')
-        sequence = ComplexNotion2('sequence')
+        root = ComplexNotion('root')
+        sequence = ComplexNotion('sequence')
 
-        l = LoopRelation2(root, sequence, 3)
+        l = LoopRelation(root, sequence, 3)
 
-        a_seq = ComplexNotion2('a\'s')
-        l_a = LoopRelation2(sequence, a_seq, '*')
+        a_seq = ComplexNotion('a\'s')
+        l_a = LoopRelation(sequence, a_seq, '*')
 
-        a = ActionNotion2('a', common_state_acc)
+        a = ActionNotion('a', common_state_acc)
         ParsingRelation(a_seq, a, 'a')
 
-        b_seq = ComplexNotion2('b\'s')
-        l_b = LoopRelation2(sequence, b_seq, '*')
-        b = ActionNotion2('b', state_v_starter)
+        b_seq = ComplexNotion('b\'s')
+        l_b = LoopRelation(sequence, b_seq, '*')
+        b = ActionNotion('b', state_v_starter)
 
         ParsingRelation(b_seq, b, 'b')
 
-        process = ParsingProcess2()
+        process = ParsingProcess()
 
         r = process(root, text='bbaabaaa', test='special_test_1')
 

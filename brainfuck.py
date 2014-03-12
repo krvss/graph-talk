@@ -3,6 +3,7 @@ import sys
 from ut import *
 import re
 
+# TODO: optimization and white space
 
 # Brainfuck virtual machine that runs language commands
 class BFVM(object):
@@ -61,14 +62,14 @@ def make_interpreter_graph(vm):
 
     def add_simple_command(top, last_parsed):
         # Last_parsed works fine as the name of the notion
-        NextRelation2(top, ActionNotion2(last_parsed, simple_commands[last_parsed], top.owner), top.owner)
+        NextRelation(top, ActionNotion(last_parsed, simple_commands[last_parsed], top.owner), top.owner)
 
     def start_loop(top, top_stack, parsed_length):
         top_stack.append((top, parsed_length))
-        new_top = ComplexNotion2('Loop', top.owner)
+        new_top = ComplexNotion('Loop', top.owner)
 
         # Loop becomes the new top to add the simple commands
-        LoopRelation2(top, new_top, lambda: None if not vm.is_not_zero() else True)
+        LoopRelation(top, new_top, lambda: None if not vm.is_not_zero() else True)
 
         return {UPDATE_CONTEXT: {'top': new_top}}
 
@@ -100,17 +101,17 @@ def make_interpreter_graph(vm):
 
 
 def run(source, context):
-    process = ParsingProcess2()
+    process = ParsingProcess()
 
     r = process(context['root'], text=source, **context)
 
     if r == STOP:
         message = 'Parsing error'
 
-        if isinstance(process.current, Relation2):
+        if isinstance(process.current, Relation):
             message = 'Start loop without end at position %s' % context['top_stack'][0][1]
 
-        elif isinstance(process.current, Notion2):
+        elif isinstance(process.current, Notion):
             if process.current.name == 'Bad character':
                 message = 'Unknown char "%s" at position %s' % (process.last_parsed, process.parsed_length)
 

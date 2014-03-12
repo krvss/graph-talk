@@ -1,4 +1,4 @@
-from cool2 import lex_file, get_content
+from cool_lexer import lex_file, get_content
 
 import glob
 
@@ -13,3 +13,5 @@ for f in glob.glob("grading/*.cool"):
         print "!!! Different !!!"
     else:
         print " ok"
+
+# TODO: profiler

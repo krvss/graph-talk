@@ -249,7 +249,7 @@ def lex(content, filename):
     result = ''
 
     content += EOF
-    parser = ParsingProcess2()
+    parser = ParsingProcess()
 
     out = parser(builder.graph, text=content, line_no=1)
     if out != OK:
