@@ -86,6 +86,14 @@ def is_list(l):
     return isinstance(l, list) or isinstance(l, tuple)
 
 
+def is_regex(r):
+    return type(r).__name__ == 'SRE_Pattern'
+
+
+def is_string(s):
+    return isinstance(s, basestring)
+
+
 def has_first(l, value):
     return is_list(l) and l and l[0] == value
 
@@ -96,13 +104,6 @@ def has_keys(dictionary, *keys):
             return False
 
     return True
-
-def is_regex(r):
-    return type(r).__name__ == 'SRE_Pattern'
-
-
-def is_string(s):
-    return isinstance(s, basestring)
 
 
 def get_len(o):
@@ -121,11 +122,10 @@ def tupled(*args):
 
     return res
 
-def no_nones(*args):
-    return (i for i in args if i is not None)
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
+
 
 # TODO: use full spec cached
 # Simplified version of getargspec

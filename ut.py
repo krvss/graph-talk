@@ -1,6 +1,10 @@
 # Universal Translator base classes
 # (c) krvss 2011-2014
 
+
+from inspect import getargspec
+from collections import namedtuple
+
 from utils import *
 
 
@@ -18,6 +22,138 @@ class Abstract(object):
     # A singular way to call
     def __call__(self, *args, **kwargs):
         return self.answer(*args, **kwargs)
+
+
+AccessInfo = namedtuple('AccessInfo', 'mode spec value')
+
+
+# Event class consists of event happening condition and event handler
+# Event caches condition(s) and handler type information to increase execution speed
+class Event(object):
+    CALL = 'call'
+    ABSTRACT = 'abstract'
+    FUNCTION = 'function'
+    VALUE = 'value'
+    NUMBER = 'number'
+    LIST = 'list'
+    STRING = 'string'
+    REGEX = 'regex'
+    OTHER = 'other'
+
+    def __init__(self, handler, condition=True, ignore_case=False):
+        self._ignore_case = ignore_case
+
+        condition_info = self.get_access_info(condition, ignore_case)
+
+        if condition_info.spec == self.LIST:
+            self._conditions = [self.get_access_info(c, ignore_case) for c in condition]
+        else:
+            self._conditions = [condition_info]
+
+        self._handler = self.get_access_info(handler, ignore_case)
+
+    @staticmethod
+    def get_access_info(arg, ignore_case=False):
+        if isinstance(arg, Abstract):
+            mode, spec = Event.CALL, Event.ABSTRACT
+
+        elif callable(arg):
+            mode, spec = Event.FUNCTION, getargspec(arg)
+
+        else:
+            mode = Event.VALUE
+
+            if is_number(arg):
+                spec = Event.NUMBER
+
+            elif is_list(arg):
+                spec = Event.LIST
+
+            elif is_string(arg):
+                spec = Event.STRING
+
+                if ignore_case:
+                    arg = arg.upper()
+
+            elif is_regex(arg):
+                spec = Event.REGEX
+
+            else:
+                spec = Event.OTHER
+
+        return AccessInfo(mode=mode, spec=spec, value=arg)
+
+    @staticmethod
+    def access(info, message, context):
+        if info.spec == Event.ABSTRACT:
+            return info.value(*message, **context)
+
+        elif info.mode == Event.FUNCTION:
+            if info.spec.varargs and not info.spec.keywords:
+                return info.value(*message)
+
+            elif info.spec.keywords and not info.spec.varargs:
+                return info.value(**context)
+
+            elif info.spec.varargs and info.spec.keywords:
+                return info.value(*message, **context)
+
+            elif not info.spec.varargs and not info.spec.keywords and not info.spec.args:
+                return info.value()
+
+            elif info.spec.args:
+                i, args = len(info.spec.defaults) - 1 if info.spec.defaults else -1, {}
+                for arg in reversed(info.spec.args):
+                    if arg != 'self':
+                        args[arg] = context[arg] if arg in context else info.spec.defaults[i] if i >= 0 else None
+                        i -= 1
+
+                return info.value(**args)
+
+        return info.value
+
+    def can_handle(self, message, context):
+        rank, check = -1, None
+
+        for condition_info in self._conditions:
+            if condition_info.mode == Event.FUNCTION:
+                check = self.access(condition_info, message, context)
+
+                # Do we work with (rank, check) format?
+                if get_len(check) == 2:
+                    rank, check = check
+                elif check:
+                    rank = 0 if check is True else check
+
+            elif condition_info.spec == Event.REGEX:
+                check = condition_info.value.match(message[0]) if message else None
+
+                if check:
+                    rank = check.end() - check.start()  # Match length is the rank
+
+            elif condition_info.spec == Event.STRING and message:
+                message0 = str(message[0])
+
+                if self._ignore_case:
+                    message0 = message0.upper()
+
+                if message0.startswith(condition_info.value):
+                    rank, check = len(condition_info.value), condition_info.value
+
+            elif has_first(message, condition_info.value):
+                rank, check = max(get_len(condition_info.value), 0), condition_info.value
+
+        if rank < 0:
+            check = None  # Little cleanup
+
+        return rank, check
+
+    def handle(self, message, context):
+        return self.access(self._handler, message, context)
+
+    @staticmethod
+    def get_and_access(value, message, context, ignore_case=False):
+        return Event.access(Event.get_access_info(value), message, context)
 
 
 # Handler dialect
@@ -77,24 +213,17 @@ class Handler(Abstract):
             return func(*message, **context)
 
         spec = get_args(func)
-        v_count, k_count = 0, 0
 
-        if spec.varargs:
-            v_count = len(spec.varargs) if is_list(spec.varargs) else 1
-
-        if spec.keywords:
-            k_count = len(spec.keywords) if is_list(spec.keywords) else 1
-
-        if v_count and not k_count:
+        if spec.varargs and not spec.keywords:
             return func(*message)
 
-        elif k_count and not v_count:
+        elif spec.keywords and not spec.varargs:
             return func(**context)
 
-        elif v_count and k_count:
+        elif spec.varargs and spec.keywords:
             return func(*message, **context)
 
-        elif not v_count and not k_count and not spec.args:
+        elif not spec.varargs and not spec.keywords and not spec.args:
             return func()
 
         elif spec.args:
@@ -219,30 +348,30 @@ class Talker(Handler):
     # Add prefix to the message
     @staticmethod
     def add_prefix(message, prefix):
-        event = str(message[0] if is_list(message) else message)
+        event_name = str(message[0] if is_list(message) else message)
 
-        if not event.startswith(prefix):
-            event = SEP.join([prefix, event])
+        if not event_name.startswith(prefix):
+            event_name = SEP.join([prefix, event_name])
 
-        return tupled(event, message[1:]) if is_list(message) else event
+        return tupled(event_name, message[1:]) if is_list(message) else event_name
 
     # Remove prefix from the message
     @staticmethod
     def remove_prefix(message, prefix=None):
-        event = str(message[0] if message and is_list(message) else message)
+        event_name = str(message[0] if message and is_list(message) else message)
 
-        if not SEP in event or (prefix and not event.startswith(prefix + SEP)):
+        if not SEP in event_name or (prefix and not event_name.startswith(prefix + SEP)):
             return None
 
-        return event.split(SEP, 1)[-1]
+        return event_name.split(SEP, 1)[-1]
 
     # Should event go silent or not, useful to avoid recursions
-    def is_silent(self, event):
-        if not is_string(event):
-            event = str(event)
+    def is_silent(self, event_name):
+        if not is_string(event_name):
+            event_name = str(event_name)
 
-        return event.startswith(PRE_PREFIX) or event.startswith(POST_PREFIX) \
-            or event in SILENT
+        return event_name.startswith(PRE_PREFIX) or event_name.startswith(POST_PREFIX) \
+            or event_name in SILENT
 
     # Runs the handler with pre and post notifications
     def run_handler(self, handler, message, context):
