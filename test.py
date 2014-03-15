@@ -77,126 +77,129 @@ class UtTests(unittest.TestCase):
         abstract = TestCalls()
         self.assertEqual(abstract.parse(), abstract())
 
-        # Event test
+        # Access test
         # Function
-        info = Event.get_access_info(lambda l: l)
-        self.assertEqual(info.mode, Event.FUNCTION)
-        self.assertIsInstance(info.spec, ArgSpec)
+        access = Access(lambda l: l)
+        self.assertEqual(access.mode, Access.FUNCTION)
+        self.assertIsInstance(access.spec, ArgSpec)
 
         # Abstract
-        info = Event.get_access_info(abstract)
-        self.assertEqual(info.mode, Event.CALL)
-        self.assertEquals(info.spec, Event.ABSTRACT)
+        access = Access(abstract)
+        self.assertEqual(access.mode, Access.CALL)
+        self.assertEquals(access.spec, Access.ABSTRACT)
 
         # Number
-        info = Event.get_access_info(1)
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.NUMBER)
+        access = Access(1)
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.NUMBER)
 
         # List
-        info = Event.get_access_info([1])
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.LIST)
+        access = Access([1])
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.LIST)
 
         # List - 2
-        info = Event.get_access_info((1, 2))
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.LIST)
+        access = Access((1, 2))
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.LIST)
 
         # String
         s = 'string'
-        info = Event.get_access_info(s)
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.STRING)
-        self.assertEqual(info.value, s)
+        access = Access(s)
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.STRING)
+        self.assertEqual(access.value, s)
 
-        info = Event.get_access_info(s, True)
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.STRING)
-        self.assertEqual(info.value, s.upper())
+        access = Access(s, True)
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.STRING)
+        self.assertEqual(access.value, s.upper())
 
         # Regex
-        info = Event.get_access_info(re.compile('.'))
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.REGEX)
+        access = Access(re.compile('.'))
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.REGEX)
 
         # Other
-        info = Event.get_access_info(object())
-        self.assertEqual(info.mode, Event.VALUE)
-        self.assertEquals(info.spec, Event.OTHER)
+        access = Access(object())
+        self.assertEqual(access.mode, Access.VALUE)
+        self.assertEquals(access.spec, Access.OTHER)
 
         # Access and Get
-        self.assertEqual(Event.get_and_access(lambda: 1, [], {}), 1)
-        self.assertEqual(Event.get_and_access(lambda *m: m[0], [2], {}), 2)
-        self.assertEqual(Event.get_and_access(lambda *m, **c: c[m[0]], ['3'], {'3': 3}), 3)
-        self.assertEqual(Event.get_and_access(lambda **c: c['4'], ['4'], {'4': 4}), 4)
-        self.assertEqual(Event.get_and_access(lambda a, b: a + b, ['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
-        self.assertEqual(Event.get_and_access(lambda a, b=1: a + b, ['6'], {'a': 3}), 4)
-        self.assertEqual(Event.get_and_access(abstract.return_true, ['7'], {'a': 4}), True)
+        self.assertEqual(Access(lambda: 1).access([], {}), 1)
+        self.assertEqual(Access(lambda *m: m[0]).access([2], {}), 2)
+        self.assertEqual(Access(lambda *m, **c: c[m[0]]).access(['3'], {'3': 3}), 3)
+        self.assertEqual(Access(lambda **c: c['4']).access(['4'], {'4': 4}), 4)
+        self.assertEqual(Access(lambda a, b: a + b).access(['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
+        self.assertEqual(Access(lambda a, b=1: a + b).access(['6'], {'a': 3}), 4)
+        self.assertEqual(Access(abstract.return_true).access(['7'], {'a': 4}), True)
 
         # Conditions
         tc = TestCalls()
 
         cant_handle = (-1, None)
-        event1 = Event(1, lambda *m: m[0] == 1)
-        event2 = Event(2, lambda *m, **c: (m[0], len(c)))
-        event3 = Event(3, lambda: 4)
-        event4 = Event(4, tc.return_true)
-        event5 = Event(5, tc.return_false)
+        condition1 = Condition(lambda *m: m[0] == 1)
+        condition2 = Condition(lambda *m, **c: (m[0], len(c)))
+        condition3 = Condition(lambda: 4)
+        condition4 = Condition(tc.return_true)
+        condition5 = Condition(tc.return_false)
 
-        self.assertEquals(event1.can_handle([1], {}), (0, True))
-        self.assertEquals(event1.can_handle([2], {}), cant_handle)
+        self.assertEquals(condition1.check([1], {}), (0, True))
+        self.assertEquals(condition1.check([2], {}), cant_handle)
 
-        self.assertEquals(event2.can_handle([3], {'1': 1}), (3, 1))
-        self.assertEquals(event3.can_handle([], {}), (4, 4))
+        self.assertEquals(condition2.check([3], {'1': 1}), (3, 1))
+        self.assertEquals(condition3.check([], {}), (4, 4))
 
-        self.assertEquals(event4.can_handle([], {}), (0, True))
-        self.assertEquals(event5.can_handle([], {}), cant_handle)
+        self.assertEquals(condition4.check([], {}), (0, True))
+        self.assertEquals(condition5.check([], {}), cant_handle)
 
-        event_r = Event(7, re.compile('a+'))
+        condition_r = Condition(re.compile('a+'))
 
-        self.assertEquals(event_r.can_handle(['a'], {})[0], 1)
-        self.assertEquals(event_r.can_handle(['ab'], {})[0], 1)
-        self.assertEquals(event_r.can_handle(['b'], {}), cant_handle)
+        self.assertEquals(condition_r.check(['a'], {})[0], 1)
+        self.assertEquals(condition_r.check(['ab'], {})[0], 1)
+        self.assertEquals(condition_r.check(['b'], {}), cant_handle)
 
-        event_s = Event(8, 'aa')
-        self.assertEquals(event_s.can_handle(['aa'], {}), (2, 'aa'))
-        self.assertEquals(event_s.can_handle(['aaa'], {}), (2, 'aa'))
-        self.assertEquals(event_s.can_handle(['b'], {}), cant_handle)
+        condition_s = Condition('aa')
+        self.assertEquals(condition_s.check(['aa'], {}), (2, 'aa'))
+        self.assertEquals(condition_s.check(['aaa'], {}), (2, 'aa'))
+        self.assertEquals(condition_s.check(['b'], {}), cant_handle)
 
-        event_l = Event(9, ('aa', 'bb'))
-        self.assertEquals(event_l.can_handle(['bb'], {}), (2, 'bb'))
-        self.assertEquals(event_l.can_handle(['c'], {}), cant_handle)
+        condition_l = Condition(('aa', 'bb'))
+        self.assertEquals(condition_l.check(['bb'], {}), (2, 'bb'))
+        self.assertEquals(condition_l.check(['c'], {}), cant_handle)
+        self.assertEqual(condition_l.value, ('aa', 'bb'))
+        self.assertEqual(condition_l.list[0].spec, Access.STRING)
+        self.assertEqual(condition_l.list[1].value, condition_l.value[1])
 
-        event_l = Event(9, ('a', 'bb'), True)
-        self.assertEquals(event_l.can_handle(['bB'], {}), (2, 'BB'))
-        self.assertEquals(event_l.can_handle(['aa'], {}), (1, 'A'))
+        condition_l = Condition(('a', 'bb'), True)
+        self.assertEquals(condition_l.check(['bB'], {}), (2, 'BB'))
+        self.assertEquals(condition_l.check(['aa'], {}), (1, 'A'))
 
-        event_r = Event(10, (re.compile('a+'), re.compile('aa'), 'aa'))
-        self.assertEquals(event_r.can_handle(['aa'], {}), (2, 'aa'))
+        condition_r = Condition((re.compile('a+'), re.compile('aa'), 'aa'))
+        self.assertEquals(condition_r.check(['aa'], {}), (2, 'aa'))
 
-        event_n = Event(11, 1)
-        self.assertEquals(event_n.can_handle([1], {}), (0, 1))
-        self.assertEquals(event_n.can_handle([0], {}), cant_handle)
+        condition_n = Condition(1)
+        self.assertEquals(condition_n.check([1], {}), (0, 1))
+        self.assertEquals(condition_n.check([0], {}), cant_handle)
 
-        event = Event(12, lambda: (1, 2, 3))
-        self.assertEquals(event.can_handle([], {}), ((1, 2, 3), (1, 2, 3)))
+        condition = Condition(lambda: (1, 2, 3))
+        self.assertEquals(condition.check([], {}), ((1, 2, 3), (1, 2, 3)))
 
-        # Run handler
-        event = Event(tc.return_false)
-        self.assertEquals(event.handle([], {}), False)
+        # Access
+        access = Access(tc.return_false)
+        self.assertEquals(access.access([], {}), False)
 
-        event = Event(lambda: True)
-        self.assertTrue(event.handle([], {}))
+        access = Access(lambda: True)
+        self.assertTrue(access.access([], {}))
 
-        event = Event((1, 2))
-        self.assertEqual(event.handle([], {}), (1, 2))
+        access = Access((1, 2))
+        self.assertEqual(access.access([], {}), (1, 2))
 
-        event = Event(1)
-        self.assertEquals(event.handle([], {}), 1)
+        access = Access(1)
+        self.assertEquals(access.access([], {}), 1)
 
-        event = Event(tc)
-        self.assertTrue(event.handle([], {}))
+        access = Access(tc)
+        self.assertTrue(access.access([], {}))
 
     def test_2_handler(self):
         h = Handler()
@@ -1432,6 +1435,7 @@ class UtTests(unittest.TestCase):
         l = LoopRelation(root, aa, 5)
 
         self.assertTrue(l.is_numeric())
+        self.assertTrue(l.is_general())
         self.assertFalse(l.is_flexible())
 
         a = ActionNotion('acc', common_state_acc)

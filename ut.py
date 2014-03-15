@@ -1,9 +1,7 @@
 # Universal Translator base classes
 # (c) krvss 2011-2014
 
-
 from inspect import getargspec
-from collections import namedtuple
 
 from utils import *
 
@@ -24,12 +22,8 @@ class Abstract(object):
         return self.answer(*args, **kwargs)
 
 
-AccessInfo = namedtuple('AccessInfo', 'mode spec value')
-
-
-# Event class consists of event happening condition and event handler
-# Event caches condition(s) and handler type information to increase execution speed
-class Event(object):
+# Access caches type information to increase the execution speed
+class Access(object):
     CALL = 'call'
     ABSTRACT = 'abstract'
     FUNCTION = 'function'
@@ -40,84 +34,97 @@ class Event(object):
     REGEX = 'regex'
     OTHER = 'other'
 
-    def __init__(self, handler, condition=True, ignore_case=False):
+    def __init__(self, value, ignore_case=False):
+        self._value = value
+        self._mode, self._spec = self.OTHER, self.OTHER
         self._ignore_case = ignore_case
 
-        condition_info = self.get_access_info(condition, ignore_case)
+        self.setup()
 
-        if condition_info.spec == self.LIST:
-            self._conditions = [self.get_access_info(c, ignore_case) for c in condition]
-        else:
-            self._conditions = [condition_info]
+    # Init the type information
+    def setup(self):
+        if isinstance(self._value, Abstract):
+            self._mode, self._spec = self.CALL, self.ABSTRACT
 
-        self._handler = self.get_access_info(handler, ignore_case)
-
-    @staticmethod
-    def get_access_info(arg, ignore_case=False):
-        if isinstance(arg, Abstract):
-            mode, spec = Event.CALL, Event.ABSTRACT
-
-        elif callable(arg):
-            mode, spec = Event.FUNCTION, getargspec(arg)
+        elif callable(self._value):
+            self._mode, self._spec = self.FUNCTION, getargspec(self._value)
 
         else:
-            mode = Event.VALUE
+            self._mode = self.VALUE
 
-            if is_number(arg):
-                spec = Event.NUMBER
+            if is_number(self._value):
+                self._spec = self.NUMBER
 
-            elif is_list(arg):
-                spec = Event.LIST
+            elif is_list(self._value):
+                self._spec = self.LIST
 
-            elif is_string(arg):
-                spec = Event.STRING
+            elif is_string(self._value):
+                self._spec = self.STRING
 
-                if ignore_case:
-                    arg = arg.upper()
+                if self._ignore_case:
+                    self._value = self._value.upper()
 
-            elif is_regex(arg):
-                spec = Event.REGEX
+            elif is_regex(self._value):
+                self._spec = self.REGEX
 
-            else:
-                spec = Event.OTHER
+    # Do the access with message and context
+    def access(self, message, context):
+        if self._spec == self.ABSTRACT:
+            return self._value(*message, **context)
 
-        return AccessInfo(mode=mode, spec=spec, value=arg)
+        elif self._mode == self.FUNCTION:
+            if self._spec.varargs and not self._spec.keywords:
+                return self.value(*message)
 
-    @staticmethod
-    def access(info, message, context):
-        if info.spec == Event.ABSTRACT:
-            return info.value(*message, **context)
+            elif self._spec.keywords and not self._spec.varargs:
+                return self.value(**context)
 
-        elif info.mode == Event.FUNCTION:
-            if info.spec.varargs and not info.spec.keywords:
-                return info.value(*message)
+            elif self._spec.varargs and self._spec.keywords:
+                return self.value(*message, **context)
 
-            elif info.spec.keywords and not info.spec.varargs:
-                return info.value(**context)
+            elif not self._spec.varargs and not self._spec.keywords and not self._spec.args:
+                return self.value()
 
-            elif info.spec.varargs and info.spec.keywords:
-                return info.value(*message, **context)
-
-            elif not info.spec.varargs and not info.spec.keywords and not info.spec.args:
-                return info.value()
-
-            elif info.spec.args:
-                i, args = len(info.spec.defaults) - 1 if info.spec.defaults else -1, {}
-                for arg in reversed(info.spec.args):
+            elif self._spec.args:
+                i, args = len(self._spec.defaults) - 1 if self._spec.defaults else -1, {}
+                for arg in reversed(self._spec.args):
                     if arg != 'self':
-                        args[arg] = context[arg] if arg in context else info.spec.defaults[i] if i >= 0 else None
+                        args[arg] = context[arg] if arg in context else self._spec.defaults[i] if i >= 0 else None
                         i -= 1
 
-                return info.value(**args)
+                return self._value(**args)
 
-        return info.value
+        return self._value
 
-    def can_handle(self, message, context):
+    @property
+    def mode(self):
+        return self._mode
+
+    @property
+    def spec(self):
+        return self._spec
+
+    @property
+    def value(self):
+        return self._value
+
+
+# Condition is a kind of Access that checks the possibility of the access according to message and context
+class Condition(Access):
+    def __init__(self, value, ignore_case=False):
+        super(Condition, self).__init__(value, ignore_case)
+
+        if self.spec == self.LIST:
+            self._condition_list = tuple([Access(c, ignore_case) for c in value])
+        else:
+            self._condition_list = self,
+
+    def check(self, message, context):
         rank, check = -1, None
 
-        for condition_info in self._conditions:
-            if condition_info.mode == Event.FUNCTION:
-                check = self.access(condition_info, message, context)
+        for condition in self._condition_list:
+            if condition.mode == self.FUNCTION:
+                check = self.access(message, context)
 
                 # Do we work with (rank, check) format?
                 if get_len(check) == 2:
@@ -125,35 +132,32 @@ class Event(object):
                 elif check:
                     rank = 0 if check is True else check
 
-            elif condition_info.spec == Event.REGEX:
-                check = condition_info.value.match(message[0]) if message else None
+            elif condition.spec == self.REGEX:
+                check = condition.value.match(message[0]) if message else None
 
                 if check:
                     rank = check.end() - check.start()  # Match length is the rank
 
-            elif condition_info.spec == Event.STRING and message:
+            elif condition.spec == self.STRING and message:
                 message0 = str(message[0])
 
                 if self._ignore_case:
                     message0 = message0.upper()
 
-                if message0.startswith(condition_info.value):
-                    rank, check = len(condition_info.value), condition_info.value
+                if message0.startswith(condition.value):
+                    rank, check = len(condition.value), condition.value
 
-            elif has_first(message, condition_info.value):
-                rank, check = max(get_len(condition_info.value), 0), condition_info.value
+            elif has_first(message, condition.value):
+                rank, check = max(get_len(condition.value), 0), condition.value
 
         if rank < 0:
             check = None  # Little cleanup
 
         return rank, check
 
-    def handle(self, message, context):
-        return self.access(self._handler, message, context)
-
-    @staticmethod
-    def get_and_access(value, message, context, ignore_case=False):
-        return Event.access(Event.get_access_info(value), message, context)
+    @property
+    def list(self):
+        return self._condition_list
 
 
 # Handler dialect
@@ -611,19 +615,30 @@ class ComplexNotion(Notion):
 class NextRelation(Relation):
     def __init__(self, subj, obj, condition=None, owner=None):
         super(NextRelation, self).__init__(subj, obj, owner)
-        self.condition = condition
+        self.condition_access = Condition(condition, self.ignore_case)
 
         self.on(self.can_pass, self.next_handler)
 
     def check_condition(self, message, context):
-        return self.can_handle(self.condition, message, context)
+        return self.condition_access.check(message, context)
 
     def can_pass(self, *message, **context):
         if self.is_forward(message):  # We use 0 rank to make condition prevail other forward command
-            return True if self.condition is None else self.check_condition(message, context)
+            return True if not self.has_condition() else self.check_condition(message, context)
 
     def next_handler(self, *message, **context):
         return self.object
+
+    def has_condition(self):
+        return self.condition_access.value is not None
+
+    @property
+    def condition(self):
+        return self.condition_access.value
+
+    @condition.setter
+    def condition(self, value):
+        self.condition_access = Condition(value, self.ignore_case)
 
 
 # Action relation performs an action and moves forward
@@ -1128,7 +1143,7 @@ class ParsingRelation(NextRelation):
 
     # Here we check condition against the parsing text
     def check_condition(self, message, context):
-        return self.can_handle(self.condition, tupled(context.get(TEXT), message), context)
+        return self.condition_access.check(tupled(context.get(TEXT), message), context)
 
     def next_handler(self, *message, **context):
         next_result = super(ParsingRelation, self).next_handler(*message, **context)
@@ -1277,7 +1292,7 @@ class LoopRelation(NextRelation):
         self.on(self.can_continue, self.do_continue)
 
     def check_condition(self, message, context):
-        if not self.condition:  # Here we check only the simplest case
+        if not self.has_condition():  # Here we check only the simplest case
             return False
 
     # Is a wildcard loop
@@ -1286,11 +1301,11 @@ class LoopRelation(NextRelation):
 
     # Is a numeric loop
     def is_numeric(self):
-        if is_number(self.condition):
+        if self.condition_access.spec == Access.NUMBER:
             return True
-        elif is_list(self.condition) and len(self.condition) == 2:
-            return (self.condition[0] is None or is_number(self.condition[0])) \
-                and (self.condition[1] is None or is_number(self.condition[1]))
+        elif self.condition_access.spec == Access.LIST and len(self.condition) == 2:
+            return (self.condition[0] is None or self.condition_access.list[0].spec == Access.NUMBER) \
+                and (self.condition[1] is None or self.condition_access.list[1].spec == Access.NUMBER)
 
     # Infinite loop
     def is_infinite(self):
@@ -1298,11 +1313,11 @@ class LoopRelation(NextRelation):
 
     # Custom loop: not empty callable condition
     def is_custom(self):
-        return self.condition and callable(self.condition)
+        return self.condition_access.mode == Access.FUNCTION
 
     # Flexible condition has no finite bound, lower or higher
     def is_flexible(self):
-        return (self.is_numeric() and is_list(self.condition)) or self.is_wildcard()
+        return (self.is_numeric() and self.condition_access.spec == Access.LIST) or self.is_wildcard()
 
     # Checking for the condition type
     def is_general(self):
@@ -1317,7 +1332,7 @@ class LoopRelation(NextRelation):
         lower, upper = 0, INFINITY
 
         if self.is_numeric():
-            if is_number(self.condition):
+            if self.condition_access.spec == Access.NUMBER:
                 lower, upper = 1, self.condition
             else:
                 if self.condition[0]:
@@ -1394,7 +1409,7 @@ class LoopRelation(NextRelation):
         return self.is_forward(message) and self.is_custom()
 
     def do_loop_custom(self, *message, **context):
-        i = self.var_call_result(self.condition, message, context)
+        i = self.condition_access.access(message, context)
 
         if i:
             return {SET_STATE: {ITERATION: i}}, self.object, self
