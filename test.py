@@ -225,7 +225,7 @@ class UtTests(unittest.TestCase):
         h.on_any(handler1)
 
         self.assertEqual(len(h.handlers), 3)
-        self.assertIn(handler1, h.handlers)
+        self.assertIn((True, handler1), h.handlers)
 
         # No duplicates on on_any too
         h.on_any(handler1)
@@ -273,64 +273,6 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h.get_handlers('event'), [handler1, handler2])
         self.assertEqual(h.get_handlers(), [handler2])
 
-        # Smart calls
-        self.assertEqual(h.var_call_result(lambda: 1, [], {}), 1)
-        self.assertEqual(h.var_call_result(lambda *m: m[0], [2], {}), 2)
-        self.assertEqual(h.var_call_result(lambda *m, **c: c[m[0]], ['3'], {'3': 3}), 3)
-        self.assertEqual(h.var_call_result(lambda **c: c['4'], ['4'], {'4': 4}), 4)
-        self.assertEqual(h.var_call_result(lambda a, b: a + b, ['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
-        self.assertEqual(h.var_call_result(lambda a, b=1: a + b, ['6'], {'a': 3}), 4)
-
-        # Conditions
-        condition1 = lambda *m: m[0] == 1
-        condition2 = lambda *m, **c: (m[0], len(c))
-        condition3 = lambda: 4
-
-        tc = TestCalls()
-
-        cant_handle = (-1, None)
-
-        self.assertEquals(h.can_handle(condition1, [1], {}), (0, True))
-        self.assertEquals(h.can_handle(condition1, [2], {}), cant_handle)
-
-        self.assertEquals(h.can_handle(condition2, [3], {'1': 1}), (3, 1))
-        self.assertEquals(h.can_handle(condition3, [], {}), (4, 4))
-
-        self.assertEquals(h.can_handle(tc.return_true, [], {}), (0, True))
-        self.assertEquals(h.can_handle(tc.return_false, [], {}), cant_handle)
-
-        condition_r = re.compile('a+')
-
-        self.assertEquals(h.can_handle(condition_r, ['a'], {})[0], 1)
-        self.assertEquals(h.can_handle(condition_r, ['ab'], {})[0], 1)
-        self.assertEquals(h.can_handle(condition_r, ['b'], {}), cant_handle)
-
-        self.assertEquals(h.can_handle('aa', ['aa'], {}), (2, 'aa'))
-        self.assertEquals(h.can_handle('aa', ['aaa'], {}), (2, 'aa'))
-        self.assertEquals(h.can_handle('b', ['aa'], {}), cant_handle)
-
-        self.assertEquals(h.can_handle(('aa', 'bb'), ['bb'], {}), (2, 'bb'))
-        self.assertEquals(h.can_handle(('aa', 'bb'), ['c'], {}), cant_handle)
-
-        h.ignore_case = True
-        self.assertEquals(h.can_handle(('aa', 'bb'), ['bB'], {}), (2, 'BB'))
-        self.assertEquals(h.can_handle(('A', 'bb'), ['aa'], {}), (1, 'A'))
-        h.ignore_case = False
-
-        condition_r_2 = re.compile('aa')
-        self.assertEquals(h.can_handle((condition_r, condition_r_2, 'aa'), ['aa'], {}), (2, 'aa'))
-
-        self.assertEquals(h.can_handle(1, [1], {}), (0, 1))
-        self.assertEquals(h.can_handle(1, [0], {}), cant_handle)
-
-        self.assertEquals(h.can_handle(lambda: (1, 2, 3), [], {}), (0, (1, 2, 3)))
-
-        # Run handler
-        self.assertEquals(h.run_handler(tc.return_false, [], {}), (False, tc.return_false))
-        self.assertTrue(h.run_handler(handler1, [], {})[0])
-        self.assertEqual(h.run_handler((1, 2), [], {}), ((1, 2), (1, 2)))
-        self.assertEquals(h.run_handler(1, [], {}), (1, 1))
-
         # Handle itself
         # Longest wins
         del h.handlers[:]
@@ -366,6 +308,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(r[2], handler1)
 
         # For any events first default wins
+        tc = TestCalls()
         h.on_any(tc.return_true)
 
         r = h.handle('even')

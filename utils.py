@@ -125,24 +125,3 @@ def tupled(*args):
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
-
-
-# TODO: use full spec cached
-# Simplified version of getargspec
-def get_args(func):
-    co = func.func_code if not ismethod(func) else func.im_func.func_code
-
-    nargs = co.co_argcount
-    names = co.co_varnames
-    args = list(names[:nargs])
-
-    varargs = None
-    if co.co_flags & CO_VARARGS:
-        varargs = co.co_varnames[nargs]
-        nargs += 1
-
-    varkw = None
-    if co.co_flags & CO_VARKEYWORDS:
-        varkw = co.co_varnames[nargs]
-
-    return ArgSpec(args, varargs, varkw, func.func_defaults)

@@ -32,7 +32,10 @@ class Access(object):
     LIST = 'list'
     STRING = 'string'
     REGEX = 'regex'
+    BOOLEAN = 'bool'
     OTHER = 'other'
+
+    ATTR = '__access__'
 
     def __init__(self, value, ignore_case=False):
         self._value = value
@@ -40,6 +43,18 @@ class Access(object):
         self._ignore_case = ignore_case
 
         self.setup()
+
+    def __hash__(self):
+        return hash(self._value)
+
+    def __eq__(self, other):
+        if isinstance(other, Access):
+            return other.value == self.value
+
+        return other == self.value
+
+    def __str__(self):
+        return '%s, %s: %s' % (self.mode, self.spec, self.value)
 
     # Init the type information
     def setup(self):
@@ -66,6 +81,9 @@ class Access(object):
 
             elif is_regex(self._value):
                 self._spec = self.REGEX
+
+            elif self._value is True or self._value is False:
+                self._spec = self.BOOLEAN
 
     # Do the access with message and context
     def access(self, message, context):
@@ -109,7 +127,7 @@ class Access(object):
         return self._value
 
 
-# Condition is a kind of Access that checks the possibility of the access according to message and context
+# Condition is a kind of Access that checks the possibility of the access according to the message and context
 class Condition(Access):
     def __init__(self, value, ignore_case=False):
         super(Condition, self).__init__(value, ignore_case)
@@ -147,6 +165,9 @@ class Condition(Access):
                 if message0.startswith(condition.value):
                     rank, check = len(condition.value), condition.value
 
+            elif condition.spec == self.BOOLEAN and self._value:
+                rank = 0
+
             elif has_first(message, condition.value):
                 rank, check = max(get_len(condition.value), 0), condition.value
 
@@ -174,17 +195,19 @@ NO_PARSE = (False, -1, None)
 class Handler(Abstract):
     def __init__(self):
         self.handlers = []
-        self.ignore_case = False
+
+    # Adding the accesses
+    def on_access(self, condition_access, handler_access):
+        if (condition_access, handler_access) not in self.handlers:
+            self.handlers.append((condition_access, handler_access))
 
     # Adding the condition - handler pair
     def on(self, condition, handler):
-        if (condition, handler) not in self.handlers:
-            self.handlers.append((condition, handler))
+        self.on_access(Condition(condition), Access(handler))
 
     # Adding the handler, without condition it will trigger on any message
     def on_any(self, handler):
-        if handler not in self.handlers:
-            self.handlers.append(handler)
+        self.on(True, handler)
 
     # Removing the condition - handler pair
     def off(self, condition, handler):
@@ -193,96 +216,26 @@ class Handler(Abstract):
 
     # Removing the handler
     def off_any(self, handler):
-        if handler in self.handlers:
-            self.handlers.remove(handler)
+        self.off(True, handler)
 
     # Removing all the handlers for the condition
     def off_condition(self, condition):
-        self.handlers = filter(lambda h: not (is_list(h) and h[0] == condition), self.handlers)
+        self.handlers = filter(lambda h: not (h[0] == condition), self.handlers)
 
     # Remove all occurrences of the handler
     def off_handler(self, handler):
-        self.handlers = filter(lambda h: not ((is_list(h) and h[1] == handler) or h == handler), self.handlers)
+        self.handlers = filter(lambda h: not (h[1] == handler), self.handlers)
 
     # Getting the handlers for the specified condition
     def get_handlers(self, condition=None):
         if condition:
             return [h[1] for h in self.handlers if has_first(h, condition)]
         else:
-            return [h for h in self.handlers if not is_list(h)]
-
-    # Smart call with a message and a context: feeds only the number of arguments the function is ready to accept
-    def var_call_result(self, func, message, context):
-        if isinstance(func, Abstract):
-            return func(*message, **context)
-
-        spec = get_args(func)
-
-        if spec.varargs and not spec.keywords:
-            return func(*message)
-
-        elif spec.keywords and not spec.varargs:
-            return func(**context)
-
-        elif spec.varargs and spec.keywords:
-            return func(*message, **context)
-
-        elif not spec.varargs and not spec.keywords and not spec.args:
-            return func()
-
-        elif spec.args:
-            i, args = len(spec.defaults) - 1 if spec.defaults else -1, {}
-            for arg in reversed(spec.args):
-                if arg != 'self':
-                    args[arg] = context[arg] if arg in context else spec.defaults[i] if i >= 0 else None
-                    i -= 1
-
-            return func(**args)
-
-    # Checking the condition to satisfy the message and context
-    def can_handle(self, condition, message, context):
-        rank, check = -1, None
-        conditions = condition if is_list(condition) else [condition]
-
-        for condition in conditions:
-            if callable(condition):
-                check = self.var_call_result(condition, message, context)
-
-                # Do we work with (rank, check) format?
-                if is_list(check) and len(check) == 2 and is_number(check[0]):
-                    rank, check = check
-                elif check:
-                    rank = check if is_number(check) else 0  # If check result is numeric - this is a rank
-
-            elif is_regex(condition):
-                check = condition.match(message[0]) if message else None
-
-                if check:
-                    rank = check.end() - check.start()  # Match length is the rank
-
-            elif is_string(condition) and message:
-                message0 = str(message[0])
-
-                if self.ignore_case:
-                    message0 = message0.upper()
-                    condition = condition.upper()
-
-                if message0.startswith(condition):
-                    rank, check = len(condition), condition
-
-            elif has_first(message, condition):
-                rank, check = max(get_len(condition), 0), condition
-
-        if rank < 0:
-            check = None  # Little cleanup
-
-        return rank, check
+            return [h[1] for h in self.handlers if h[0] == True]
 
     # Running the specified handler, returns result as result, rank, handler
     def run_handler(self, handler, message, context):
-        result = self.var_call_result(handler, message, context) if callable(handler) else handler
-
-        return result, handler
+        return handler.access(message, context), handler.value
 
     # Calling handlers basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
@@ -293,24 +246,24 @@ class Handler(Abstract):
 
         # Searching for the best handler
         for handler in self.handlers:
-            handler_func = handler if not is_list(handler) else handler[1]
+            condition_access, handler_access = handler
 
             # Avoiding recursive calls
-            if context.get(HANDLER) == handler_func:
+            if context.get(HANDLER) == handler_access.value:
                 continue
 
             # Condition check, if no condition the result is true with zero rank
-            condition = self.can_handle(handler[0], message, context) if is_list(handler) else (0, True)
+            c_rank, c_check = condition_access.check(message, context)
 
-            if condition[0] <= rank:
+            if c_rank <= rank:
                 continue
             else:
-                rank, check, handler_found = condition[0], condition[1], handler_func
+                rank, check, handler_found = c_rank, c_check, handler_access
 
         # Running the best handler
         if rank >= 0:
             if not HANDLER in context:
-                context[HANDLER] = handler_found
+                context[HANDLER] = handler_found.value
 
             context.update({RANK: rank, CONDITION: check})
 
@@ -383,7 +336,7 @@ class Talker(Handler):
         silent = self.is_silent(event[0])
 
         if not silent:
-            context[HANDLER] = handler
+            context[HANDLER] = handler.value
 
             # Pre-processing, adding prefix to event or handler name
             pre_result = self.handle(*self.add_prefix(event, PRE_PREFIX), **context)
@@ -645,17 +598,25 @@ class NextRelation(Relation):
 class ActionRelation(Relation):
     def __init__(self, subj, obj, action, owner=None):
         super(ActionRelation, self).__init__(subj, obj, owner)
-        self.action = action
+        self._action_access = Access(action, self.ignore_case)
 
         self.on_forward(self.act_next)
 
     def act_next(self, *message, **context):
-        action_result = self.var_call_result(self.action, message, context) if callable(self.action) else self.action
+        action_result = self._action_access.access(message, context)
 
         if action_result is not None and self.object is not None:
             return action_result, self.object
         else:
             return action_result if action_result is not None else self.object
+
+    @property
+    def action(self):
+        return self._action_access.value
+
+    @action.setter
+    def action(self, value):
+        self._action_access = Access(value, self.ignore_case)
 
 
 # Process dialect
@@ -727,7 +688,14 @@ class Process(Talker):
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def can_push_queue(self, *message):
-        return self.message and (isinstance(message[0], Abstract) or callable(message[0]))
+        if self.message:
+            access = getattr(self.message[0], Access.ATTR, Access(self.message[0]))
+
+            if access.mode in (Access.CALL, Access.FUNCTION):
+                if not hasattr(self.message[0], Access.ATTR):
+                    setattr(self.message[0], Access.ATTR, access)
+
+                return True
 
     def do_queue_push(self):
         self.to_queue({CURRENT: self.message.pop(0),
@@ -747,10 +715,8 @@ class Process(Talker):
     def do_query(self):
         self.message.pop(0)
 
-        reply = self.current(self.query, **self.context) if isinstance(self.current, Abstract) \
-            else self.var_call_result(self.current, self.message, self.context)  # TODO: check non-callable lists
-
-        return reply or True  # if it is False/None, we just continue to the next one
+        # If False/None, we just continue to the next one
+        return getattr(self.current, Access.ATTR).access([self.query], self.context) or True
 
     # Skip: remove current and the next item from the queue
     def do_skip(self):
