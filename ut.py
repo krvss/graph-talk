@@ -26,7 +26,9 @@ class Abstract(object):
 class Access(object):
     CALL = 'call'
     ABSTRACT = 'abstract'
+
     FUNCTION = 'function'
+
     VALUE = 'value'
     NUMBER = 'number'
     LIST = 'list'
@@ -37,10 +39,9 @@ class Access(object):
 
     ATTR = '__access__'
 
-    def __init__(self, value, ignore_case=False):
+    def __init__(self, value):
         self._value = value
         self._mode, self._spec = self.OTHER, self.OTHER
-        self._ignore_case = ignore_case
 
         self.setup()
 
@@ -52,6 +53,9 @@ class Access(object):
             return other.value == self.value
 
         return other == self.value
+
+    def __repr__(self):
+        return self.__str__()
 
     def __str__(self):
         return '%s, %s: %s' % (self.mode, self.spec, self.value)
@@ -75,9 +79,6 @@ class Access(object):
 
             elif is_string(self._value):
                 self._spec = self.STRING
-
-                if self._ignore_case:
-                    self._value = self._value.upper()
 
             elif is_regex(self._value):
                 self._spec = self.REGEX
@@ -130,12 +131,20 @@ class Access(object):
 # Condition is a kind of Access that checks the possibility of the access according to the message and context
 class Condition(Access):
     def __init__(self, value, ignore_case=False):
-        super(Condition, self).__init__(value, ignore_case)
+        self._ignore_case = ignore_case
+
+        super(Condition, self).__init__(value)
 
         if self.spec == self.LIST:
-            self._condition_list = tuple([Access(c, ignore_case) for c in value])
+            self._condition_list = tuple([Condition(c, ignore_case) for c in value])
         else:
             self._condition_list = self,
+
+    def setup(self):
+        super(Condition, self).setup()
+
+        if self.spec == Access.STRING and self._ignore_case:
+            self._value = self._value.upper()
 
     def check(self, message, context):
         rank, check = -1, None
@@ -165,7 +174,7 @@ class Condition(Access):
                 if message0.startswith(condition.value):
                     rank, check = len(condition.value), condition.value
 
-            elif condition.spec == self.BOOLEAN and self._value:
+            elif condition.spec == self.BOOLEAN and message and message[0] is self._value:
                 rank = 0
 
             elif has_first(message, condition.value):
@@ -181,75 +190,126 @@ class Condition(Access):
         return self._condition_list
 
 
+# Condition that is always satisfied
+class TrueCondition(Condition):
+    def __init__(self):
+        super(TrueCondition, self).__init__(id(self))
+
+    def check(self, message, context):
+        return 0, True
+
+TRUE_CONDITION = TrueCondition()
+
+
+# Event is a kind of Access that allows to attach Pre and Post custom functions
+class Event(Access):
+    RESULT = 'result'
+
+    def __init__(self, value):
+        super(Event, self).__init__(value)
+        self.pre_event, self.post_event = None, None
+
+    def run(self, message, context):
+        if self.pre_event:
+            pre_result = self.pre_event.run(message, context)
+
+            if pre_result[0] is not None:
+                return pre_result
+
+        result = self.access(message, context)
+
+        if self.post_event:
+            context[self.RESULT] = result
+            post_result = self.post_event.run(message, context)
+
+            if post_result[0] is not None:
+                return post_result
+
+        return result, self.value
+
+    @property
+    def pre(self):
+        return self.pre_event.value if self.pre_event else None
+
+    @pre.setter
+    def pre(self, value):
+        self.pre_event = Event(value) if value is not None else None
+
+    @property
+    def post(self):
+        return self.post_event.value if self.post_event else None
+
+    @post.setter
+    def post(self, value):
+        self.post_event = Event(value) if value is not None else None
+
+
 # Handler dialect
 ANSWER = 'answer'
 SENDER = 'sender'
 CONDITION = 'condition'
-HANDLER = 'handler'
+EVENT = 'event'
 RANK = 'rank'
 
+UNKNOWN = 'unknown'
 NO_PARSE = (False, -1, None)
 
 
-# Handler is a class for the routing of messages to processing functions (handlers) basing on specified conditions
+# Handler is a class for the routing of messages to processing functions (events) basing on specified conditions
 class Handler(Abstract):
     def __init__(self):
-        self.handlers = []
+        self.events = []
 
     # Adding the accesses
-    def on_access(self, condition_access, handler_access):
-        if (condition_access, handler_access) not in self.handlers:
-            self.handlers.append((condition_access, handler_access))
+    def on_access(self, condition_access, event_access):
+        if (condition_access, event_access) not in self.events:
+            self.events.append((condition_access, event_access))
 
-    # Adding the condition - handler pair
-    def on(self, condition, handler):
-        self.on_access(Condition(condition), Access(handler))
+    # Adding the condition - event pair
+    def on(self, condition, event):
+        self.on_access(Condition(condition), Event(event))
 
-    # Adding the handler, without condition it will trigger on any message
-    def on_any(self, handler):
-        self.on(True, handler)
+    # Adding the event, without condition it will trigger on any message
+    def on_any(self, event):
+        self.on_access(TRUE_CONDITION, Event(event))
 
-    # Removing the condition - handler pair
-    def off(self, condition, handler):
-        if (condition, handler) in self.handlers:
-            self.handlers.remove((condition, handler))
+    # Removing the condition - event pair
+    def off(self, condition, event):
+        if (condition, event) in self.events:
+            self.events.remove((condition, event))
 
-    # Removing the handler
-    def off_any(self, handler):
-        self.off(True, handler)
+    # Removing the event
+    def off_any(self, event):
+        self.off(TRUE_CONDITION, event)
 
-    # Removing all the handlers for the condition
+    # Removing all the events for the condition
     def off_condition(self, condition):
-        self.handlers = filter(lambda h: not (h[0] == condition), self.handlers)
+        self.events = filter(lambda e: not (e[0] == condition), self.events)
 
-    # Remove all occurrences of the handler
-    def off_handler(self, handler):
-        self.handlers = filter(lambda h: not (h[1] == handler), self.handlers)
+    # Remove all occurrences of the event
+    def off_event(self, event):
+        self.events = filter(lambda h: not (h[1] == event), self.events)
 
-    # Getting the handlers for the specified condition
-    def get_handlers(self, condition=None):
+    # Getting the events for the specified condition
+    def get_events(self, condition=None):
         if condition:
-            return [h[1] for h in self.handlers if has_first(h, condition)]
+            return [h[1] for h in self.events if has_first(h, condition)]
         else:
-            return [h[1] for h in self.handlers if h[0] == True]
+            return [h[1] for h in self.events if h[0] == TRUE_CONDITION]
 
-    # Running the specified handler, returns result as result, rank, handler
-    def run_handler(self, handler, message, context):
-        return handler.access(message, context), handler.value
-
-    # Calling handlers basing on condition, using ** to protect the context content
+    # Calling events basing on condition, using ** to protect the context content
     def handle(self, *message, **context):
-        check, rank, handler_found = NO_PARSE
+        check, rank, event_found = NO_PARSE
 
         if not SENDER in context:
             context[SENDER] = self
 
-        # Searching for the best handler
-        for handler in self.handlers:
-            condition_access, handler_access = handler
+        # Searching for the best event
+        for event in self.events:
+            condition_access, event_access = event
 
             # Avoiding recursive calls
-            if context.get(HANDLER) == handler_access.value:
+            if context.get(EVENT) == event_access.value:
                 continue
 
             # Condition check, if no condition the result is true with zero rank
@@ -258,25 +318,31 @@ class Handler(Abstract):
             if c_rank <= rank:
                 continue
             else:
-                rank, check, handler_found = c_rank, c_check, handler_access
+                rank, check, event_found = c_rank, c_check, event_access
 
-        # Running the best handler
+        # Running the best event
         if rank >= 0:
-            if not HANDLER in context:
-                context[HANDLER] = handler_found.value
+            if not EVENT in context:
+                context[EVENT] = event_found.value
 
             context.update({RANK: rank, CONDITION: check})
 
-            # Call handler, add the condition result to the context
-            result, handler_found = self.run_handler(handler_found, message, context)
+            # Call event, add the condition result to the context
+            result, event_found = event_found.run(message, context)
         else:
             result = False
 
-        return result, rank, handler_found
+        return result, rank, event_found
 
-    # Parse means search for a handler
+    # Parse means search for an event
     def parse(self, *message, **context):
-        return self.handle(*message, **context)
+        result = self.handle(*message, **context)
+
+        # There is a way to handle unknown message
+        if result[0] is False:
+            result = self.handle(UNKNOWN, *message, **context)
+
+        return result
 
     # Answer depends on the context
     def answer(self, *message, **context):
@@ -289,91 +355,6 @@ class Handler(Abstract):
         return result[0]  # No need to know the details
 
 
-# Talker dialect
-PRE_PREFIX = 'pre'
-POST_PREFIX = 'post'
-RESULT = 'result'
-UNKNOWN = 'unknown'
-
-SEP = '_'
-SILENT = (RESULT, UNKNOWN)
-
-
-# Handler which uses pre and post handling notifications
-class Talker(Handler):
-
-    # Add prefix to the message
-    @staticmethod
-    def add_prefix(message, prefix):
-        event_name = str(message[0] if is_list(message) else message)
-
-        if not event_name.startswith(prefix):
-            event_name = SEP.join([prefix, event_name])
-
-        return tupled(event_name, message[1:]) if is_list(message) else event_name
-
-    # Remove prefix from the message
-    @staticmethod
-    def remove_prefix(message, prefix=None):
-        event_name = str(message[0] if message and is_list(message) else message)
-
-        if not SEP in event_name or (prefix and not event_name.startswith(prefix + SEP)):
-            return None
-
-        return event_name.split(SEP, 1)[-1]
-
-    # Should event go silent or not, useful to avoid recursions
-    def is_silent(self, event_name):
-        if not is_string(event_name):
-            event_name = str(event_name)
-
-        return event_name.startswith(PRE_PREFIX) or event_name.startswith(POST_PREFIX) \
-            or event_name in SILENT
-
-    # Runs the handler with pre and post notifications
-    def run_handler(self, handler, message, context):
-        event = message if (message and is_string(message[0])) else (get_object_name(handler), )
-        silent = self.is_silent(event[0])
-
-        if not silent:
-            context[HANDLER] = handler.value
-
-            # Pre-processing, adding prefix to event or handler name
-            pre_result = self.handle(*self.add_prefix(event, PRE_PREFIX), **context)
-
-            if pre_result[0]:
-                return pre_result[0], pre_result[2]
-
-        result = super(Talker, self).run_handler(handler, message, context)
-
-        if not silent:
-            context.update({RESULT: result[0], RANK: result[1]})
-
-            # Post-processing, adding postfix and results
-            post_result = self.handle(*self.add_prefix(event, POST_PREFIX), **context)
-
-            if post_result[0]:
-                return post_result[0], post_result[2]
-
-        return result
-
-    # Parse means search for a handler
-    def parse(self, *message, **context):
-        result = super(Talker, self).parse(*message, **context)
-
-        # There is a way to override result and handle unknown message
-        if result[0] is not False:
-            context.update({RESULT: result[0], RANK: result[1], HANDLER: result[2]})
-            after_result = super(Talker, self).parse(RESULT, *message, **context)
-
-            if after_result[0]:
-                result = after_result  # override has priority
-        else:
-            result = super(Talker, self).parse(UNKNOWN, *message, **context)
-
-        return result
-
-
 # Element dialect
 NEXT = 'next'
 PREVIOUS = 'previous'
@@ -384,27 +365,50 @@ NAME = 'name'
 OLD_VALUE = 'old-value'
 NEW_VALUE = 'new-value'
 
+SEP = '_'
+
 FORWARD = [NEXT]
 BACKWARD = [PREVIOUS]
 
 
 # Element is a part of a bigger system
-class Element(Talker):
-
+class Element(Handler):
     def __init__(self, owner=None):
         super(Element, self).__init__()
         self.on(self.can_set_property, self.do_set_property)
 
         self._owner, self.owner = None, owner
 
+    # Add prefix to the message
+    @staticmethod
+    def add_prefix(message, prefix):
+        event_name = message
+
+        if not message.startswith(prefix):
+            event_name = SEP.join([prefix, event_name])
+
+        return event_name
+
+    # Remove prefix from the message
+    @staticmethod
+    def remove_prefix(message, prefix=None):
+        event_name = message
+
+        if not SEP in event_name or (prefix and not event_name.startswith(prefix + SEP)):
+            return None
+
+        return event_name.split(SEP, 1)[-1]
+
     def can_set_property(self, *message, **context):
-        property_name = self.remove_prefix(message, SET_PREFIX)
+        if message:
+            property_name = self.remove_prefix(message[0], SET_PREFIX)
 
-        if property_name and hasattr(self, property_name) and \
-                has_keys(context, OLD_VALUE, NEW_VALUE) and \
-                getattr(self, property_name) != context.get(NEW_VALUE):
+            if property_name and context.get(SENDER) == self and \
+                    hasattr(self, property_name) and \
+                    has_keys(context, OLD_VALUE, NEW_VALUE) and \
+                    getattr(self, property_name) != context.get(NEW_VALUE):
 
-                return len(property_name), property_name  # To select the best property
+                    return len(property_name), property_name  # To select the best property
 
     # Set the property to the new value
     def do_set_property(self, *message, **context):
@@ -428,10 +432,10 @@ class Element(Talker):
                     **{NEW_VALUE: value, OLD_VALUE: getattr(self, name)})
 
     def can_go_forward(self, *message, **context):
-        return self.can_handle(FORWARD, message, context)
+        return self.is_forward(message)
 
     def can_go_backward(self, *message, **context):
-        return self.can_handle(BACKWARD, message, context)
+        return self.is_backward(message)
 
     def is_forward(self, message):
         return message and message[0] in FORWARD
@@ -489,7 +493,7 @@ class ActionNotion(Notion):
 
     @property
     def action(self):
-        value = self.get_handlers(self.can_go_forward)
+        value = self.get_events(self.can_go_forward)
         return value[0] if value else None
 
     @action.setter
@@ -566,9 +570,10 @@ class ComplexNotion(Notion):
 
 # Next relation checks for additional condition when relation traversed forward
 class NextRelation(Relation):
-    def __init__(self, subj, obj, condition=None, owner=None):
+    def __init__(self, subj, obj, condition=None, ignore_case = False, owner=None):
         super(NextRelation, self).__init__(subj, obj, owner)
-        self.condition_access = Condition(condition, self.ignore_case)
+        self.ignore_case = ignore_case
+        self.condition_access = Condition(condition, ignore_case)
 
         self.on(self.can_pass, self.next_handler)
 
@@ -598,7 +603,7 @@ class NextRelation(Relation):
 class ActionRelation(Relation):
     def __init__(self, subj, obj, action, owner=None):
         super(ActionRelation, self).__init__(subj, obj, owner)
-        self._action_access = Access(action, self.ignore_case)
+        self._action_access = Access(action)
 
         self.on_forward(self.act_next)
 
@@ -616,7 +621,7 @@ class ActionRelation(Relation):
 
     @action.setter
     def action(self, value):
-        self._action_access = Access(value, self.ignore_case)
+        self._action_access = Access(value)
 
 
 # Process dialect
@@ -633,7 +638,7 @@ QUERY = 'query'
 # Process is a walker from an abstract to abstract, asking them for the next one with a query
 # It has the current abstract and the message to process; when new abstract appears,
 # the new queue item with current and message is created
-class Process(Talker):
+class Process(Handler):
 
     def __init__(self):
         super(Process, self).__init__()
@@ -670,7 +675,7 @@ class Process(Talker):
 
         if isinstance(message, tuple):
             message = list(message)
-        elif not is_list(message):
+        elif not is_list(message):  # TODO: all is_XXX check
             message = [message]
 
         if insert:

@@ -110,10 +110,9 @@ class UtTests(unittest.TestCase):
         self.assertEquals(access.spec, Access.STRING)
         self.assertEqual(access.value, s)
 
-        access = Access(s, True)
+        access = Access(s)
         self.assertEqual(access.mode, Access.VALUE)
         self.assertEquals(access.spec, Access.STRING)
-        self.assertEqual(access.value, s.upper())
 
         # Regex
         access = Access(re.compile('.'))
@@ -185,6 +184,8 @@ class UtTests(unittest.TestCase):
         condition = Condition(lambda: (1, 2, 3))
         self.assertEquals(condition.check([], {}), ((1, 2, 3), (1, 2, 3)))
 
+        self.assertEquals(TrueCondition().check('Yey', 'cheers!'), (0, True))
+
         # Access
         access = Access(tc.return_false)
         self.assertEquals(access.access([], {}), False)
@@ -201,6 +202,24 @@ class UtTests(unittest.TestCase):
         access = Access(tc)
         self.assertTrue(access.access([], {}))
 
+        # Events
+        e = Event(1)
+        self.assertEqual(e.run([], {}), (1, 1))
+        self.assertEqual(e.pre, None)
+        self.assertEqual(e.post, None)
+
+        e.pre = 0
+        self.assertEqual(e.run([], {}), (0, 0))
+
+        e.pre = None
+        self.assertEqual(e.run([], {}), (1, 1))
+
+        e.post = lambda **c: c[Event.RESULT]
+        self.assertEqual(e.run([], {}), (1, e.post))
+
+        e.post = None
+        self.assertEqual(e.run([], {}), (1, 1))
+
     def test_2_handler(self):
         h = Handler()
 
@@ -210,39 +229,39 @@ class UtTests(unittest.TestCase):
         # Generic 'on'
         h.on('event', handler1)
 
-        self.assertIn(('event', handler1), h.handlers)
+        self.assertIn(('event', handler1), h.events)
 
         # Cannot add duplicates
         h.on('event', handler1)
 
-        self.assertEqual(len(h.handlers), 1)
+        self.assertEqual(len(h.events), 1)
 
         # Can add non-callable
         h.on('1', 1)
-        self.assertEqual(h.get_handlers('1'), [1])
+        self.assertEqual(h.get_events('1'), [1])
 
         # On any
         h.on_any(handler1)
 
-        self.assertEqual(len(h.handlers), 3)
-        self.assertIn((True, handler1), h.handlers)
+        self.assertEqual(len(h.events), 3)
+        self.assertIn((TRUE_CONDITION, handler1), h.events)
 
         # No duplicates on on_any too
         h.on_any(handler1)
 
-        self.assertEqual(len(h.handlers), 3)
+        self.assertEqual(len(h.events), 3)
 
         # Generic off
         h.off('event', handler1)
 
-        self.assertNotIn(('event', handler1), h.handlers)
+        self.assertNotIn(('event', handler1), h.events)
 
         # Off-any
         h.on('event', handler1)
         h.off_any(handler1)
 
-        self.assertNotIn(handler1, h.handlers)
-        self.assertIn(('event', handler1), h.handlers)
+        self.assertNotIn(handler1, h.events)
+        self.assertIn(('event', handler1), h.events)
 
         # Off-conditon
         h.on('cond', 1)
@@ -251,18 +270,18 @@ class UtTests(unittest.TestCase):
 
         h.off_condition('cond')
 
-        self.assertFalse(h.get_handlers('cond'))
-        self.assertEqual(h.get_handlers('cond2'), [2])
+        self.assertFalse(h.get_events('cond'))
+        self.assertEqual(h.get_events('cond2'), [2])
 
         h.off_condition('cond2')
-        self.assertFalse(h.get_handlers('cond'))
+        self.assertFalse(h.get_events('cond'))
 
         # Off-handler
         h.on_any(handler1)
 
-        h.off_handler(handler1)
-        h.off_handler(1)
-        self.assertEqual(len(h.handlers), 0)
+        h.off_event(handler1)
+        h.off_event(1)
+        self.assertEqual(len(h.events), 0)
 
         # Get handlers
         h.on('event', handler1)
@@ -270,12 +289,12 @@ class UtTests(unittest.TestCase):
 
         h.on_any(handler2)
 
-        self.assertEqual(h.get_handlers('event'), [handler1, handler2])
-        self.assertEqual(h.get_handlers(), [handler2])
+        self.assertEqual(h.get_events('event'), [handler1, handler2])
+        self.assertEqual(h.get_events(), [handler2])
 
         # Handle itself
         # Longest wins
-        del h.handlers[:]
+        del h.events[:]
         h.on('event', handler1)
         h.on('event1', handler2)
         r = h.handle('event')
@@ -339,104 +358,12 @@ class UtTests(unittest.TestCase):
         r = h('event', **{ANSWER: RANK})
         self.assertEquals(r, (True, len('event')))
 
-    def test_3_talker(self):
-        t = Talker()
-        tc = TestCalls()
-
-        # Names
-        self.assertEqual(t.add_prefix('event', '1'), SEP.join(['1', 'event']))
-        self.assertEqual(get_object_name(t.add_prefix), 'add_prefix')
-        self.assertEqual(t.add_prefix(['event', 1], POST_PREFIX), ('post_event', 1))
-        self.assertEqual(t.add_prefix('post_event', POST_PREFIX), 'post_event')
-        self.assertEqual(t.add_prefix(['post_event'], POST_PREFIX), ('post_event', ))
-
-        self.assertEqual(t.remove_prefix('e', 'p'), None)
-        self.assertEqual(t.remove_prefix('p_e_v', 'p'), 'e_v')
-        self.assertEqual(t.remove_prefix(['p_e']), 'e')
-
-        # Silent
-        self.assertTrue(t.is_silent(PRE_PREFIX))
-        self.assertTrue(t.is_silent(POST_PREFIX))
-        for s in SILENT:
-            self.assertTrue(t.is_silent(s))
-
-        self.assertFalse(t.is_silent('loud'))
-        self.assertFalse(t.is_silent(1))
-
-        # Handling
+        # Unknown check
         handler1 = 'handler1'
+        del h.events[:]
 
-        # Stopping before return
-        t.on('event', tc.return_true)
-        t.on('pre_event', handler1)
-
-        r = t.handle('event')
-        self.assertEqual(r[0], 'handler1')
-        self.assertEqual(r[1], len('event'))
-        self.assertEqual(r[2], handler1)
-
-        # Empty message - checking handler name
-        t.on(lambda *m: len(m) == 0, tc.return_true)
-        t.on('pre_return_true', handler1)
-
-        r = t.handle()
-        self.assertEqual(r[0], 'handler1')
-        self.assertEqual(r[1], 0)
-        self.assertEqual(r[2], handler1)
-
-        t.off('pre_return_true', handler1)
-
-        r = t.handle()
-        self.assertEqual(r[0], True)
-        self.assertEqual(r[1], 0)
-        self.assertEqual(r[2], tc.return_true)
-
-        # Non-callable handler - checking name
-        t.on(1, 1)
-        t.on('pre_1', 2)
-
-        r = t.handle(1)
-        self.assertEqual(r[0], 2)
-        self.assertEqual(r[1], 0)
-        self.assertEqual(r[2], 2)
-
-        t.off_handler(2)
-        r = t.handle(1)
-        self.assertEqual(r[0], 1)
-        self.assertEqual(r[1], 0)
-        self.assertEqual(r[2], 1)
-
-        # Overriding result
-        t.off('pre_event', handler1)
-
-        handler2 = lambda **c: 'handler2' if (c.get(RESULT) and c.get(RANK) == len('post_event')
-                                                       and c.get(HANDLER) == tc.return_true) else None
-        t.on('post_event', handler2)
-
-        r = t.handle('event')
-        self.assertEqual(r[0], 'handler2')
-        self.assertEqual(r[1], len('event'))
-        self.assertEqual(r[2], handler2)
-
-        # Now clean run
-        t.off('post_event', handler2)
-
-        r = t.handle('event')
-        self.assertTrue(r[0])
-        self.assertEqual(r[1], len('event'))
-        self.assertEqual(r[2], tc.return_true)
-
-        # Recursion test
-        t.on('r', lambda **c: c[SENDER].handle('r', **c))
-        self.assertTrue(t.handle('r'))
-
-        # Result test
-        t.on('pre_result', 'handler3')  # Will not be called
-        t.on(RESULT, 'handler4')
-        self.assertEqual(t('event'), 'handler4')
-
-        t.on(UNKNOWN, handler1)
-        self.assertEqual(t('strange'), 'handler1')
+        h.on(UNKNOWN, handler1)
+        self.assertEqual(h('strange'), 'handler1')
 
     def test_4_element(self):
         e = Element()
@@ -448,21 +375,21 @@ class UtTests(unittest.TestCase):
         self.assertFalse(e.can_set_property('set_owner', **{OLD_VALUE: '1'}))
         self.assertFalse(e.can_set_property('set_owner', **{OLD_VALUE: '1', NEW_VALUE: None}))
 
-        self.assertTrue(e.can_set_property('set_owner', **{OLD_VALUE: '1', NEW_VALUE: '2'}))
+        self.assertTrue(e.can_set_property('set_owner', **{OLD_VALUE: '1', NEW_VALUE: '2', SENDER: e}))
 
         # Preventing the change
-        e.on('pre_set_owner', tc.return_true)
+        e.get_events(e.can_set_property)[0].pre = tc.return_true
         e.owner = tc
         self.assertIsNone(e.owner)
 
         # Allowing the change and verifying data
-        e.off_handler(tc.return_true)
+        e.get_events(e.can_set_property)[0].pre = None
         e.owner = tc
 
         self.assertEqual(e.owner, tc)
         self.assertEqual(tc.last_message, ('set_owner', ))
         self.assertEqual(tc.last_context[CONDITION], 'owner')
-        self.assertEqual(tc.last_context[HANDLER], e.do_set_property)
+        self.assertEqual(tc.last_context[EVENT], e.do_set_property)
         self.assertEqual(tc.last_context[OLD_VALUE], None)
         self.assertEqual(tc.last_context[NEW_VALUE], tc)
         self.assertEqual(tc.last_context[SENDER], e)
@@ -475,9 +402,9 @@ class UtTests(unittest.TestCase):
 
         # Move test
         # Forward
-        handler1 = lambda *m: m[0] if m[0] in FORWARD else None
+        event1 = lambda *m: m[0] if m[0] in FORWARD else None
 
-        e.on_forward(handler1)
+        e.on_forward(event1)
 
         self.assertEqual(e(NEXT), NEXT)
 
@@ -490,8 +417,8 @@ class UtTests(unittest.TestCase):
         self.assertFalse(e.is_forward([]))
 
         # Backward
-        handler2 = lambda *m: m[0] if m[0] in BACKWARD else None
-        e.on_backward(handler2)
+        event2 = lambda *m: m[0] if m[0] in BACKWARD else None
+        e.on_backward(event2)
 
         self.assertEqual(e(PREVIOUS), PREVIOUS)
 
@@ -507,14 +434,17 @@ class UtTests(unittest.TestCase):
         # Notions test
         n1 = Notion('n1')
         n2 = Notion('n2')
+        n2.owner = 1
         n1.owner = n2
 
         self.assertEqual(n1.name, 'n1')
         self.assertEqual(n1.__str__(), '"' + n1.name + '"')
         self.assertEqual(n1.__repr__(), '<' + get_object_name(n1.__class__) + '("' + n1.name + '", "' + n2.name + '")>')
         self.assertEqual(n1.owner, n2)
+        self.assertEqual(n2.owner, 1)
 
         n1.owner = None
+        self.assertEqual(n2.owner, 1)
 
         # Relations test
         r1 = Relation(n1, n2)
@@ -794,7 +724,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify updating
-        a.off_handler(l)
+        a.off_event(l)
         l = lambda: {UPDATE_CONTEXT: {ctx_key: 'new'}}
         a.on_forward(l)
 
@@ -806,7 +736,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # Verify deleting & mass deleting
-        a.off_handler(l)
+        a.off_event(l)
         l = lambda: {DELETE_CONTEXT: ctx_key}
         a.on_forward(l)
 
@@ -815,7 +745,7 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(ctx_key, process.context)
         self.assertEqual(process.current, b)
 
-        a.off_handler(l)
+        a.off_event(l)
         l = lambda: {DELETE_CONTEXT: ['more', 'more2']}
         a.on_forward(l)
 
@@ -825,7 +755,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, b)
 
         # See what's happening if command argument is incorrect
-        a.off_handler(l)
+        a.off_event(l)
         a.on_forward(ADD_CONTEXT)
 
         r = process(NEW, root, test='test_context_bad')
@@ -1650,7 +1580,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual((root, ), graph.notions())
 
         # Adding test 2
-        rel = NextRelation(root, rave, None, graph)
+        rel = NextRelation(root, rave, None, False, graph)
 
         self.assertEqual((rel,), graph.relations())
 
@@ -1698,12 +1628,12 @@ class UtTests(unittest.TestCase):
 
         # Search - Relations
         rel.owner = graph
-        rel2 = NextRelation(rave, lock, None, graph)
+        rel2 = NextRelation(rave, lock, None, False, graph)
 
         self.assertEqual(graph.relations(), (rel, rel2))
         self.assertEqual(graph.relation(), rel)
 
-        rel3 = NextRelation(root, None, None, graph)
+        rel3 = NextRelation(root, None, None, False, graph)
 
         self.assertListEqual(graph.relations({SUBJECT: root}), [rel, rel3])
         self.assertListEqual(graph.relations({OBJECT: rave}), [rel])
