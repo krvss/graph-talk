@@ -77,6 +77,9 @@ class UtTests(unittest.TestCase):
         abstract = TestCalls()
         self.assertEqual(abstract.parse(), abstract())
 
+    def test_2_accesses(self):
+        abstract = TestCalls()
+
         # Access test
         # Function
         access = Access(lambda l: l)
@@ -220,7 +223,7 @@ class UtTests(unittest.TestCase):
         e.post = None
         self.assertEqual(e.run([], {}), (1, 1))
 
-    def test_2_handler(self):
+    def test_3_handler(self):
         h = Handler()
 
         handler1 = lambda: True

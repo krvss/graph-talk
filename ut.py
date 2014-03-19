@@ -1104,8 +1104,8 @@ BACKWARD += [ERROR, BREAK, CONTINUE]
 
 # Parsing relation: should be passable in forward direction (otherwise returns Error)
 class ParsingRelation(NextRelation):
-    def __init__(self, subj, obj, condition=None, owner=None):
-        super(ParsingRelation, self).__init__(subj, obj, condition, owner)
+    def __init__(self, subj, obj, condition=None, ignore_case=False, owner=None):
+        super(ParsingRelation, self).__init__(subj, obj, condition, ignore_case, owner)
 
         self.optional = False
         self.check_only = False
@@ -1579,8 +1579,7 @@ class GraphBuilder(object):
         return self.attach(Notion(name, self.graph))
 
     def next_rel(self, condition=None, obj=None, ignore_case=None):
-        rel = NextRelation(self.current, obj, condition, self.graph)
-        rel.ignore_case = ignore_case
+        rel = NextRelation(self.current, obj, condition, ignore_case, self.graph)
 
         return self.attach(rel)
 
@@ -1588,8 +1587,8 @@ class GraphBuilder(object):
         return self.attach(ActionRelation(self.current, obj, action, self.graph))
 
     def parse_rel(self, condition, obj=None, ignore_case=None, optional=None):
-        rel = ParsingRelation(self.current, obj, condition, self.graph)
-        rel.ignore_case, rel.optional = ignore_case, optional
+        rel = ParsingRelation(self.current, obj, condition, ignore_case, self.graph)
+        rel.optional = optional
 
         return self.attach(rel)
 

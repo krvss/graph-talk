@@ -18,18 +18,11 @@ class ProcessDebugger(Handler):
     AT = 'at'
     REPLY = 'reply'
     LOG = 'log'
-    EVENT = 'event'
-
-    #AT_EVENT = Process.add_prefix(get_object_name(Process.do_queue_push), POST_PREFIX)
-    #LOG_EVENT = Process.add_prefix(QUERY, POST_PREFIX)
 
     def __init__(self, process=None, log=False):
         super(ProcessDebugger, self).__init__()
         self._points = defaultdict(dict)
         self._process = None
-
-        self.on(self.is_at, self.do_reply_at)
-        self.on(self.is_log, None)
 
         self.attach(process)
 
@@ -46,7 +39,12 @@ class ProcessDebugger(Handler):
         if process:
             self._process = process
 
-        process.on_any(self)
+        for _, event in process.events:
+            if event.value == process.do_queue_push:
+                event.post = self.do_reply_at
+
+            elif event.value == process.do_query:
+                event.pre = self.is_log
 
     def detach(self):
         if self._process:
@@ -66,7 +64,7 @@ class ProcessDebugger(Handler):
         if self._process in self._points:
             del self._points[self._process]
 
-    def is_at(self, *message, **context):
+    def do_reply_at(self, *message, **context):
         process = context[SENDER]
         point = self._points.get(process.current)
 
@@ -74,11 +72,7 @@ class ProcessDebugger(Handler):
             return
 
         if ProcessDebugger.REPLY in point:
-            return has_first(message, ProcessDebugger.AT_EVENT)
-
-    def do_reply_at(self, *message, **context):
-        process = context.get(SENDER)
-        return self._points[process.current].get(self.REPLY)
+            return self._points[process.current].get(self.REPLY)
 
     def is_log(self, *message, **context):
         process = context[SENDER]
@@ -87,7 +81,6 @@ class ProcessDebugger(Handler):
         if not point:
             return
 
-        if self.LOG in point and has_first(message, ProcessDebugger.LOG_EVENT):
+        if self.LOG in point:
             query = process.text + ", " + process.query if hasattr(process, 'text') else process.query
-            print "%s: '%s'? - '%s'" % (process.current, query, context.get(RESULT))
-
+            print "%s: '%s'? - '%s'" % (process.current, query, context.get(Event.RESULT))
