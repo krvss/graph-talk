@@ -45,9 +45,6 @@ class Access(object):
 
         self.setup()
 
-    def __hash__(self):
-        return hash(self._value)
-
     def __eq__(self, other):
         if isinstance(other, Access):
             return other.value == self.value
@@ -340,7 +337,7 @@ class Handler(Abstract):
 
         # There is a way to handle unknown message
         if result[0] is False:
-            result = self.handle(UNKNOWN, *message, **context)
+            result = self.handle(UNKNOWN, *message, **context)  # TODO Check UNKs in BF
 
         return result
 
@@ -443,14 +440,14 @@ class Element(Handler):
     def is_backward(self, message):
         return message and message[0] in BACKWARD
 
-    def on_forward(self, handler):
-        self.on(self.can_go_forward, handler)
+    def on_forward(self, event):
+        self.on(self.can_go_forward, event)
 
     def off_forward(self):
         self.off_condition(self.can_go_forward)
 
-    def on_backward(self, handler):
-        self.on(self.can_go_backward, handler)
+    def on_backward(self, event):
+        self.on(self.can_go_backward, event)
 
     def off_backward(self):
         self.off_condition(self.can_go_backward)

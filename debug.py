@@ -44,7 +44,7 @@ class ProcessDebugger(Handler):
                 event.post = self.do_reply_at
 
             elif event.value == process.do_query:
-                event.pre = self.is_log
+                event.post = self.is_log
 
     def detach(self):
         if self._process:

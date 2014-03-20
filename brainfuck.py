@@ -62,7 +62,7 @@ def make_interpreter_graph(vm):
 
     def add_simple_command(top, last_parsed):
         # Last_parsed works fine as the name of the notion
-        NextRelation(top, ActionNotion(last_parsed, simple_commands[last_parsed], top.owner), False, top.owner)
+        NextRelation(top, ActionNotion(last_parsed, simple_commands[last_parsed], top.owner), owner=top.owner)
 
     def start_loop(top, top_stack, parsed_length):
         top_stack.append((top, parsed_length))
