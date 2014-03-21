@@ -365,7 +365,7 @@ class UtTests(unittest.TestCase):
         handler1 = 'handler1'
         del h.events[:]
 
-        h.on(UNKNOWN, handler1)
+        h.unknown_event = Event(handler1)
         self.assertEqual(h('strange'), 'handler1')
 
     def test_4_element(self):
@@ -635,7 +635,7 @@ class UtTests(unittest.TestCase):
         c = ActionNotion('c', STOP)
         NextRelation(a, c)
 
-        debugger.on(UNKNOWN, SKIP)
+        debugger.unknown_event = Event(SKIP)
 
         r = process(NEW, root, test='test_skipping')
         self.assertEqual(r, STOP)

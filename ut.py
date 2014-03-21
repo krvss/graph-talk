@@ -248,7 +248,6 @@ CONDITION = 'condition'
 EVENT = 'event'
 RANK = 'rank'
 
-UNKNOWN = 'unknown'
 NO_PARSE = (False, -1, None)
 
 
@@ -256,6 +255,7 @@ NO_PARSE = (False, -1, None)
 class Handler(Abstract):
     def __init__(self):
         self.events = []
+        self.unknown_event = None
 
     # Adding the accesses
     def on_access(self, condition_access, event_access):
@@ -336,8 +336,8 @@ class Handler(Abstract):
         result = self.handle(*message, **context)
 
         # There is a way to handle unknown message
-        if result[0] is False:
-            result = self.handle(UNKNOWN, *message, **context)  # TODO Check UNKs in BF
+        if result[0] is False and self.unknown_event:
+            result = self.unknown_event.run(message, context)
 
         return result
 
@@ -1107,7 +1107,7 @@ class ParsingRelation(NextRelation):
         self.optional = False
         self.check_only = False
 
-        self.on(UNKNOWN, self.on_error)
+        self.unknown_event = Event(self.on_error)
 
     # Here we check condition against the parsing text
     def check_condition(self, message, context):
@@ -1120,7 +1120,7 @@ class ParsingRelation(NextRelation):
         return ({PROCEED: rank}, next_result) if rank and not self.check_only else next_result
 
     def on_error(self, *message, **context):
-        if not self.optional and len(message) > 1 and message[1] in FORWARD:
+        if not self.optional and self.is_forward(message):
             return ERROR
 
 

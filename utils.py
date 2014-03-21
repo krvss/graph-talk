@@ -109,8 +109,7 @@ def has_keys(dictionary, *keys):
 def get_len(o):
     l = -1
     try:
-        if hasattr(o, 'len') or hasattr(o, '__len__'):
-            l = len(o)
+        l = len(o)
     finally:
         return l
 
