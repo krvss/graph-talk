@@ -8,7 +8,6 @@ from utils import *
 
 # Base abstract class for all communicable objects
 class Abstract(object):
-
     # Parse the message
     def parse(self, *message, **context):
         raise NotImplementedError('Method not implemented')
@@ -32,12 +31,15 @@ class Access(object):
     VALUE = 'value'
     NUMBER = 'number'
     LIST = 'list'
+    DICT = 'dict'
     STRING = 'string'
     REGEX = 'regex'
     BOOLEAN = 'bool'
     OTHER = 'other'
 
     ATTR = '__access__'
+
+    ATTACHABLE = (CALL, FUNCTION)
 
     def __init__(self, value):
         self._value = value
@@ -47,15 +49,15 @@ class Access(object):
 
     def __eq__(self, other):
         if isinstance(other, Access):
-            return other.value == self.value
+            return other.value == self._value
 
-        return other == self.value
+        return other == self._value
 
     def __repr__(self):
         return self.__str__()
 
     def __str__(self):
-        return '%s, %s: %s' % (self.mode, self.spec, self.value)
+        return '%s, %s: %s' % (self.mode, self.spec, self._value)
 
     # Init the type information
     def setup(self):
@@ -80,6 +82,9 @@ class Access(object):
             elif is_regex(self._value):
                 self._spec = self.REGEX
 
+            elif isinstance(self._value, dict):
+                self._spec = self.DICT
+
             elif self._value is True or self._value is False:
                 self._spec = self.BOOLEAN
 
@@ -90,16 +95,16 @@ class Access(object):
 
         elif self._mode == self.FUNCTION:
             if self._spec.varargs and not self._spec.keywords:
-                return self.value(*message)
+                return self._value(*message)
 
             elif self._spec.keywords and not self._spec.varargs:
-                return self.value(**context)
+                return self._value(**context)
 
             elif self._spec.varargs and self._spec.keywords:
-                return self.value(*message, **context)
+                return self._value(*message, **context)
 
             elif not self._spec.varargs and not self._spec.keywords and not self._spec.args:
-                return self.value()
+                return self._value()
 
             elif self._spec.args:
                 i, args = len(self._spec.defaults) - 1 if self._spec.defaults else -1, {}
@@ -123,6 +128,18 @@ class Access(object):
     @property
     def value(self):
         return self._value
+
+    @staticmethod
+    def get_access(obj, attach=False):
+        if hasattr(obj, Access.ATTR):
+            access = getattr(object, Access.ATTR, Access(obj))
+        else:
+            access = Access(obj)
+
+            if attach and access._mode in Access.ATTACHABLE:
+                setattr(obj, Access.ATTR, access)
+
+        return access
 
 
 # Condition is a kind of Access that checks the possibility of the access according to the message and context
@@ -222,7 +239,7 @@ class Event(Access):
             if post_result[0] is not None:
                 return post_result
 
-        return result, self.value
+        return result, self._value
 
     @property
     def pre(self):
@@ -254,6 +271,8 @@ NO_PARSE = (False, -1, None)
 # Handler is a class for the routing of messages to processing functions (events) basing on specified conditions
 class Handler(Abstract):
     def __init__(self):
+        Access.get_access(self, True)
+
         self.events = []
         self.unknown_event = None
 
@@ -411,14 +430,14 @@ class Element(Handler):
     def do_set_property(self, *message, **context):
         old_value = context.get(OLD_VALUE)
 
-        if isinstance(old_value, Abstract):
+        if Access.get_access(old_value, True).spec == Access.ABSTRACT:
             old_value(*message, **context)
 
         new_value = context.get(NEW_VALUE)
 
         setattr(self, '_%s' % context[CONDITION], new_value)
 
-        if isinstance(new_value, Abstract):
+        if Access.get_access(new_value, True).spec == Access.ABSTRACT:
             new_value(*message, **context)
 
         return True
@@ -691,13 +710,7 @@ class Process(Handler):
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def can_push_queue(self, *message):
         if self.message:
-            access = getattr(self.message[0], Access.ATTR, Access(self.message[0]))
-
-            if access.mode in (Access.CALL, Access.FUNCTION):
-                if not hasattr(self.message[0], Access.ATTR):
-                    setattr(self.message[0], Access.ATTR, access)
-
-                return True
+            return Access.get_access(self.message[0], True).mode in (Access.CALL, Access.FUNCTION)
 
     def do_queue_push(self):
         self.to_queue({CURRENT: self.message.pop(0),
@@ -981,7 +994,8 @@ class StatefulProcess(StackingContextProcess):
     # Events #
     # Set state
     def can_set_state(self, *message):
-        return self.current and message and isinstance(message[0], dict) and SET_STATE in message[0]
+        return self.current and message and isinstance(message[0], dict) \
+            and SET_STATE in message[0]
 
     def do_set_state(self):
         value = self.message[0].pop(SET_STATE)
