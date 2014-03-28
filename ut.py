@@ -5,20 +5,42 @@ from inspect import getargspec
 
 from utils import *
 
+# TODO remove
+logging = False
+import time
+def set_logging(value):
+    global logging
+    logging = value
+
+
 
 # Base abstract class for all communicable objects
 class Abstract(object):
-    # Parse the message
-    def parse(self, *message, **context):
-        raise NotImplementedError('Method not implemented')
-
     # Make the answer
     def answer(self, *message, **context):
-        return self.parse(*message, **context)
+        raise NotImplementedError('Method not implemented')
 
     # A singular way to call
     def __call__(self, *args, **kwargs):
         return self.answer(*args, **kwargs)
+
+
+# Access caches type information to increase the execution speed
+class Access2(Abstract):
+    def __init__(self, value, mode, spec):
+        self.value, self.mode, self.spec = value, mode, spec
+
+    def __eq__(self, other):
+        if isinstance(other, Access2):
+            return other.value == self.value
+
+        return other == self.value
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return '%s, %s: %s' % (self.value, self.mode, self.spec)
 
 
 # Access caches type information to increase the execution speed
@@ -314,7 +336,11 @@ class Handler(Abstract):
             return [h[1] for h in self.events if h[0] == TRUE_CONDITION]
 
     # Calling events basing on condition, using ** to protect the context content
-    def handle(self, *message, **context):
+    def handle(self, message, context):
+        global logging
+        if logging:
+            print "%s.handle of %s, events %s" % (type(self), message, len(self.events))
+
         check, rank, event_found = NO_PARSE
 
         if not SENDER in context:
@@ -328,8 +354,14 @@ class Handler(Abstract):
             if context.get(EVENT) == event_access.value:
                 continue
 
+            if logging:
+                t1 = time.time()
+
             # Condition check, if no condition the result is true with zero rank
             c_rank, c_check = condition_access.check(message, context)
+
+            if logging:
+                print "trying %s, spent %s" % (condition_access.value, time.time() - t1)
 
             if c_rank <= rank:
                 continue
@@ -352,7 +384,7 @@ class Handler(Abstract):
 
     # Parse means search for an event
     def parse(self, *message, **context):
-        result = self.handle(*message, **context)
+        result = self.handle(message, context)
 
         # There is a way to handle unknown message
         if result[0] is False and self.unknown_event:
@@ -363,7 +395,7 @@ class Handler(Abstract):
     # Answer depends on the context
     def answer(self, *message, **context):
         answer_mode = context.pop(ANSWER, None)  # Applicable only for a top level
-        result = super(Handler, self).answer(*message, **context)
+        result = self.parse(*message, **context)
 
         if answer_mode == RANK:
             return result[0], result[1]
@@ -408,7 +440,7 @@ class Element(Handler):
     # Remove prefix from the message
     @staticmethod
     def remove_prefix(message, prefix=None):
-        event_name = message
+        event_name = str(message)
 
         if not SEP in event_name or (prefix and not event_name.startswith(prefix + SEP)):
             return None
