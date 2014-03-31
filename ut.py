@@ -16,13 +16,9 @@ def set_logging(value):
 
 # Base abstract class for all communicable objects
 class Abstract(object):
-    # Make the answer
-    def answer(self, *message, **context):
-        raise NotImplementedError('Method not implemented')
-
     # A singular way to call
     def __call__(self, *args, **kwargs):
-        return self.answer(*args, **kwargs)
+        raise NotImplementedError('Method not implemented')
 
 
 # Access caches type information to increase the execution speed
@@ -393,7 +389,7 @@ class Handler(Abstract):
         return result
 
     # Answer depends on the context
-    def answer(self, *message, **context):
+    def __call__(self, *message, **context):
         answer_mode = context.pop(ANSWER, None)  # Applicable only for a top level
         result = self.parse(*message, **context)
 

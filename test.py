@@ -61,7 +61,7 @@ class TestCalls(Abstract):
     def return_true(self):
         return True
 
-    def answer(self, *message, **context):
+    def __call__(self, *message, **context):
         self.last_message = message
         self.last_context = context
 
@@ -72,10 +72,10 @@ class UtTests(unittest.TestCase):
 
     def test_1_abstract(self):
         with self.assertRaises(NotImplementedError):
-            Abstract().answer()
+            Abstract().__call__()
 
         abstract = TestCalls()
-        self.assertEqual(abstract.answer(), abstract())
+        self.assertEqual(abstract.__call__(), abstract())
 
     def test_2_accesses(self):
         abstract = TestCalls()
