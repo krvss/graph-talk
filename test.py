@@ -91,41 +91,9 @@ class UtTests(unittest.TestCase):
         self.assertEqual(access.mode, Access.CALL)
         self.assertEquals(access.spec, Access.ABSTRACT)
 
-        # Number
+        # Value
         access = Access(1)
         self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.NUMBER)
-
-        # List
-        access = Access([1])
-        self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.LIST)
-
-        # List - 2
-        access = Access((1, 2))
-        self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.LIST)
-
-        # String
-        s = 'string'
-        access = Access(s)
-        self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.STRING)
-        self.assertEqual(access.value, s)
-
-        access = Access(s)
-        self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.STRING)
-
-        # Regex
-        access = Access(re.compile('.'))
-        self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.REGEX)
-
-        # Other
-        access = Access(object())
-        self.assertEqual(access.mode, Access.VALUE)
-        self.assertEquals(access.spec, Access.OTHER)
 
         # Access and Get
         self.assertEqual(Access(lambda: 1).access([], {}), 1)
@@ -135,8 +103,44 @@ class UtTests(unittest.TestCase):
         self.assertEqual(Access(lambda a, b: a + b).access(['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
         self.assertEqual(Access(lambda a, b=1: a + b).access(['6'], {'a': 3}), 4)
         self.assertEqual(Access(abstract.return_true).access(['7'], {'a': 4}), True)
+        self.assertEqual(Access(abstract).access([], {}), True)
 
         # Conditions
+        condition = Condition(1)
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.NUMBER)
+
+        # List
+        condition = Condition([1])
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.LIST)
+
+        # List - 2
+        condition = Condition((1, 2))
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.LIST)
+
+        # String
+        s = 'string'
+        condition = Condition(s)
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.STRING)
+        self.assertEqual(condition.value, s)
+
+        condition = Condition(s)
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.STRING)
+
+        # Regex
+        condition = Condition(re.compile('.'))
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.REGEX)
+
+        # Other
+        condition = Condition(object())
+        self.assertEqual(condition.mode, Condition.VALUE)
+        self.assertEquals(condition.spec, Condition.OTHER)
+
         tc = TestCalls()
 
         cant_handle = (-1, None)
@@ -170,7 +174,7 @@ class UtTests(unittest.TestCase):
         self.assertEquals(condition_l.check(['bb'], {}), (2, 'bb'))
         self.assertEquals(condition_l.check(['c'], {}), cant_handle)
         self.assertEqual(condition_l.value, ('aa', 'bb'))
-        self.assertEqual(condition_l.list[0].spec, Access.STRING)
+        self.assertEqual(condition_l.list[0].spec, Condition.STRING)
         self.assertEqual(condition_l.list[1].value, condition_l.value[1])
 
         condition_l = Condition(('a', 'bb'), True)

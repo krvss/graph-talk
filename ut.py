@@ -2,6 +2,7 @@
 # (c) krvss 2011-2014
 
 from inspect import getargspec
+from operator import attrgetter
 
 from utils import *
 
@@ -16,43 +17,17 @@ def set_logging(value):
 
 # Base abstract class for all communicable objects
 class Abstract(object):
-    # A singular way to call
+    # A singular way to call TODO comments
     def __call__(self, *args, **kwargs):
         raise NotImplementedError('Method not implemented')
-
-
-# Access caches type information to increase the execution speed
-class Access2(Abstract):
-    def __init__(self, value, mode, spec):
-        self.value, self.mode, self.spec = value, mode, spec
-
-    def __eq__(self, other):
-        if isinstance(other, Access2):
-            return other.value == self.value
-
-        return other == self.value
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __str__(self):
-        return '%s, %s: %s' % (self.value, self.mode, self.spec)
 
 
 # Access caches type information to increase the execution speed
 class Access(object):
     CALL = 'call'
     ABSTRACT = 'abstract'
-
     FUNCTION = 'function'
-
     VALUE = 'value'
-    NUMBER = 'number'
-    LIST = 'list'
-    DICT = 'dict'
-    STRING = 'string'
-    REGEX = 'regex'
-    BOOLEAN = 'bool'
     OTHER = 'other'
 
     ATTR = '__access__'
@@ -62,12 +37,13 @@ class Access(object):
     def __init__(self, value):
         self._value = value
         self._mode, self._spec = self.OTHER, self.OTHER
+        self._dispatch = self.call__direct
 
         self.setup()
 
     def __eq__(self, other):
         if isinstance(other, Access):
-            return other.value == self._value
+            return other._value == self._value
 
         return other == self._value
 
@@ -75,7 +51,7 @@ class Access(object):
         return self.__str__()
 
     def __str__(self):
-        return '%s, %s: %s' % (self.mode, self.spec, self._value)
+        return '%s, %s: %s' % (self._mode, self._spec, self._value)
 
     # Init the type information
     def setup(self):
@@ -85,67 +61,59 @@ class Access(object):
         elif callable(self._value):
             self._mode, self._spec = self.FUNCTION, getargspec(self._value)
 
+            if self._spec.varargs and not self._spec.keywords:
+                self._dispatch = self.call_args
+
+            elif self._spec.keywords and not self._spec.varargs:
+                self._dispatch = self.call_kwargs
+
+            elif self._spec.varargs and self._spec.keywords:
+                return  # default direct is good here
+
+            elif not self._spec.varargs and not self._spec.keywords and not self._spec.args:
+                self._dispatch = self.call_noargs
+
+            elif self._spec.args:
+                self._defaults_len = len(self._spec.defaults) - 1 if self._spec.defaults else -1
+                self._reversed_args = list(reversed(self._spec.args))
+
+                self._dispatch = self.call_general
+
         else:
             self._mode = self.VALUE
-
-            if is_number(self._value):
-                self._spec = self.NUMBER
-
-            elif is_list(self._value):
-                self._spec = self.LIST
-
-            elif is_string(self._value):
-                self._spec = self.STRING
-
-            elif is_regex(self._value):
-                self._spec = self.REGEX
-
-            elif isinstance(self._value, dict):
-                self._spec = self.DICT
-
-            elif self._value is True or self._value is False:
-                self._spec = self.BOOLEAN
+            self._dispatch = self.call_value
 
     # Do the access with message and context
     def access(self, message, context):
-        if self._spec == self.ABSTRACT:
-            return self._value(*message, **context)
+        return self._dispatch(message, context)
 
-        elif self._mode == self.FUNCTION:
-            if self._spec.varargs and not self._spec.keywords:
-                return self._value(*message)
+    def call__direct(self, message, context):
+        return self._value(*message, **context)
 
-            elif self._spec.keywords and not self._spec.varargs:
-                return self._value(**context)
+    def call_args(self, message, context):
+        return self._value(*message)
 
-            elif self._spec.varargs and self._spec.keywords:
-                return self._value(*message, **context)
+    def call_kwargs(self, message, context):
+        return self._value(**context)
 
-            elif not self._spec.varargs and not self._spec.keywords and not self._spec.args:
-                return self._value()
+    def call_noargs(self, message, context):
+        return self._value()
 
-            elif self._spec.args:
-                i, args = len(self._spec.defaults) - 1 if self._spec.defaults else -1, {}
-                for arg in reversed(self._spec.args):
-                    if arg != 'self':
-                        args[arg] = context[arg] if arg in context else self._spec.defaults[i] if i >= 0 else None
-                        i -= 1
+    def call_general(self, message, context):
+        i, args = self._defaults_len, {}
+        for arg in self._reversed_args:
+            if arg != 'self':
+                args[arg] = context[arg] if arg in context else self._spec.defaults[i] if i >= 0 else None
+                i -= 1
 
-                return self._value(**args)
+        return self._value(**args)
 
+    def call_value(self, message, context):
         return self._value
 
-    @property
-    def mode(self):
-        return self._mode
-
-    @property
-    def spec(self):
-        return self._spec
-
-    @property
-    def value(self):
-        return self._value
+    value = property(attrgetter('_value'))
+    mode = property(attrgetter('_mode'))
+    spec = property(attrgetter('_spec'))
 
     @staticmethod
     def get_access(obj, attach=False):
@@ -162,12 +130,19 @@ class Access(object):
 
 # Condition is a kind of Access that checks the possibility of the access according to the message and context
 class Condition(Access):
+    NUMBER = 'number'
+    LIST = 'list'
+    DICT = 'dict'
+    STRING = 'string'
+    REGEX = 'regex'
+    BOOLEAN = 'bool'
+
     def __init__(self, value, ignore_case=False):
         self._ignore_case = ignore_case
 
         super(Condition, self).__init__(value)
 
-        if self.spec == self.LIST:
+        if self._spec == self.LIST:
             self._condition_list = tuple([Condition(c, ignore_case) for c in value])
         else:
             self._condition_list = self,
@@ -175,7 +150,25 @@ class Condition(Access):
     def setup(self):
         super(Condition, self).setup()
 
-        if self.spec == Access.STRING and self._ignore_case:
+        if is_number(self._value):
+            self._spec = self.NUMBER
+
+        elif is_list(self._value):
+            self._spec = self.LIST
+
+        elif is_string(self._value):
+            self._spec = self.STRING
+
+        elif is_regex(self._value):
+            self._spec = self.REGEX
+
+        elif isinstance(self._value, dict):
+            self._spec = self.DICT
+
+        elif self._value is True or self._value is False:
+            self._spec = self.BOOLEAN
+
+        if self._spec == Condition.STRING and self._ignore_case:
             self._value = self._value.upper()
 
     def check(self, message, context):
@@ -1311,11 +1304,11 @@ class LoopRelation(NextRelation):
 
     # Is a numeric loop
     def is_numeric(self):
-        if self.condition_access.spec == Access.NUMBER:
+        if self.condition_access.spec == Condition.NUMBER:
             return True
-        elif self.condition_access.spec == Access.LIST and len(self.condition) == 2:
-            return (self.condition[0] is None or self.condition_access.list[0].spec == Access.NUMBER) \
-                and (self.condition[1] is None or self.condition_access.list[1].spec == Access.NUMBER)
+        elif self.condition_access.spec == Condition.LIST and len(self.condition) == 2:
+            return (self.condition[0] is None or self.condition_access.list[0].spec == Condition.NUMBER) \
+                and (self.condition[1] is None or self.condition_access.list[1].spec == Condition.NUMBER)
 
     # Infinite loop
     def is_infinite(self):
@@ -1327,7 +1320,7 @@ class LoopRelation(NextRelation):
 
     # Flexible condition has no finite bound, lower or higher
     def is_flexible(self):
-        return (self.is_numeric() and self.condition_access.spec == Access.LIST) or self.is_wildcard()
+        return (self.is_numeric() and self.condition_access.spec == Condition.LIST) or self.is_wildcard()
 
     # Checking for the condition type
     def is_general(self):
@@ -1342,7 +1335,7 @@ class LoopRelation(NextRelation):
         lower, upper = 0, INFINITY
 
         if self.is_numeric():
-            if self.condition_access.spec == Access.NUMBER:
+            if self.condition_access.spec == Condition.NUMBER:
                 lower, upper = 1, self.condition
             else:
                 if self.condition[0]:
