@@ -96,14 +96,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(access.mode, Access.VALUE)
 
         # Access and Get
-        self.assertEqual(Access(lambda: 1).access([], {}), 1)
-        self.assertEqual(Access(lambda *m: m[0]).access([2], {}), 2)
-        self.assertEqual(Access(lambda *m, **c: c[m[0]]).access(['3'], {'3': 3}), 3)
-        self.assertEqual(Access(lambda **c: c['4']).access(['4'], {'4': 4}), 4)
-        self.assertEqual(Access(lambda a, b: a + b).access(['5'], {'a': 2, 'b': 3, 'c': 4}), 5)
-        self.assertEqual(Access(lambda a, b=1: a + b).access(['6'], {'a': 3}), 4)
-        self.assertEqual(Access(abstract.return_true).access(['7'], {'a': 4}), True)
-        self.assertEqual(Access(abstract).access([], {}), True)
+        self.assertEqual(Access(lambda: 1)(), 1)
+        self.assertEqual(Access(lambda *m: m[0])(2), 2)
+        self.assertEqual(Access(lambda *m, **c: c[m[0]])('3', **{'3': 3}), 3)
+        self.assertEqual(Access(lambda **c: c['4'])('4', **{'4': 4}), 4)
+        self.assertEqual(Access(lambda a, b: a + b)('5', a=2, b=3, c=4), 5)
+        self.assertEqual(Access(lambda a, b=1: a + b)('6', a=3), 4)
+        self.assertEqual(Access(abstract.return_true)('7', a=4), True)
+        self.assertEqual(Access(abstract)(), True)
 
         # Conditions
         condition = Condition(1)
@@ -195,19 +195,19 @@ class UtTests(unittest.TestCase):
 
         # Access
         access = Access(tc.return_false)
-        self.assertEquals(access.access([], {}), False)
+        self.assertEquals(access(), False)
 
         access = Access(lambda: True)
-        self.assertTrue(access.access([], {}))
+        self.assertTrue(access())
 
         access = Access((1, 2))
-        self.assertEqual(access.access([], {}), (1, 2))
+        self.assertEqual(access(), (1, 2))
 
         access = Access(1)
-        self.assertEquals(access.access([], {}), 1)
+        self.assertEquals(access(), 1)
 
         access = Access(tc)
-        self.assertTrue(access.access([], {}))
+        self.assertTrue(access())
 
         # Events
         e = Event(1)

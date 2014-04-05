@@ -22,8 +22,8 @@ class Abstract(object):
         raise NotImplementedError('Method not implemented')
 
 
-# Access caches type information to increase the execution speed
-class Access(object):
+# Access provides abstract-like access to any object
+class Access(Abstract):
     CALL = 'call'
     ABSTRACT = 'abstract'
     FUNCTION = 'function'
@@ -37,7 +37,7 @@ class Access(object):
     def __init__(self, value):
         self._value = value
         self._mode, self._spec = self.OTHER, self.OTHER
-        self._dispatch = self.call__direct
+        self._dispatch = self.call_direct
 
         self.setup()
 
@@ -84,10 +84,10 @@ class Access(object):
             self._dispatch = self.call_value
 
     # Do the access with message and context
-    def access(self, message, context):
+    def __call__(self, *message, **context):
         return self._dispatch(message, context)
 
-    def call__direct(self, message, context):
+    def call_direct(self, message, context):
         return self._value(*message, **context)
 
     def call_args(self, message, context):
@@ -141,7 +141,7 @@ class Condition(Access):
 
     def __init__(self, value, ignore_case=False):
         self._ignore_case = ignore_case
-        self._check, self._condition_list = self.check_other, None
+        self._check, self._condition_list = self.check_other, [self]
         super(Condition, self).__init__(value)
 
     def setup(self):
@@ -180,7 +180,7 @@ class Condition(Access):
         return self._check(message, context)
 
     def check_function(self, message, context):
-        check = self.access(message, context)
+        check = self(*message, **context)
 
         # Do we work with (rank, check) format?
         if get_len(check) == 2:
@@ -275,7 +275,7 @@ class Event(Access):
             if pre_result[0] is not None:
                 return pre_result
 
-        result = self.access(message, context)
+        result = self(*message, **context)
 
         if self.post_event:
             context[self.RESULT] = result
@@ -679,7 +679,7 @@ class ActionRelation(Relation):
         self.on_forward(self.act_next)
 
     def act_next(self, *message, **context):
-        action_result = self._action_access.access(message, context)
+        action_result = self._action_access(*message, **context)
 
         if action_result is not None and self.object is not None:
             return action_result, self.object
@@ -786,7 +786,7 @@ class Process(Handler):
         self.message.pop(0)
 
         # If False/None, we just continue to the next one
-        return getattr(self.current, Access.ATTR).access([self.query], self.context) or True
+        return getattr(self.current, Access.ATTR)(self.query, **self.context) or True
 
     # Skip: remove current and the next item from the queue
     def do_skip(self):
@@ -1446,7 +1446,7 @@ class LoopRelation(NextRelation):
         return self.is_forward(message) and self.is_custom()
 
     def do_loop_custom(self, *message, **context):
-        i = self.condition_access.access(message, context)
+        i = self.condition_access(*message, **context)
 
         if i:
             return {SET_STATE: {ITERATION: i}}, self.object, self
