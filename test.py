@@ -375,31 +375,10 @@ class UtTests(unittest.TestCase):
     def test_4_element(self):
         e = Element()
         tc = TestCalls()
-
-        # Can change property or not
-        self.assertFalse(e.can_set_property('x'))
-        self.assertFalse(e.can_set_property('set_owner'))
-        self.assertFalse(e.can_set_property('set_owner', **{OLD_VALUE: '1'}))
-        self.assertFalse(e.can_set_property('set_owner', **{OLD_VALUE: '1', NEW_VALUE: None}))
-
-        self.assertTrue(e.can_set_property('set_owner', **{OLD_VALUE: '1', NEW_VALUE: '2', SENDER: e}))
-
-        # Preventing the change
-        e.get_events(e.can_set_property)[0].pre = tc.return_true
-        e.owner = tc
-        self.assertIsNone(e.owner)
-
-        # Allowing the change and verifying data
-        e.get_events(e.can_set_property)[0].pre = None
         e.owner = tc
 
         self.assertEqual(e.owner, tc)
-        self.assertEqual(tc.last_message, ('set_owner', ))
-        self.assertEqual(tc.last_context[CONDITION], 'owner')
-        self.assertEqual(tc.last_context[EVENT], e.do_set_property)
-        self.assertEqual(tc.last_context[OLD_VALUE], None)
-        self.assertEqual(tc.last_context[NEW_VALUE], tc)
-        self.assertEqual(tc.last_context[SENDER], e)
+
 
         # Allowing the change to non-abstract
         self.assertTrue(e.change_property('owner', 1))

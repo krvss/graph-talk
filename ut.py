@@ -304,7 +304,7 @@ class Event(Access):
 
 
 # Handler dialect
-ANSWER = 'answer'
+ANSWER = 'answer'  # TODO localize
 SENDER = 'sender'
 CONDITION = 'condition'
 EVENT = 'event'
@@ -358,8 +358,8 @@ class Handler(Abstract):
         else:
             return [h[1] for h in self.events if h[0] == TRUE_CONDITION]
 
-    # Calling events basing on condition, using ** to protect the context content
-    def handle(self, message, context):
+    # Calling events basing on condition
+    def handle(self, message, context):  # TODO generalize
         global logging
         if logging:
             print "%s.handle of %s, events %s" % (type(self), message, len(self.events))
@@ -369,12 +369,14 @@ class Handler(Abstract):
         if not SENDER in context:
             context[SENDER] = self
 
+        current_event = context.get(EVENT)
+
         # Searching for the best event
         for event in self.events:
             condition_access, event_access = event
 
             # Avoiding recursive calls
-            if context.get(EVENT) == event_access.value:
+            if current_event == event_access.value:
                 continue
 
             if logging:
@@ -406,7 +408,7 @@ class Handler(Abstract):
         return result, rank, event_found
 
     # Parse means search for an event
-    def parse(self, *message, **context):
+    def parse(self, *message, **context):  # TODO check **'s
         result = self.handle(message, context)
 
         # There is a way to handle unknown message
@@ -446,7 +448,6 @@ BACKWARD = [PREVIOUS]
 class Element(Handler):
     def __init__(self, owner=None):
         super(Element, self).__init__()
-        self.on(self.can_set_property, self.do_set_property)
 
         self._owner, self.owner = None, owner
 
@@ -470,37 +471,23 @@ class Element(Handler):
 
         return event_name.split(SEP, 1)[-1]
 
-    def can_set_property(self, *message, **context):
-        if message:
-            property_name = self.remove_prefix(message[0], SET_PREFIX)
-
-            if property_name and context.get(SENDER) == self and \
-                    hasattr(self, property_name) and \
-                    has_keys(context, OLD_VALUE, NEW_VALUE) and \
-                    getattr(self, property_name) != context.get(NEW_VALUE):
-
-                    return len(property_name), property_name  # To select the best property
-
     # Set the property to the new value
-    def do_set_property(self, *message, **context):
-        old_value = context.get(OLD_VALUE)
+    def change_property(self, name, value):
+        old_value = getattr(self, name)
+        if old_value == value:
+            return
+
+        set_message, context = self.add_prefix(name, SET_PREFIX), {NEW_VALUE: value, OLD_VALUE: old_value, SENDER: self}
 
         if Access.get_access(old_value, True).spec == Access.ABSTRACT:
-            old_value(*message, **context)
+            old_value(set_message, **context)
 
-        new_value = context.get(NEW_VALUE)
+        setattr(self, '_%s' % name, value)
 
-        setattr(self, '_%s' % context[CONDITION], new_value)
-
-        if Access.get_access(new_value, True).spec == Access.ABSTRACT:
-            new_value(*message, **context)
+        if Access.get_access(value, True).spec == Access.ABSTRACT:
+            value(set_message,  **context)
 
         return True
-
-    def change_property(self, name, value):
-        # We change property via handler to allow notifications
-        return self(self.add_prefix(name, SET_PREFIX),
-                    **{NEW_VALUE: value, OLD_VALUE: getattr(self, name)})
 
     def can_go_forward(self, *message, **context):
         return self.is_forward(message)
