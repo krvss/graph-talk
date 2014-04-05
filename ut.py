@@ -137,76 +137,110 @@ class Condition(Access):
     REGEX = 'regex'
     BOOLEAN = 'bool'
 
+    NO_CHECK = -1, None
+
     def __init__(self, value, ignore_case=False):
         self._ignore_case = ignore_case
-
+        self._check, self._condition_list = self.check_other, None
         super(Condition, self).__init__(value)
-
-        if self._spec == self.LIST:
-            self._condition_list = tuple([Condition(c, ignore_case) for c in value])
-        else:
-            self._condition_list = self,
 
     def setup(self):
         super(Condition, self).setup()
 
-        if is_number(self._value):
+        if self._mode == self.FUNCTION:
+            self._check = self.check_function
+
+        elif is_number(self._value):
             self._spec = self.NUMBER
 
         elif is_list(self._value):
             self._spec = self.LIST
+            self._check = self.check_list
+            self._condition_list = tuple([Condition(c, self._ignore_case) for c in self._value])
 
         elif is_string(self._value):
             self._spec = self.STRING
+            self._check = self.check_string
+
+            if self._ignore_case:
+                self._value = self._value.upper()
 
         elif is_regex(self._value):
             self._spec = self.REGEX
+            self._check = self.check_regex
 
         elif isinstance(self._value, dict):
             self._spec = self.DICT
 
         elif self._value is True or self._value is False:
             self._spec = self.BOOLEAN
-
-        if self._spec == Condition.STRING and self._ignore_case:
-            self._value = self._value.upper()
+            self._check = self.check_boolean
 
     def check(self, message, context):
-        rank, check = -1, None
+        return self._check(message, context)
+
+    def check_function(self, message, context):
+        check = self.access(message, context)
+
+        # Do we work with (rank, check) format?
+        if get_len(check) == 2:
+            rank, check = check
+        elif check:
+            rank = 0 if check is True else check
+        else:
+            rank, check = self.NO_CHECK
+
+        return rank, check
+
+    def check_regex(self, message, context):
+        check = self._value.match(message[0]) if message else None
+
+        if check:
+            rank = check.end() - check.start()  # Match length is the rank
+            check = check.group(0)
+        else:
+            rank = - 1
+
+        return rank, check
+
+    def check_string(self, message, context):
+        rank, check = self.NO_CHECK
+
+        if message:
+            message0 = str(message[0])
+
+            if self._ignore_case:
+                message0 = message0.upper()
+
+            if message0.startswith(self._value):
+                rank, check = len(self._value), self._value
+
+        return rank, check
+
+    def check_boolean(self, message, context):
+        if message and message[0] is self._value:
+            rank, check = 0, self._value
+        else:
+            rank, check = self.NO_CHECK
+
+        return rank, check
+
+    def check_other(self, message, context):
+        if has_first(message, self._value):
+            rank, check = max(get_len(self._value), 0), self._value
+        else:
+            rank, check = self.NO_CHECK
+
+        return rank, check
+
+    def check_list(self, message, context):
+        rank, check = self.NO_CHECK
 
         for condition in self._condition_list:
-            if condition.mode == self.FUNCTION:
-                check = self.access(message, context)
+            c_rank, c_check = condition.check(message, context)
 
-                # Do we work with (rank, check) format?
-                if get_len(check) == 2:
-                    rank, check = check
-                elif check:
-                    rank = 0 if check is True else check
-
-            elif condition.spec == self.REGEX:
-                check = condition.value.match(message[0]) if message else None
-
-                if check:
-                    rank = check.end() - check.start()  # Match length is the rank
-
-            elif condition.spec == self.STRING and message:
-                message0 = str(message[0])
-
-                if self._ignore_case:
-                    message0 = message0.upper()
-
-                if message0.startswith(condition.value):
-                    rank, check = len(condition.value), condition.value
-
-            elif condition.spec == self.BOOLEAN and message and message[0] is self._value:
-                rank = 0
-
-            elif has_first(message, condition.value):
-                rank, check = max(get_len(condition.value), 0), condition.value
-
-        if rank < 0:
-            check = None  # Little cleanup
+            if c_rank > rank:
+                rank, check = c_rank, c_check
 
         return rank, check
 

@@ -1072,8 +1072,8 @@ class UtTests(unittest.TestCase):
 
         # Zero checker test
         parsing.condition = None
-        parsing.object = 1
-        self.assertEqual(parsing(NEXT), 1)
+        parsing.object = True
+        self.assertEqual(parsing(NEXT), True)
 
         # Check only test
         parsing.condition = 'x'
