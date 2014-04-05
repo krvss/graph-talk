@@ -32,7 +32,7 @@ class Access(Abstract):
 
     ATTR = '__access__'
 
-    ATTACHABLE = (CALL, FUNCTION)
+    CACHEABLE = (CALL, FUNCTION)
 
     def __init__(self, value):
         self._value = value
@@ -116,13 +116,13 @@ class Access(Abstract):
     spec = property(attrgetter('_spec'))
 
     @staticmethod
-    def get_access(obj, attach=False):
+    def get_access(obj, cache=False):
         if hasattr(obj, Access.ATTR):
             access = getattr(object, Access.ATTR, Access(obj))
         else:
             access = Access(obj)
 
-            if attach and access._mode in Access.ATTACHABLE:
+            if cache and access._mode in Access.CACHEABLE:
                 setattr(obj, Access.ATTR, access)
 
         return access
@@ -180,7 +180,7 @@ class Condition(Access):
         return self._check(message, context)
 
     def check_function(self, message, context):
-        check = self(*message, **context)
+        check = self._dispatch(message, context)
 
         # Do we work with (rank, check) format?
         if get_len(check) == 2:
@@ -275,7 +275,7 @@ class Event(Access):
             if pre_result[0] is not None:
                 return pre_result
 
-        result = self(*message, **context)
+        result = self._dispatch(message, context)
 
         if self.post_event:
             context[self.RESULT] = result
@@ -750,7 +750,7 @@ class Process(Handler):
         self.queue_top[CURRENT] = None
 
     # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
-    def can_push_queue(self, *message):
+    def can_push_queue(self):
         if self.message:
             return Access.get_access(self.message[0], True).mode in (Access.CALL, Access.FUNCTION)
 
@@ -1269,12 +1269,12 @@ class SelectiveNotion(ComplexNotion):
                     case,  # Try another case
                     self]  # Come back
         else:
-            return self.do_finish(*message, **context)  # No more opportunities
+            return self.do_finish()  # No more opportunities
 
     def can_finish(self, *message, **context):
         return context.get(STATE) and self.is_forward(message)
 
-    def do_finish(self, *message, **context):
+    def do_finish(self):
         return [FORGET_CONTEXT, CLEAR_STATE]
 
     @property
@@ -1391,13 +1391,13 @@ class LoopRelation(NextRelation):
     def can_start_general(self, *message, **context):
         return self.is_forward(message) and not self.is_looping(context) and self.is_general()
 
-    def do_start_general(self, *message, **context):
+    def do_start_general(self):
         return self.get_next_iteration_reply()
 
     def can_loop_general(self, *message, **context):
         return self.is_forward(message) and self.is_looping(context) and self.is_general()
 
-    def do_loop_general(self, *message, **context):
+    def do_loop_general(self, **context):
         i = context.get(STATE).get(ITERATION)
 
         if i < self.get_bounds()[1]:
@@ -1413,7 +1413,7 @@ class LoopRelation(NextRelation):
     def can_error_general(self, *message, **context):
         return has_first(message, ERROR) and self.is_looping(context) and self.is_general()
 
-    def do_error_general(self, *message, **context):
+    def do_error_general(self, **context):
         i = context.get(STATE).get(ITERATION)
         lower, upper = self.get_bounds()
 
@@ -1429,7 +1429,7 @@ class LoopRelation(NextRelation):
         return reply + [CLEAR_STATE]
     
     # Custom loop
-    def can_loop_custom(self, *message, **context):
+    def can_loop_custom(self, *message):
         return self.is_forward(message) and self.is_custom()
 
     def do_loop_custom(self, *message, **context):
@@ -1440,17 +1440,17 @@ class LoopRelation(NextRelation):
         else:
             return False if not self.is_looping(context) else CLEAR_STATE,
 
-    def can_error_custom(self, *message, **context):
+    def can_error_custom(self, *message):
         return has_first(message, ERROR) and self.is_custom()
 
-    def do_error_custom(self, *message, **context):
+    def do_error_custom(self):
         return CLEAR_STATE,
     
     # Common handling
     def can_break(self, *message, **context):
         return has_first(message, BREAK) and self.is_looping(context)
 
-    def do_break(self, *message, **context):
+    def do_break(self):
         reply = [NEXT]
 
         if self.is_flexible():
@@ -1461,8 +1461,8 @@ class LoopRelation(NextRelation):
     def can_continue(self, *message, **context):
         return has_first(message, CONTINUE) and self.is_looping(context)
 
-    def do_continue(self, *message, **context):
-        return [NEXT] + self.do_loop_general(*message, **context)
+    def do_continue(self, **context):
+        return [NEXT] + self.do_loop_general(**context)
 
 
 # Graph is a holder of Notions and Relation, it allows easy search and processing of them
@@ -1549,7 +1549,7 @@ class Graph(Element):
 
         return found[0] if found else None
 
-    def do_element(self, *message, **context):
+    def do_element(self, **context):
         element = context.get(SENDER)
 
         if isinstance(element, Notion) or isinstance(element, Graph):
@@ -1571,7 +1571,7 @@ class Graph(Element):
             collection.append(element)
             return True
 
-    def do_forward(self, *message, **context):
+    def do_forward(self):
         return self.root
 
     @property

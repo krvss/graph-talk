@@ -1575,7 +1575,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual((), graph.relations())
 
-        self.assertFalse(graph.do_element(graph.add_prefix(OWNER, SET_PREFIX), **{SENDER: self}))
+        self.assertFalse(graph.do_element(**{SENDER: self}))
 
         # Root
         graph.root = rel
