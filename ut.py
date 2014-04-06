@@ -14,30 +14,31 @@ def set_logging(value):
     logging = value
 
 
-
-# Base abstract class for all communicable objects
 class Abstract(object):
-    # A singular way to call TODO comments
-    def __call__(self, *args, **kwargs):
+    """
+    Base abstract class for all communicable objects
+    """
+    def __call__(self, *message, **context):
         raise NotImplementedError('Method not implemented')
 
 
-# Access provides abstract-like access to any object
 class Access(Abstract):
+    """
+    Access provides abstract-like access to any object
+    """
     CALL = 'call'
     ABSTRACT = 'abstract'
     FUNCTION = 'function'
     VALUE = 'value'
     OTHER = 'other'
 
-    ATTR = '__access__'
-
+    CACHE_ATTR = '__access__'
     CACHEABLE = (CALL, FUNCTION)
 
     def __init__(self, value):
         self._value = value
         self._mode, self._spec = self.OTHER, self.OTHER
-        self._dispatch = self.call_direct
+        self._call = self.call_direct
 
         self.setup()
 
@@ -53,8 +54,10 @@ class Access(Abstract):
     def __str__(self):
         return '%s, %s: %s' % (self._mode, self._spec, self._value)
 
-    # Init the type information
     def setup(self):
+        """
+        Init type information
+        """
         if isinstance(self._value, Abstract):
             self._mode, self._spec = self.CALL, self.ABSTRACT
 
@@ -62,30 +65,29 @@ class Access(Abstract):
             self._mode, self._spec = self.FUNCTION, getargspec(self._value)
 
             if self._spec.varargs and not self._spec.keywords:
-                self._dispatch = self.call_args
+                self._call = self.call_args
 
             elif self._spec.keywords and not self._spec.varargs:
-                self._dispatch = self.call_kwargs
+                self._call = self.call_kwargs
 
             elif self._spec.varargs and self._spec.keywords:
                 return  # default direct is good here
 
             elif not self._spec.varargs and not self._spec.keywords and not self._spec.args:
-                self._dispatch = self.call_noargs
+                self._call = self.call_noargs
 
             elif self._spec.args:
                 self._defaults_len = len(self._spec.defaults) - 1 if self._spec.defaults else -1
                 self._reversed_args = list(reversed(self._spec.args))
 
-                self._dispatch = self.call_general
+                self._call = self.call_general
 
         else:
             self._mode = self.VALUE
-            self._dispatch = self.call_value
+            self._call = self.call_value
 
-    # Do the access with message and context
     def __call__(self, *message, **context):
-        return self._dispatch(message, context)
+        return self._call(message, context)
 
     def call_direct(self, message, context):
         return self._value(*message, **context)
@@ -117,19 +119,21 @@ class Access(Abstract):
 
     @staticmethod
     def get_access(obj, cache=False):
-        if hasattr(obj, Access.ATTR):
-            access = getattr(object, Access.ATTR, Access(obj))
+        if hasattr(obj, Access.CACHE_ATTR):
+            access = getattr(object, Access.CACHE_ATTR, Access(obj))
         else:
             access = Access(obj)
 
             if cache and access._mode in Access.CACHEABLE:
-                setattr(obj, Access.ATTR, access)
+                setattr(obj, Access.CACHE_ATTR, access)
 
         return access
 
 
-# Condition is a kind of Access that checks the possibility of the access according to the message and context
 class Condition(Access):
+    """
+    Condition is an Access that checks the possibility of the access according to the message and context
+    """
     NUMBER = 'number'
     LIST = 'list'
     DICT = 'dict'
@@ -141,56 +145,50 @@ class Condition(Access):
 
     def __init__(self, value, ignore_case=False):
         self._ignore_case = ignore_case
-        self._check, self._condition_list = self.check_other, [self]
+        self.check, self._condition_list = self.check_compare, [self]
         super(Condition, self).__init__(value)
 
     def setup(self):
         super(Condition, self).setup()
 
         if self._mode == self.FUNCTION:
-            self._check = self.check_function
+            self.check = self.check_function
 
         elif is_number(self._value):
             self._spec = self.NUMBER
 
         elif is_list(self._value):
-            self._spec = self.LIST
-            self._check = self.check_list
+            self._spec, self.check = self.LIST, self.check_list
             self._condition_list = tuple([Condition(c, self._ignore_case) for c in self._value])
 
         elif is_string(self._value):
-            self._spec = self.STRING
-            self._check = self.check_string
+            self._spec, self.check = self.STRING, self.check_string
 
             if self._ignore_case:
                 self._value = self._value.upper()
 
         elif is_regex(self._value):
-            self._spec = self.REGEX
-            self._check = self.check_regex
+            self._spec, self.check = self.REGEX, self.check_regex
 
         elif isinstance(self._value, dict):
             self._spec = self.DICT
 
         elif self._value is True or self._value is False:
-            self._spec = self.BOOLEAN
-            self._check = self.check_boolean
+            self._spec, self.check = self.BOOLEAN, self.check_boolean
 
     def check(self, message, context):
-        return self._check(message, context)
+        raise TypeError('Undefined check for %s' % self.__str__())
 
     def check_function(self, message, context):
-        check = self._dispatch(message, context)
+        check = self._call(message, context)
 
         # Do we work with (rank, check) format?
         if get_len(check) == 2:
-            rank, check = check
+            return check
         elif check:
-            rank = 0 if check is True else check
+            return 0 if check is True else check, check
         else:
-            rank, check = self.NO_CHECK
-
-        return rank, check
+            return self.NO_CHECK
 
     def check_regex(self, message, context):
         check = self._value.match(message[0]) if message else None
@@ -204,8 +202,6 @@ class Condition(Access):
         return rank, check
 
     def check_string(self, message, context):
-        rank, check = self.NO_CHECK
-
         if message:
             message0 = str(message[0])
 
@@ -213,25 +209,21 @@ class Condition(Access):
                 message0 = message0.upper()
 
             if message0.startswith(self._value):
-                rank, check = len(self._value), self._value
+                return len(self._value), self._value
 
-        return rank, check
+        return self.NO_CHECK
 
     def check_boolean(self, message, context):
         if message and message[0] is self._value:
-            rank, check = 0, self._value
+            return 0, self._value
         else:
-            rank, check = self.NO_CHECK
+            return self.NO_CHECK
 
-        return rank, check
-
-    def check_other(self, message, context):
+    def check_compare(self, message, context):
         if has_first(message, self._value):
-            rank, check = max(get_len(self._value), 0), self._value
+            return max(get_len(self._value), 0), self._value
         else:
-            rank, check = self.NO_CHECK
-
-        return rank, check
+            return self.NO_CHECK
 
     def check_list(self, message, context):
         rank, check = self.NO_CHECK
@@ -253,15 +245,16 @@ class Condition(Access):
 class TrueCondition(Condition):
     def __init__(self):
         super(TrueCondition, self).__init__(id(self))
+        self.check = lambda message, context: 0, True
 
-    def check(self, message, context):
-        return 0, True
 
 TRUE_CONDITION = TrueCondition()
 
 
-# Event is a kind of Access that allows to attach Pre and Post custom functions
 class Event(Access):
+    """
+    Event is an Access that allows to attach Pre and Post custom functions before and after access
+    """
     RESULT = 'result'
 
     def __init__(self, value):
@@ -275,7 +268,7 @@ class Event(Access):
             if pre_result[0] is not None:
                 return pre_result
 
-        result = self._dispatch(message, context)
+        result = self._call(message, context)
 
         if self.post_event:
             context[self.RESULT] = result
@@ -773,7 +766,7 @@ class Process(Handler):
         self.message.pop(0)
 
         # If False/None, we just continue to the next one
-        return getattr(self.current, Access.ATTR)(self.query, **self.context) or True
+        return getattr(self.current, Access.CACHE_ATTR)(self.query, **self.context) or True
 
     # Skip: remove current and the next item from the queue
     def do_skip(self):
