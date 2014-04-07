@@ -202,14 +202,16 @@ class Condition(Access):
         return rank, check
 
     def check_string(self, message, context):
-        if message:
-            message0 = str(message[0])
+        try:
+            message0 = message[0][:len(self._value)]
 
             if self._ignore_case:
                 message0 = message0.upper()
 
-            if message0.startswith(self._value):
+            if message0 == self._value:
                 return len(self._value), self._value
+        except (TypeError, IndexError):
+            pass
 
         return self.NO_CHECK
 
