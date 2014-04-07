@@ -245,7 +245,7 @@ class Condition(Access):
 class TrueCondition(Condition):
     def __init__(self):
         super(TrueCondition, self).__init__(id(self))
-        self.check = lambda message, context: 0, True
+        self.check = lambda message, context: (0, True)
 
 
 TRUE_CONDITION = TrueCondition()
@@ -352,7 +352,7 @@ class Handler(Abstract):
             return [h[1] for h in self.events if h[0] == TRUE_CONDITION]
 
     # Calling events basing on condition
-    def handle(self, message, context):  # TODO generalize
+    def handle(self, *message, **context):  # TODO check **'s, generalize
         global logging
         if logging:
             print "%s.handle of %s, events %s" % (type(self), message, len(self.events))
@@ -398,22 +398,16 @@ class Handler(Abstract):
         else:
             result = False
 
-        return result, rank, event_found
-
-    # Parse means search for an event
-    def parse(self, *message, **context):  # TODO check **'s
-        result = self.handle(message, context)
-
         # There is a way to handle unknown message
-        if result[0] is False and self.unknown_event:
-            result = self.unknown_event.run(message, context)
+        if result is False and self.unknown_event:
+            return self.unknown_event.run(message, context)
 
-        return result
+        return result, rank, event_found
 
     # Answer depends on the context
     def __call__(self, *message, **context):
         answer_mode = context.pop(ANSWER, None)  # Applicable only for a top level
-        result = self.parse(*message, **context)
+        result = self.handle(*message, **context)
 
         if answer_mode == RANK:
             return result[0], result[1]
@@ -811,13 +805,13 @@ class Process(Handler):
         self.to_queue({MESSAGE: list(new_message)})
 
     # Process' parse works in step-by-step manner, processing message and then popping the queue
-    def parse(self, *message, **context):
+    def handle(self, *message, **context):
         self.start_parsing(message, context)
 
         result = NO_PARSE
 
         while self.message or len(self._queue) > 1:
-            result = super(Process, self).parse(*self.message, **self.context)
+            result = super(Process, self).handle(*self.message, **self.context)
 
             if result[0] in (OK, STOP, False):
                 break
@@ -1094,8 +1088,8 @@ class ParsingProcess(StatefulProcess):
     def is_parsed(self):
         return self.query == NEXT and not self.text
 
-    def parse(self, *message, **context):
-        result = super(ParsingProcess, self).parse(*message, **context)
+    def handle(self, *message, **context):
+        result = super(ParsingProcess, self).handle(*message, **context)
 
         return False if not self.is_parsed() and not result[0] == STOP else result[0], self.parsed_length, result[2]
 

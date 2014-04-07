@@ -304,13 +304,13 @@ class UtTests(unittest.TestCase):
         del h.events[:]
         h.on('event', handler1)
         h.on('event1', handler2)
-        r = h.handle(['event'], {})
+        r = h.handle('event')
 
         self.assertTrue(r[0])
         self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], handler1)
 
-        r = h.handle(['event1'], {})
+        r = h.handle('event1')
 
         self.assertTrue(r[0])
         self.assertEqual(r[1], len('event1'))
@@ -322,13 +322,13 @@ class UtTests(unittest.TestCase):
         handler3 = lambda *m, **c: 'handler3'
         h.on_any(handler3)
 
-        r = h.handle(['even'], {})
+        r = h.handle('even')
         self.assertEqual(r[0], 'handler3')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
         # Specific event beats 'any' handler
-        r = h.handle(['event'], {})
+        r = h.handle('event')
         self.assertEqual(r[0], True)
         self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], handler1)
@@ -337,7 +337,7 @@ class UtTests(unittest.TestCase):
         tc = TestCalls()
         h.on_any(tc.return_true)
 
-        r = h.handle(['even'], {})
+        r = h.handle('even')
         self.assertEqual(r[0], 'handler3')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
@@ -347,10 +347,10 @@ class UtTests(unittest.TestCase):
         handler4 = lambda **c: c[SENDER]
         h.on(SENDER, handler4)
 
-        r = h.handle([SENDER], {})
+        r = h.handle(SENDER)
         self.assertEquals(r, (h, len(SENDER), handler4))
 
-        r = h.handle([SENDER], {SENDER: 'test'})
+        r = h.handle(SENDER, **{SENDER: 'test'})
         self.assertEquals(r, ('test', len(SENDER), handler4))
 
         # Condition & rank
@@ -358,7 +358,7 @@ class UtTests(unittest.TestCase):
 
         h.on(CONDITION, handler5)
 
-        r = h.handle([CONDITION], {})
+        r = h.handle(CONDITION)
         self.assertEquals(r, ((len(CONDITION), CONDITION), len(CONDITION), handler5))
 
         # Answer check
