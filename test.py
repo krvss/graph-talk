@@ -344,25 +344,25 @@ class UtTests(unittest.TestCase):
 
         # Call parameters check
         # Sender
-        handler4 = lambda **c: c[SENDER]
-        h.on(SENDER, handler4)
+        handler4 = lambda **c: c[Handler.SENDER]
+        h.on(Handler.SENDER, handler4)
 
-        r = h.handle(SENDER)
-        self.assertEquals(r, (h, len(SENDER), handler4))
+        r = h.handle(Handler.SENDER)
+        self.assertEquals(r, (h, len(Handler.SENDER), handler4))
 
-        r = h.handle(SENDER, **{SENDER: 'test'})
-        self.assertEquals(r, ('test', len(SENDER), handler4))
+        r = h.handle(Handler.SENDER, **{Handler.SENDER: 'test'})
+        self.assertEquals(r, ('test', len(Handler.SENDER), handler4))
 
         # Condition & rank
-        handler5 = lambda **c: (c[RANK], c[CONDITION])
+        handler5 = lambda **c: (c[Handler.RANK], c[Handler.CONDITION])
 
-        h.on(CONDITION, handler5)
+        h.on(Handler.CONDITION, handler5)
 
-        r = h.handle(CONDITION)
-        self.assertEquals(r, ((len(CONDITION), CONDITION), len(CONDITION), handler5))
+        r = h.handle(Handler.CONDITION)
+        self.assertEquals(r, ((len(Handler.CONDITION), Handler.CONDITION), len(Handler.CONDITION), handler5))
 
         # Answer check
-        r = h('event', **{ANSWER: RANK})
+        r = h('event', **{Handler.ANSWER: Handler.RANK})
         self.assertEquals(r, (True, len('event')))
 
         # Unknown check
@@ -388,32 +388,32 @@ class UtTests(unittest.TestCase):
 
         # Move test
         # Forward
-        event1 = lambda *m: m[0] if m[0] in FORWARD else None
+        event1 = lambda *m: m[0] if m[0] in Element.FORWARD else None
 
         e.on_forward(event1)
 
-        self.assertEqual(e(NEXT), NEXT)
+        self.assertEqual(e(Element.NEXT), Element.NEXT)
 
         e.off_forward()
 
-        self.assertTrue(e(NEXT) is False)
+        self.assertTrue(e(Element.NEXT) is False)
 
         self.assertFalse(e.is_forward(None))
-        self.assertTrue(e.is_forward([NEXT]))
+        self.assertTrue(e.is_forward([Element.NEXT]))
         self.assertFalse(e.is_forward([]))
 
         # Backward
-        event2 = lambda *m: m[0] if m[0] in BACKWARD else None
+        event2 = lambda *m: m[0] if m[0] in Element.BACKWARD else None
         e.on_backward(event2)
 
-        self.assertEqual(e(PREVIOUS), PREVIOUS)
+        self.assertEqual(e(Element.PREVIOUS), Element.PREVIOUS)
 
         e.off_backward()
 
-        self.assertTrue(e(PREVIOUS) is False)
+        self.assertTrue(e(Element.PREVIOUS) is False)
 
         self.assertFalse(e.is_backward(None))
-        self.assertTrue(e.is_backward([PREVIOUS]))
+        self.assertTrue(e.is_backward([Element.PREVIOUS]))
         self.assertFalse(e.is_backward([]))
 
     def test_5_objects(self):
@@ -447,25 +447,25 @@ class UtTests(unittest.TestCase):
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it, not a list
-        self.assertEqual(cn(NEXT), r1)
+        self.assertEqual(cn(Element.NEXT), r1)
 
         r2 = Relation(n2, n1)
         r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
-        self.assertEqual(cn(NEXT), (r1, r2))
+        self.assertEqual(cn(Element.NEXT), (r1, r2))
 
         r2.subject = n2
         self.assertEqual(len(cn.relations), 1)
 
         # Trying direct calls to relate
         r3 = Relation(n1, n2)
-        self.assertFalse(cn.do_relation(**{OLD_VALUE: None, SENDER: r3, NEW_VALUE: None}))
-        self.assertFalse(cn.do_relation(**{OLD_VALUE: cn, SENDER: r3, NEW_VALUE: None}))
+        self.assertFalse(cn.do_relation(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: None}))
+        self.assertFalse(cn.do_relation(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
-        self.assertTrue(cn.do_relation(**{OLD_VALUE: None, SENDER: r3, NEW_VALUE: cn}))
-        self.assertFalse(cn.do_relation(**{OLD_VALUE: None, SENDER: r3, NEW_VALUE: cn}))
-        self.assertTrue(cn.do_relation(**{OLD_VALUE: cn, SENDER: r3, NEW_VALUE: None}))
+        self.assertTrue(cn.do_relation(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertFalse(cn.do_relation(**{Element.OLD_VALUE: None, Handler.SENDER: r3, Element.NEW_VALUE: cn}))
+        self.assertTrue(cn.do_relation(**{Element.OLD_VALUE: cn, Handler.SENDER: r3, Element.NEW_VALUE: None}))
 
         # Unrelating
         cn2 = ComplexNotion('cn2')
@@ -477,22 +477,22 @@ class UtTests(unittest.TestCase):
 
         # Next test
         nr = NextRelation(n1, n2)
-        self.assertEqual(nr(NEXT), n2)
+        self.assertEqual(nr(Element.NEXT), n2)
 
         nr.condition = lambda **c: 'event' in c
         nr.object = [1]
-        self.assertListEqual(nr(NEXT, event=1), nr.object)
+        self.assertListEqual(nr(Element.NEXT, event=1), nr.object)
 
         self.assertTrue(nr(event=1) is False)
-        self.assertTrue(nr(NEXT) is False)
+        self.assertTrue(nr(Element.NEXT) is False)
 
         # Action notion test
         na = ActionNotion('action', 'action')
-        self.assertEquals(na(NEXT), na.name)
+        self.assertEquals(na(Element.NEXT), na.name)
         self.assertEqual(na.action, na.name)
 
         na.action = 2
-        self.assertEquals(na(NEXT), 2)
+        self.assertEquals(na(Element.NEXT), 2)
 
         na.off_forward()
         self.assertIsNone(na.action)
@@ -500,18 +500,18 @@ class UtTests(unittest.TestCase):
         # Action relation test
         ar = ActionRelation('subj', 'obj', lambda: True)
 
-        self.assertEqual(ar(NEXT), (True, ar.object))
+        self.assertEqual(ar(Element.NEXT), (True, ar.object))
         ar.action = None
 
-        self.assertEqual(ar(NEXT), ar.object)
+        self.assertEqual(ar(Element.NEXT), ar.object)
 
         ar.action = 3
 
-        self.assertEqual(ar(NEXT), (3, ar.object))
+        self.assertEqual(ar(Element.NEXT), (3, ar.object))
 
         ar.object = None
 
-        self.assertEqual(ar(NEXT), 3)
+        self.assertEqual(ar(Element.NEXT), 3)
 
     def test_6_process(self):
         process = Process()
@@ -933,7 +933,7 @@ class UtTests(unittest.TestCase):
 
         process = ParsingProcess()
         # Good (text fully parsed)
-        r = process(root, **{TEXT: 'go', 'test': 'test_parsing_1', ANSWER: RANK})
+        r = process(root, **{TEXT: 'go', 'test': 'test_parsing_1', Handler.ANSWER: Handler.RANK})
 
         self.assertTrue(r[0] is None)
         self.assertEqual(r[1], 2)
@@ -958,7 +958,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.last_parsed)
 
         # Changing of query
-        r = process(NEW, NEXT, BREAK, STOP)
+        r = process(NEW, Element.NEXT, BREAK, STOP)
 
         self.assertFalse(r)
         self.assertEqual(process.query, BREAK)
@@ -984,12 +984,12 @@ class UtTests(unittest.TestCase):
 
         parsing = ParsingRelation(root, action, 'a')
 
-        r = parsing(NEXT, **{TEXT: 'a', 'test': 'conditions_1'})
+        r = parsing(Element.NEXT, **{TEXT: 'a', 'test': 'conditions_1'})
 
         self.assertEqual(r[0].get(PROCEED), 1)
         self.assertEqual(r[1], action)
 
-        self.assertEqual(parsing(NEXT), ERROR)
+        self.assertEqual(parsing(Element.NEXT), ERROR)
         self.assertTrue(parsing(BREAK) is None)
 
         # Using in process
@@ -1052,7 +1052,7 @@ class UtTests(unittest.TestCase):
         # Zero checker test
         parsing.condition = None
         parsing.object = True
-        self.assertEqual(parsing(NEXT), True)
+        self.assertEqual(parsing(Element.NEXT), True)
 
         # Check only test
         parsing.condition = 'x'
@@ -1147,7 +1147,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(process.last_parsed, 'b')
         self.assertTrue(r is None)
-        self.assertEqual(process.query, NEXT)
+        self.assertEqual(process.query, Element.NEXT)
         check_test_result(self, process, b, 1)
 
         # Alternative negative test: same tree, message 'xx'
@@ -1161,7 +1161,7 @@ class UtTests(unittest.TestCase):
         default = ParsingRelation(root, None, re.compile('.'))
         root.default = default
 
-        r = root(NEXT, **{TEXT: 'x'})
+        r = root(Element.NEXT, **{TEXT: 'x'})
 
         self.assertEqual(r, default)
 
@@ -1173,13 +1173,13 @@ class UtTests(unittest.TestCase):
 
         self.assertIsNone(root.default)
 
-        r = root(NEXT, **{TEXT: 'x'})
+        r = root(Element.NEXT, **{TEXT: 'x'})
 
         self.assertEqual(r, ERROR)
 
         default.subject = root
 
-        r = root(NEXT, **{TEXT: 'a'})
+        r = root(Element.NEXT, **{TEXT: 'a'})
         self.assertEqual(r[0], PUSH_CONTEXT)
 
         default.subject = None
@@ -1523,7 +1523,7 @@ class UtTests(unittest.TestCase):
         r = process(NEW, root, **{TEXT: 'ac', 'test': 'test_loop_break'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.query, NEXT)
+        self.assertEqual(process.query, Element.NEXT)
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, c, 2)
 
@@ -1536,7 +1536,7 @@ class UtTests(unittest.TestCase):
 
         self.assertTrue(r is None)
         self.assertEqual(process.states[b]['v'], 2)
-        self.assertEqual(process.query, NEXT)
+        self.assertEqual(process.query, Element.NEXT)
         check_loop_result(self, process, l, 2)
 
         a.action = lambda **c: [common_state_acc(**c), CONTINUE]
@@ -1544,7 +1544,7 @@ class UtTests(unittest.TestCase):
         r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_loop_continue'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.query, NEXT)
+        self.assertEqual(process.query, Element.NEXT)
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, l, 2)
 
@@ -1575,7 +1575,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual((), graph.relations())
 
-        self.assertFalse(graph.do_element(**{SENDER: self}))
+        self.assertFalse(graph.do_element(**{Handler.SENDER: self}))
 
         # Root
         graph.root = rel
@@ -1621,16 +1621,16 @@ class UtTests(unittest.TestCase):
 
         rel3 = NextRelation(root, None, None, False, graph)
 
-        self.assertListEqual(graph.relations({SUBJECT: root}), [rel, rel3])
-        self.assertListEqual(graph.relations({OBJECT: rave}), [rel])
-        self.assertListEqual(graph.relations({SUBJECT: rave, OBJECT: lock}), [rel2])
+        self.assertListEqual(graph.relations({Relation.SUBJECT: root}), [rel, rel3])
+        self.assertListEqual(graph.relations({Relation.OBJECT: rave}), [rel])
+        self.assertListEqual(graph.relations({Relation.SUBJECT: rave, Relation.OBJECT: lock}), [rel2])
         self.assertListEqual(graph.relations(lambda r: r == rel3), [rel3])
 
         # Name, Str, and Next
         self.assertEqual(graph.__str__(), '{""}')
 
         graph.root = root
-        self.assertEqual(graph(NEXT), root)
+        self.assertEqual(graph(Element.NEXT), root)
 
         graph.name = 'graph'
         self.assertEqual(root.name, graph.name)

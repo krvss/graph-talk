@@ -71,7 +71,7 @@ class Access(Abstract):
                 self._call = self.call_kwargs
 
             elif self._spec.varargs and self._spec.keywords:
-                return  # default direct is good here
+                return  # default call_direct is good here
 
             elif not self._spec.varargs and not self._spec.keywords and not self._spec.args:
                 self._call = self.call_noargs
@@ -120,7 +120,7 @@ class Access(Abstract):
     @staticmethod
     def get_access(obj, cache=False):
         if hasattr(obj, Access.CACHE_ATTR):
-            access = getattr(object, Access.CACHE_ATTR, Access(obj))
+            access = getattr(obj, Access.CACHE_ATTR)
         else:
             access = Access(obj)
 
@@ -145,10 +145,13 @@ class Condition(Access):
 
     def __init__(self, value, ignore_case=False):
         self._ignore_case = ignore_case
-        self.check, self._condition_list = self.check_compare, [self]
+        self.check, self._conditions = self.check_compare, tuple([self])
         super(Condition, self).__init__(value)
 
     def setup(self):
+        """
+        Setting additional mode info
+        """
         super(Condition, self).setup()
 
         if self._mode == self.FUNCTION:
@@ -159,7 +162,7 @@ class Condition(Access):
 
         elif is_list(self._value):
             self._spec, self.check = self.LIST, self.check_list
-            self._condition_list = tuple([Condition(c, self._ignore_case) for c in self._value])
+            self._conditions = tuple([Condition(c, self._ignore_case) for c in self._value])
 
         elif is_string(self._value):
             self._spec, self.check = self.STRING, self.check_string
@@ -210,6 +213,7 @@ class Condition(Access):
 
             if message0 == self._value:
                 return len(self._value), self._value
+
         except (TypeError, IndexError):
             pass
 
@@ -230,7 +234,7 @@ class Condition(Access):
     def check_list(self, message, context):
         rank, check = self.NO_CHECK
 
-        for condition in self._condition_list:
+        for condition in self._conditions:
             c_rank, c_check = condition.check(message, context)
 
             if c_rank > rank:
@@ -240,7 +244,7 @@ class Condition(Access):
 
     @property
     def list(self):
-        return self._condition_list
+        return self._conditions
 
 
 # Condition that is always satisfied
@@ -298,82 +302,92 @@ class Event(Access):
         self.post_event = Event(value) if value is not None else None
 
 
-# Handler dialect
-ANSWER = 'answer'  # TODO localize
-SENDER = 'sender'
-CONDITION = 'condition'
-EVENT = 'event'
-RANK = 'rank'
-
-NO_PARSE = (False, -1, None)
-
-
-# Handler is a class for the routing of messages to processing functions (events) basing on specified conditions
 class Handler(Abstract):
+    """
+    Handler is a class for the routing of messages to processing functions (events) basing on specified conditions
+    """
+    ANSWER = 'answer'
+    SENDER = 'sender'
+    CONDITION = 'condition'
+    EVENT = 'event'
+    RANK = 'rank'
+
+    NO_HANDLE = (False, -1, None)
+
     def __init__(self):
         Access.get_access(self, True)
 
         self.events = []
         self.unknown_event = None
 
-    # Adding the accesses
     def on_access(self, condition_access, event_access):
+        """
+        Adding the accesses
+        """
         if (condition_access, event_access) not in self.events:
             self.events.append((condition_access, event_access))
 
-    # Adding the condition - event pair
     def on(self, condition, event):
+        """
+        Adding the condition - event pair
+        """
         self.on_access(Condition(condition), Event(event))
 
-    # Adding the event, without condition it will trigger on any message
     def on_any(self, event):
+        """
+        Adding the event, without condition it will trigger on any message
+        """
         self.on_access(TRUE_CONDITION, Event(event))
 
-    # Removing the condition - event pair
     def off(self, condition, event):
+        """
+        Removing the condition - event pair
+        """
         if (condition, event) in self.events:
             self.events.remove((condition, event))
 
-    # Removing the event
     def off_any(self, event):
+        """
+        Removing the event
+        """
         self.off(TRUE_CONDITION, event)
 
-    # Removing all the events for the condition
     def off_condition(self, condition):
+        """
+        Removing all the events for the condition
+        """
         self.events = filter(lambda e: not (e[0] == condition), self.events)
 
-    # Remove all occurrences of the event
     def off_event(self, event):
-        self.events = filter(lambda h: not (h[1] == event), self.events)
+        """
+        Remove all occurrences of the event
+        """
+        self.events = filter(lambda e: not (e[1] == event), self.events)
 
-    # Getting the events for the specified condition
     def get_events(self, condition=None):
+        """
+        Getting the events for the specified condition
+        """
         if condition:
-            return [h[1] for h in self.events if has_first(h, condition)]
+            return [e[1] for e in self.events if has_first(e, condition)]
         else:
-            return [h[1] for h in self.events if h[0] == TRUE_CONDITION]
+            return [e[1] for e in self.events if e[0] == TRUE_CONDITION]
 
-    # Calling events basing on condition
     def handle(self, *message, **context):  # TODO check **'s, generalize
+        """
+        Calling events basing on condition
+        """
         global logging
         if logging:
             print "%s.handle of %s, events %s" % (type(self), message, len(self.events))
 
-        check, rank, event_found = NO_PARSE
+        check, rank, event_found = self.NO_HANDLE
 
-        if not SENDER in context:
-            context[SENDER] = self
-
-        current_event = context.get(EVENT)
+        if not self.SENDER in context:
+            context[self.SENDER] = self
 
         # Searching for the best event
-        for event in self.events:
-            condition_access, event_access = event
-
-            # Avoiding recursive calls
-            if current_event == event_access.value:
-                continue
-
+        for condition_access, event_access in self.events:
             if logging:
                 t1 = time.time()
 
@@ -383,112 +397,65 @@ class Handler(Abstract):
             if logging:
                 print "trying %s, spent %s" % (condition_access.value, time.time() - t1)
 
-            if c_rank <= rank:
-                continue
-            else:
+            if c_rank > rank:
                 rank, check, event_found = c_rank, c_check, event_access
 
         # Running the best event
         if rank >= 0:
-            if not EVENT in context:
-                context[EVENT] = event_found.value
-
-            context.update({RANK: rank, CONDITION: check})
+            context.update({self.RANK: rank, self.CONDITION: check, self.EVENT: event_found.value})
 
             # Call event, add the condition result to the context
             result, event_found = event_found.run(message, context)
         else:
             result = False
 
-        # There is a way to handle unknown message
-        if result is False and self.unknown_event:
-            return self.unknown_event.run(message, context)
+            # There is a way to handle unknown message
+            if self.unknown_event:
+                return self.unknown_event.run(message, context)
 
         return result, rank, event_found
 
-    # Answer depends on the context
     def __call__(self, *message, **context):
-        answer_mode = context.pop(ANSWER, None)  # Applicable only for a top level
+        """
+        Answer depends on the context
+        """
+        answer_mode = context.pop(self.ANSWER, None)  # Applicable only for a top level
         result = self.handle(*message, **context)
 
-        if answer_mode == RANK:
+        if answer_mode == self.RANK:
             return result[0], result[1]
 
         return result[0]  # No need to know the details
 
 
-# Element dialect
-NEXT = 'next'
-PREVIOUS = 'previous'
-OWNER = 'owner'
-
-SET_PREFIX = 'set'
-NAME = 'name'
-OLD_VALUE = 'old-value'
-NEW_VALUE = 'new-value'
-
-SEP = '_'
-
-FORWARD = [NEXT]
-BACKWARD = [PREVIOUS]
-
-
-# Element is a part of a bigger system
 class Element(Handler):
+    """
+    Element is a part of a complex system (e.g. graph)
+    """
+    NEXT = 'next'
+    PREVIOUS = 'previous'
+
+    OWNER = 'owner'
+    SET_PREFIX = 'set'
+    NAME = 'name'
+    OLD_VALUE = 'old-value'
+    NEW_VALUE = 'new-value'
+
+    SEP = '_'
+
+    FORWARD = [NEXT]
+    BACKWARD = [PREVIOUS]
+
     def __init__(self, owner=None):
         super(Element, self).__init__()
 
         self._owner, self.owner = None, owner
 
-    # Add prefix to the message
-    @staticmethod
-    def add_prefix(message, prefix):
-        event_name = message
-
-        if not message.startswith(prefix):
-            event_name = SEP.join([prefix, event_name])
-
-        return event_name
-
-    # Remove prefix from the message
-    @staticmethod
-    def remove_prefix(message, prefix=None):
-        event_name = str(message)
-
-        if not SEP in event_name or (prefix and not event_name.startswith(prefix + SEP)):
-            return None
-
-        return event_name.split(SEP, 1)[-1]
-
-    # Set the property to the new value
-    def change_property(self, name, value):
-        old_value = getattr(self, name)
-        if old_value == value:
-            return
-
-        set_message, context = self.add_prefix(name, SET_PREFIX), {NEW_VALUE: value, OLD_VALUE: old_value, SENDER: self}
-
-        if Access.get_access(old_value, True).spec == Access.ABSTRACT:
-            old_value(set_message, **context)
-
-        setattr(self, '_%s' % name, value)
-
-        if Access.get_access(value, True).spec == Access.ABSTRACT:
-            value(set_message,  **context)
-
-        return True
+    def is_forward(self, message):
+        return message and message[0] in self.FORWARD
 
     def can_go_forward(self, *message, **context):
         return self.is_forward(message)
-
-    def can_go_backward(self, *message, **context):
-        return self.is_backward(message)
-
-    def is_forward(self, message):
-        return message and message[0] in FORWARD
-
-    def is_backward(self, message):
-        return message and message[0] in BACKWARD
 
     def on_forward(self, event):
         self.on(self.can_go_forward, event)
@@ -496,11 +463,50 @@ class Element(Handler):
     def off_forward(self):
         self.off_condition(self.can_go_forward)
 
+    def is_backward(self, message):
+        return message and message[0] in self.BACKWARD
+
+    def can_go_backward(self, *message, **context):
+        return self.is_backward(message)
+
     def on_backward(self, event):
         self.on(self.can_go_backward, event)
 
     def off_backward(self):
         self.off_condition(self.can_go_backward)
+
+    @staticmethod
+    def add_prefix(msg, prefix):
+        """
+        Add prefix to the message
+        """
+        event_name = msg
+
+        if not msg.startswith(prefix):
+            event_name = Element.SEP.join([prefix, event_name])
+
+        return event_name
+
+    def change_property(self, name, value):
+        """
+        Set the property to the new value with notification, if needed
+        """
+        old_value = getattr(self, name)
+        if old_value == value:
+            return
+
+        set_message, context = self.add_prefix(name, self.SET_PREFIX), \
+                               {self.NEW_VALUE: value, self.OLD_VALUE: old_value, self.SENDER: self}
+
+        if old_value and Access.get_access(old_value, True).spec == Access.ABSTRACT:
+            old_value(set_message, **context)
+
+        setattr(self, '_%s' % name, value)
+
+        if value and Access.get_access(value, True).spec == Access.ABSTRACT:
+            value(set_message,  **context)
+
+        return True
 
     @property
     def owner(self):
@@ -511,8 +517,10 @@ class Element(Handler):
         self.change_property('owner', value)
 
 
-# Notion is an element with name
 class Notion(Element):
+    """
+    Notion is an element with name
+    """
     def __init__(self, name, owner=None):
         super(Notion, self).__init__(owner)
         self._name, self.name = None, name
@@ -529,11 +537,13 @@ class Notion(Element):
 
     @name.setter
     def name(self, value):
-        self.change_property(NAME, value)
+        self.change_property(self.NAME, value)
 
 
-# Action notion is a notion with specified forward handler
 class ActionNotion(Notion):
+    """
+    Action notion is a notion with specified forward handler
+    """
     def __init__(self, name, action, owner=None):
         super(ActionNotion, self).__init__(name, owner)
         self.on_forward(action)
@@ -549,13 +559,12 @@ class ActionNotion(Notion):
         self.on_forward(value)
 
 
-# Relation dialect
-SUBJECT = 'subject'
-OBJECT = 'object'
-
-
-# Relation is a connection between one or more elements: subject -> object
 class Relation(Element):
+    """
+    Relation is a connection between one or more elements: subject -> object
+    """
+    SUBJECT = 'subject'
+    OBJECT = 'object'
 
     def __init__(self, subj, obj, owner=None):
         super(Relation, self).__init__(owner)
@@ -568,7 +577,7 @@ class Relation(Element):
 
     @subject.setter
     def subject(self, value):
-        self.change_property(SUBJECT, value)
+        self.change_property(self.SUBJECT, value)
 
     @property
     def object(self):
@@ -576,7 +585,7 @@ class Relation(Element):
 
     @object.setter
     def object(self, value):
-        self.change_property(OBJECT, value)
+        self.change_property(self.OBJECT, value)
 
     def __str__(self):
         return '<%s - %s>' % (self.subject, self.object)
@@ -585,24 +594,26 @@ class Relation(Element):
         return self.__str__()
 
 
-# Complex notion is a notion that relates with other notions (objects)
 class ComplexNotion(Notion):
+    """
+    Complex notion is a notion that relates with other notions (objects)
+    """
     def __init__(self, name, owner=None):
         super(ComplexNotion, self).__init__(name, owner)
 
         self._relations = []
 
-        self.on(self.add_prefix(SUBJECT, SET_PREFIX), self.do_relation)
+        self.on(self.add_prefix(Relation.SUBJECT, self.SET_PREFIX), self.do_relation)
         self.on_forward(self.do_forward)
 
     def do_relation(self, *message, **context):
-        relation = context.get(SENDER)
+        relation = context.get(self.SENDER)
 
-        if context[OLD_VALUE] == self and relation in self._relations:
+        if context[self.OLD_VALUE] == self and relation in self._relations:
             self._relations.remove(relation)
             return True
 
-        elif context[NEW_VALUE] == self and relation not in self._relations:
+        elif context[self.NEW_VALUE] == self and relation not in self._relations:
             self._relations.append(relation)
             return True
 
@@ -615,12 +626,14 @@ class ComplexNotion(Notion):
         return self._relations
 
 
-# Next relation checks for additional condition when relation traversed forward
 class NextRelation(Relation):
-    def __init__(self, subj, obj, condition=None, ignore_case = False, owner=None):
+    """
+    Next relation checks for additional condition when relation passed forward
+    """
+    def __init__(self, subj, obj, condition=None, ignore_case=False, owner=None):
         super(NextRelation, self).__init__(subj, obj, owner)
         self.ignore_case = ignore_case
-        self.condition_access = Condition(condition, ignore_case)
+        self.condition_access = Condition(condition, ignore_case) if condition else TRUE_CONDITION
 
         self.on(self.can_pass, self.next_handler)
 
@@ -629,13 +642,10 @@ class NextRelation(Relation):
 
     def can_pass(self, *message, **context):
         if self.is_forward(message):  # We use 0 rank to make condition prevail other forward command
-            return True if not self.has_condition() else self.check_condition(message, context)
+            return self.check_condition(message, context)
 
     def next_handler(self, *message, **context):
         return self.object
-
-    def has_condition(self):
-        return self.condition_access.value is not None
 
     @property
     def condition(self):
@@ -646,15 +656,17 @@ class NextRelation(Relation):
         self.condition_access = Condition(value, self.ignore_case)
 
 
-# Action relation performs an action and moves forward
 class ActionRelation(Relation):
+    """
+    Action relation performs an action and moves forward
+    """
     def __init__(self, subj, obj, action, owner=None):
         super(ActionRelation, self).__init__(subj, obj, owner)
         self._action_access = Access(action)
 
-        self.on_forward(self.act_next)
+        self.on_forward(self.do_act)
 
-    def act_next(self, *message, **context):
+    def do_act(self, *message, **context):
         action_result = self._action_access(*message, **context)
 
         if action_result is not None and self.object is not None:
@@ -694,7 +706,7 @@ class Process(Handler):
         self.new_queue_item({})
 
         self.context = {}
-        self.query = NEXT
+        self.query = Element.NEXT
 
         self.setup_handlers()
 
@@ -810,7 +822,7 @@ class Process(Handler):
     def handle(self, *message, **context):
         self.start_parsing(message, context)
 
-        result = NO_PARSE
+        result = self.NO_HANDLE
 
         while self.message or len(self._queue) > 1:
             result = super(Process, self).handle(*self.message, **self.context)
@@ -1083,12 +1095,12 @@ class ParsingProcess(StatefulProcess):
 
     def do_new(self):
         super(ParsingProcess, self).do_new()
-        self.query = NEXT
+        self.query = Element.NEXT
         self._context_set(PARSED_LENGTH, 0)
         self._context_set(LAST_PARSED, '')
 
     def is_parsed(self):
-        return self.query == NEXT and not self.text
+        return self.query == Element.NEXT and not self.text
 
     def handle(self, *message, **context):
         result = super(ParsingProcess, self).handle(*message, **context)
@@ -1116,7 +1128,7 @@ class ParsingProcess(StatefulProcess):
     def do_turn(self):
         new_query = self.message.pop(0)
 
-        if new_query in BACKWARD:
+        if new_query in Element.BACKWARD:
             del self.message[:]
 
         self.query = new_query
@@ -1124,7 +1136,7 @@ class ParsingProcess(StatefulProcess):
     def setup_handlers(self):
         super(ParsingProcess, self).setup_handlers()
 
-        self.on((NEXT, ERROR, BREAK, CONTINUE), self.do_turn)
+        self.on((Element.NEXT, ERROR, BREAK, CONTINUE), self.do_turn)
         self.on(self.can_proceed, self.do_proceed)
 
     @property
@@ -1141,7 +1153,7 @@ class ParsingProcess(StatefulProcess):
 
 
 # Adding new backward commands
-BACKWARD += [ERROR, BREAK, CONTINUE]
+Element.BACKWARD += [ERROR, BREAK, CONTINUE]
 
 
 # Parsing relation: should be passable in forward direction (otherwise returns Error)
@@ -1160,7 +1172,7 @@ class ParsingRelation(NextRelation):
 
     def next_handler(self, *message, **context):
         next_result = super(ParsingRelation, self).next_handler(*message, **context)
-        rank = context.get(RANK)
+        rank = context.get(self.RANK)
 
         return ({PROCEED: rank}, next_result) if rank and not self.check_only else next_result
 
@@ -1187,7 +1199,7 @@ class SelectiveNotion(ComplexNotion):
 
     # Searching for the longest case, use default if none and it is specified
     def get_best_cases(self, message, context):
-        context[ANSWER] = RANK
+        context[self.ANSWER] = self.RANK
 
         cases = []
         max_len = -1
@@ -1254,7 +1266,7 @@ class SelectiveNotion(ComplexNotion):
             return [POP_CONTEXT,  # Roll back to the initial context
                     {SET_STATE: {CASES: cases}},  # Update cases
                     PUSH_CONTEXT,  # Save updated context
-                    NEXT,  # Go forward again
+                    self.NEXT,  # Go forward again
                     case,  # Try another case
                     self]  # Come back
         else:
@@ -1305,7 +1317,7 @@ class LoopRelation(NextRelation):
         self.on(self.can_continue, self.do_continue)
 
     def check_condition(self, message, context):
-        if not self.has_condition():  # Here we check only the simplest case
+        if not self.condition_access == TRUE_CONDITION:  # Here we check only the simplest case
             return False
 
     # Is a wildcard loop
@@ -1411,7 +1423,7 @@ class LoopRelation(NextRelation):
         if self.is_flexible():
             # Roll back to the previous good result
             if lower < i <= upper:
-                reply += [NEXT, POP_CONTEXT]
+                reply += [self.NEXT, POP_CONTEXT]
             else:
                 reply += [FORGET_CONTEXT]
 
@@ -1440,7 +1452,7 @@ class LoopRelation(NextRelation):
         return has_first(message, BREAK) and self.is_looping(context)
 
     def do_break(self):
-        reply = [NEXT]
+        reply = [self.NEXT]
 
         if self.is_flexible():
             reply += [FORGET_CONTEXT]
@@ -1451,7 +1463,7 @@ class LoopRelation(NextRelation):
         return has_first(message, CONTINUE) and self.is_looping(context)
 
     def do_continue(self, **context):
-        return [NEXT] + self.do_loop_general(**context)
+        return [self.NEXT] + self.do_loop_general(**context)
 
 
 # Graph is a holder of Notions and Relation, it allows easy search and processing of them
@@ -1463,7 +1475,7 @@ class Graph(Element):
         self._notions = []
         self._relations = []
 
-        self.on(self.add_prefix(OWNER, SET_PREFIX), self.do_element)
+        self.on(self.add_prefix(self.OWNER, self.SET_PREFIX), self.do_element)
         self.on_forward(self.do_forward)
 
         if root:
@@ -1519,12 +1531,12 @@ class Graph(Element):
             if isinstance(criteria, dict):
                 req, rel = [], []
 
-                if SUBJECT in criteria:
-                    req.append(criteria[SUBJECT])
+                if Relation.SUBJECT in criteria:
+                    req.append(criteria[Relation.SUBJECT])
                     rel.append(relation.subject)
 
-                if OBJECT in criteria:
-                    req.append(criteria[OBJECT])
+                if Relation.OBJECT in criteria:
+                    req.append(criteria[Relation.OBJECT])
                     rel.append(relation.object)
 
                 return len(rel) if rel == req and rel else -1
@@ -1539,7 +1551,7 @@ class Graph(Element):
         return found[0] if found else None
 
     def do_element(self, **context):
-        element = context.get(SENDER)
+        element = context.get(self.SENDER)
 
         if isinstance(element, Notion) or isinstance(element, Graph):
             collection = self._notions
@@ -1548,7 +1560,7 @@ class Graph(Element):
         else:
             return False
 
-        if context[OLD_VALUE] == self and element in collection:
+        if context[self.OLD_VALUE] == self and element in collection:
             collection.remove(element)
 
             if element == self.root:
@@ -1556,7 +1568,7 @@ class Graph(Element):
 
             return True
 
-        elif context[NEW_VALUE] == self and element not in collection:
+        elif context[self.NEW_VALUE] == self and element not in collection:
             collection.append(element)
             return True
 

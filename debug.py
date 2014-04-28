@@ -65,7 +65,7 @@ class ProcessDebugger(Handler):
             del self._points[self._process]
 
     def do_reply_at(self, *message, **context):
-        process = context[SENDER]
+        process = context[self.SENDER]
         point = self._points.get(process.current)
 
         if not point:
@@ -75,7 +75,7 @@ class ProcessDebugger(Handler):
             return self._points[process.current].get(self.REPLY)
 
     def is_log(self, *message, **context):
-        process = context[SENDER]
+        process = context[self.SENDER]
         point = self._points.get(process)
 
         if not point:
