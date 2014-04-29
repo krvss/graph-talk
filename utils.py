@@ -95,7 +95,7 @@ def is_string(s):
 
 
 def has_first(l, value):
-    return is_list(l) and l and l[0] == value
+    return l and l[0] == value
 
 
 def has_keys(dictionary, *keys):

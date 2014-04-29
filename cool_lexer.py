@@ -83,7 +83,7 @@ def out_token(line_no, token, data=''):
 
 # Universal line number incrementer
 def inc_line_no(line_no, inc=1):
-    return {UPDATE_CONTEXT: {LINE_NO: line_no + inc}}
+    return {SharedProcess.UPDATE_CONTEXT: {LINE_NO: line_no + inc}}
 
 
 # The lexing graph
@@ -134,7 +134,7 @@ def build_graph():
         act('Unexpected character', lambda line_no, last_parsed: out_token(line_no, ERROR_TOKEN, last_parsed))
 
     # Stopping
-    builder.at(statement).parse_rel(EOF, OK)
+    builder.at(statement).parse_rel(EOF, Process.OK)
 
 
 # One-line comment notion
@@ -168,9 +168,9 @@ def add_to_string(last_parsed, string_body, string_error):
         string_body = ''
     else:
         if len(string_body) == MAX_STR_CONST:
-            return {ADD_CONTEXT: {STRING_ERROR: 'overflow'}} if not string_error else None
+            return {SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'overflow'}} if not string_error else None
 
-    return {UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
+    return {SharedProcess.UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
 
 
 # Out the string and clean-up
@@ -188,7 +188,7 @@ def out_string(line_no, string_body, string_error):
     else:
         out_token(line_no, STRING_CONST, string_body or '')
 
-    return {DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
+    return {SharedProcess.DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
 
 
 # String notion itself
@@ -199,15 +199,15 @@ def add_strings(statement):
 
     # 0 character error
     builder.at(string_chars).parse_rel(ZERO_CHAR).\
-        act('Null character error', lambda: {ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
+        act('Null character error', lambda: {SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
 
     # If EOL matched stop the string with error or just break
     builder.at(string_chars).parse_rel(R_EOL).check_only().\
-        act('EOL', lambda: [{ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, BREAK])
+        act('EOL', lambda: [{SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, BREAK])
 
     # Stop if EOF
     builder.at(string_chars).parse_rel(EOF).check_only().\
-        act('EOF error', lambda: [{ADD_CONTEXT: {STRING_ERROR: 'eof'}}, BREAK])
+        act('EOF error', lambda: [{SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'eof'}}, BREAK])
 
     # Escapes
     escapes = builder.at(string_chars).parse_rel('\\').select('Escapes').current
@@ -221,7 +221,8 @@ def add_strings(statement):
     builder.at(escapes).parse_rel('f', lambda string_body, string_error: add_to_string('\f', string_body, string_error))
 
     builder.at(escapes).parse_rel(ZERO_CHAR).\
-        act('Escaped null character error', lambda line_no: {ADD_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
+        act('Escaped null character error',
+            lambda line_no: {SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
 
     builder.at(escapes).parse_rel(R_ANY_CHAR, add_to_string)
 
@@ -252,7 +253,7 @@ def lex(content, filename):
     parser = ParsingProcess()
 
     out = parser(builder.graph, text=content, line_no=1)
-    if out != OK:
+    if out != Process.OK:
         raise SyntaxError('Could not lex %s: %s at %s' % (filename, out, parser.current))
 
     return result

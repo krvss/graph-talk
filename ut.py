@@ -373,7 +373,7 @@ class Handler(Abstract):
         else:
             return [e[1] for e in self.events if e[0] == TRUE_CONDITION]
 
-    def handle(self, *message, **context):  # TODO check **'s, generalize
+    def handle(self, message, context):  # TODO check **'s, generalize
         """
         Calling events basing on condition
         """
@@ -420,7 +420,7 @@ class Handler(Abstract):
         Answer depends on the context
         """
         answer_mode = context.pop(self.ANSWER, None)  # Applicable only for a top level
-        result = self.handle(*message, **context)
+        result = self.handle(message, context)
 
         if answer_mode == self.RANK:
             return result[0], result[1]
@@ -683,101 +683,111 @@ class ActionRelation(Relation):
         self._action_access = Access(value)
 
 
-# Process dialect
-NEW = 'new'
-OK = 'ok'
-STOP = 'stop'
-SKIP = 'skip'
-
-CURRENT = 'current'
-MESSAGE = 'message'
-QUERY = 'query'
-
-
-# Process is a walker from an abstract to abstract, asking them for the next one with a query
-# It has the current abstract and the message to process; when new abstract appears,
-# the new queue item with current and message is created
 class Process(Handler):
+    """
+    Process is a walker from an abstract to abstract, asking them for the next one with a query
+    It has the current abstract and the message to process; when new abstract appears,
+    the new queue item with current and message is created
+    """
+    NEW = 'new'
+    OK = 'ok'
+    STOP = 'stop'
+    SKIP = 'skip'
+
+    CURRENT = 'current'
+    MESSAGE = 'message'
+    QUERY = 'query'
 
     def __init__(self):
         super(Process, self).__init__()
 
-        self._queue = []
+        self._queue, self.context = [], {}
         self.new_queue_item({})
 
-        self.context = {}
         self.query = Element.NEXT
 
         self.setup_handlers()
 
-    # Generate the new queue item and add it to the queue updated with values
     def new_queue_item(self, values):
-        item = {CURRENT: values.get(CURRENT) or None,
-                MESSAGE: values.get(MESSAGE) or []}
+        """
+        Generate the new queue item and add it to the queue updated with values
+        """
+        item = {self.CURRENT: values.get(self.CURRENT),
+                self.MESSAGE: values.get(self.MESSAGE, [])}
 
         self._queue.append(item)
 
         return item
 
-    # Put the new item in the queue, updating the empty one, if presents
     def to_queue(self, values):
+        """
+        Put the new item in the queue, updating the empty one, if presents
+        """
         if not self.message:
             self.queue_top.update(values)  # No need to keep the empty one in the queue
         else:
-            if not CURRENT in values:
-                values[CURRENT] = self.current  # It is better to keep the current current
+            if not self.CURRENT in values:
+                values[self.CURRENT] = self.current  # It is better to keep the current current
 
             self.new_queue_item(values)
 
-    # Set the current message or inserts in the front of current message if insert = True
     def set_message(self, message, insert=False):
-
-        if isinstance(message, tuple):
-            message = list(message)
-        elif not is_list(message):  # TODO: all is_XXX check
-            message = [message]
+        """
+        Set the current message or inserts in the front of current message if insert = True
+        """
+        message = [message] if not is_list(message) else list(message)  # TODO: all is_XXX check
 
         if insert:
             message.extend(self.message)
 
-        self.queue_top[MESSAGE] = message
+        self.queue_top[self.MESSAGE] = message
 
     # Events #
-    # New: cleaning up the queue
     def do_new(self):
+        """
+        New: cleaning up the queue
+        """
         self.message.pop(0)
         del self._queue[:-1]
 
-        self.queue_top[CURRENT] = None
+        self.queue_top[self.CURRENT] = None
 
-    # Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
     def can_push_queue(self):
+        """
+        Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
+        """
         if self.message:
             return Access.get_access(self.message[0], True).mode in (Access.CALL, Access.FUNCTION)
 
     def do_queue_push(self):
-        self.to_queue({CURRENT: self.message.pop(0),
-                       MESSAGE: [QUERY]})  # Adding query command to start from asking
+        self.to_queue({self.CURRENT: self.message.pop(0),
+                       self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
 
-    # Queue pop: when current queue item is empty we can remove it
     def can_pop_queue(self, *message):
+        """
+        Queue pop: when current queue item is empty we can remove it
+        """
         return len(self._queue) > 1 and not message
 
     def do_queue_pop(self):
         self._queue.pop()
 
-    # Query: should we ask the query to the current current
     def can_query(self, *message):
-        return self.current and has_first(message, QUERY)
+        """
+        Query: should we ask the query to the current current
+        """
+        return self.current and has_first(message, self.QUERY)
 
     def do_query(self):
         self.message.pop(0)
 
-        # If False/None, we just continue to the next one
+        # If abstract returns False/None, we just continue to the next one
         return getattr(self.current, Access.CACHE_ATTR)(self.query, **self.context) or True
 
-    # Skip: remove current and the next item from the queue
     def do_skip(self):
+        """
+        Skip: remove current and the next item from the queue
+        """
         self.message.pop(0)  # Remove the command itself
 
         while not self.message and self._queue:  # Looking for the item to skip
@@ -787,47 +797,55 @@ class Process(Handler):
         if self.message:
             self.message.pop(0)
 
-    # Cleanup: remove empty message item
     def can_clear_message(self, *message):
+        """
+        Cleanup: remove empty message item
+        """
         if message:
             return not message[0]
 
     def do_clear_message(self):
         self.message.pop(0)
 
-    def do_return(self):
+    def do_finish(self):
         return self.message.pop(0)
 
-    # Init handlers
     def setup_handlers(self):
-        self.on(NEW, self.do_new)
-        self.on(SKIP, self.do_skip)
-        self.on((STOP, OK, True, False), self.do_return)
+        """
+        Init handlers
+        """
+        self.on(self.NEW, self.do_new)
+        self.on(self.SKIP, self.do_skip)
+        self.on((self.STOP, self.OK, True, False), self.do_finish)
 
         self.on(self.can_query, self.do_query)
         self.on(self.can_push_queue, self.do_queue_push)
         self.on(self.can_pop_queue, self.do_queue_pop)
         self.on(self.can_clear_message, self.do_clear_message)
 
-    # Start new parsing
-    def start_parsing(self, new_message, new_context):
-        if has_first(new_message, NEW):
+    def on_start(self, new_message, new_context):
+        """
+        Start new process
+        """
+        if has_first(new_message, self.NEW):
             self.context = new_context
         else:
             self.context.update(new_context)
 
-        self.to_queue({MESSAGE: list(new_message)})
+        self.to_queue({self.MESSAGE: list(new_message)})
 
-    # Process' parse works in step-by-step manner, processing message and then popping the queue
-    def handle(self, *message, **context):
-        self.start_parsing(message, context)
+    def handle(self, message, context):
+        """
+        Process' handle works in step-by-step manner, processing message and then popping the queue
+        """
+        self.on_start(message, context)
 
         result = self.NO_HANDLE
 
         while self.message or len(self._queue) > 1:
-            result = super(Process, self).handle(*self.message, **self.context)
+            result = super(Process, self).handle(self.message, self.context)
 
-            if result[0] in (OK, STOP, False):
+            if result[0] in (self.OK, self.STOP, False):
                 break
 
             elif result[0] in (None, True):
@@ -843,74 +861,81 @@ class Process(Handler):
 
     @property
     def message(self):
-        return self.queue_top.get(MESSAGE)
+        return self.queue_top.get(self.MESSAGE)
 
     @property
     def current(self):
-        return self.queue_top.get(CURRENT)
+        return self.queue_top.get(self.CURRENT)
 
 
-# Shared context dialect
-ADD_CONTEXT = 'add_context'
-UPDATE_CONTEXT = 'update_context'
-DELETE_CONTEXT = 'delete_context'
+class SharedProcess(Process):
+    """
+    Shared process supports context modification commands
+    """
+    ADD_CONTEXT = 'add_context'
+    UPDATE_CONTEXT = 'update_context'
+    DELETE_CONTEXT = 'delete_context'
 
-
-# Shared context process supports context modification commands
-class SharedContextProcess(Process):
-
-    def _context_add(self, key, value):
+    def context_add(self, key, value):
         self.context[key] = value
 
-    def _context_set(self, key, value):
+    def context_set(self, key, value):
         self.context[key] = value
 
-    def _context_delete(self, key):
+    def context_delete(self, key):
         del self.context[key]
 
     # Events #
-    # Do we have add context command
     def can_add_context(self, *message):
+        """
+        Do we have add context command
+        """
         return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(ADD_CONTEXT), dict)  # TODO less isinstances
+            and isinstance(message[0].get(self.ADD_CONTEXT), dict)  # TODO less isinstances
 
-    # Adding items to context, do not replacing existing ones
     def do_add_context(self):
-        add = self.message[0].pop(ADD_CONTEXT)
+        """
+        Adding items to context, do not replacing existing ones
+        """
+        add = self.message[0].pop(self.ADD_CONTEXT)
 
         for k, v in add.items():
             if not k in self.context:
-                self._context_add(k, v)
+                self.context_add(k, v)
 
-    # Updating the context
     def can_update_context(self, *message):
+        """
+        Updating the context
+        """
         return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(UPDATE_CONTEXT), dict)
+            and isinstance(message[0].get(self.UPDATE_CONTEXT), dict)
 
     def do_update_context(self):
-        update = self.message[0].pop(UPDATE_CONTEXT)
+        update = self.message[0].pop(self.UPDATE_CONTEXT)
 
         for k, v in update.items():
-            self._context_set(k, v)
+            self.context_set(k, v)
 
-    # Deleting items from the context
     def can_delete_context(self, *message):
+        """
+        Deleting items from the context
+        """
         return message and isinstance(message[0], dict) \
-            and DELETE_CONTEXT in message[0]
+            and self.DELETE_CONTEXT in message[0]
 
     def do_delete_context(self):
-        delete = self.message[0].pop(DELETE_CONTEXT)
+        delete = self.message[0].pop(self.DELETE_CONTEXT)
 
         if is_list(delete):
             for k in delete:
                 if k in self.context:
-                    self._context_delete(k)
+                    self.context_delete(k)
 
         elif delete in self.context:
-            self._context_delete(delete)
+            self.context_delete(delete)
 
     def setup_handlers(self):
-        super(SharedContextProcess, self).setup_handlers()
+        super(SharedProcess, self).setup_handlers()
 
         self.on(self.can_add_context, self.do_add_context)
         self.on(self.can_update_context, self.do_update_context)
@@ -925,7 +950,7 @@ FORGET_CONTEXT = 'forget_context'
 
 # Process that can save and restore context
 # Useful for cases when process needs to try various paths in the graph
-class StackingContextProcess(SharedContextProcess):
+class StackingContextProcess(SharedProcess):
 
     def __init__(self):
         super(StackingContextProcess, self).__init__()
@@ -947,13 +972,13 @@ class StackingContextProcess(SharedContextProcess):
             operation.do()
 
     # Tracking changes in the context, if needed
-    def _context_add(self, key, value):
+    def context_add(self, key, value):
         self.run_tracking_operation(DictChangeOperation(self.context, DictChangeOperation.ADD, key, value))
 
-    def _context_set(self, key, value):
+    def context_set(self, key, value):
         self.run_tracking_operation(DictChangeOperation(self.context, DictChangeOperation.SET, key, value))
 
-    def _context_delete(self, key):
+    def context_delete(self, key):
         self.run_tracking_operation(DictChangeOperation(self.context, DictChangeOperation.DELETE, key))
 
     # Events #
@@ -1096,16 +1121,16 @@ class ParsingProcess(StatefulProcess):
     def do_new(self):
         super(ParsingProcess, self).do_new()
         self.query = Element.NEXT
-        self._context_set(PARSED_LENGTH, 0)
-        self._context_set(LAST_PARSED, '')
+        self.context_set(PARSED_LENGTH, 0)
+        self.context_set(LAST_PARSED, '')
 
     def is_parsed(self):
         return self.query == Element.NEXT and not self.text
 
-    def handle(self, *message, **context):
-        result = super(ParsingProcess, self).handle(*message, **context)
+    def handle(self, message, context):
+        result = super(ParsingProcess, self).handle(message, context)
 
-        return False if not self.is_parsed() and not result[0] == STOP else result[0], self.parsed_length, result[2]
+        return False if not self.is_parsed() and not result[0] == self.STOP else result[0], self.parsed_length, result[2]
 
     # Events #
     # Proceed: part of the Text was parsed
@@ -1120,9 +1145,9 @@ class ParsingProcess(StatefulProcess):
         proceed = self.message[0].pop(PROCEED)
         last_parsed = self.context[TEXT][0:proceed]
 
-        self._context_set(TEXT, self.context[TEXT][proceed:])
-        self._context_set(PARSED_LENGTH, self.parsed_length + proceed)
-        self._context_set(LAST_PARSED, last_parsed)
+        self.context_set(TEXT, self.context[TEXT][proceed:])
+        self.context_set(PARSED_LENGTH, self.parsed_length + proceed)
+        self.context_set(LAST_PARSED, last_parsed)
 
     # Next, Break, Error or Continue
     def do_turn(self):

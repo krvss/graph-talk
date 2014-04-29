@@ -15,16 +15,16 @@ def state_v_starter(**context):
 
 def state_v_checker(**context):
     if STATE in context and 'v' in context[STATE]:
-        return STOP
+        return Process.STOP
     else:
-        return OK  # Others' state is not visible
+        return Process.OK  # Others' state is not visible
 
 
 def common_state_acc(**context):
     if 'acc' in context:
-        return {UPDATE_CONTEXT: {'acc': context['acc'] + 1}}
+        return {SharedProcess.UPDATE_CONTEXT: {'acc': context['acc'] + 1}}
     else:
-        return {ADD_CONTEXT: {'acc': 1}}
+        return {SharedProcess.ADD_CONTEXT: {'acc': 1}}
 
 
 def has_notification(**context):
@@ -304,13 +304,13 @@ class UtTests(unittest.TestCase):
         del h.events[:]
         h.on('event', handler1)
         h.on('event1', handler2)
-        r = h.handle('event')
+        r = h.handle(['event'], {})
 
         self.assertTrue(r[0])
         self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], handler1)
 
-        r = h.handle('event1')
+        r = h.handle(['event1'], {})
 
         self.assertTrue(r[0])
         self.assertEqual(r[1], len('event1'))
@@ -322,13 +322,13 @@ class UtTests(unittest.TestCase):
         handler3 = lambda *m, **c: 'handler3'
         h.on_any(handler3)
 
-        r = h.handle('even')
+        r = h.handle(['even'], {})
         self.assertEqual(r[0], 'handler3')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
 
         # Specific event beats 'any' handler
-        r = h.handle('event')
+        r = h.handle(['event'], {})
         self.assertEqual(r[0], True)
         self.assertEqual(r[1], len('event'))
         self.assertEqual(r[2], handler1)
@@ -337,7 +337,7 @@ class UtTests(unittest.TestCase):
         tc = TestCalls()
         h.on_any(tc.return_true)
 
-        r = h.handle('even')
+        r = h.handle(['even'], {})
         self.assertEqual(r[0], 'handler3')
         self.assertEqual(r[1], 0)
         self.assertEqual(r[2], handler3)
@@ -347,10 +347,10 @@ class UtTests(unittest.TestCase):
         handler4 = lambda **c: c[Handler.SENDER]
         h.on(Handler.SENDER, handler4)
 
-        r = h.handle(Handler.SENDER)
+        r = h.handle([Handler.SENDER], {})
         self.assertEquals(r, (h, len(Handler.SENDER), handler4))
 
-        r = h.handle(Handler.SENDER, **{Handler.SENDER: 'test'})
+        r = h.handle([Handler.SENDER], {Handler.SENDER: 'test'})
         self.assertEquals(r, ('test', len(Handler.SENDER), handler4))
 
         # Condition & rank
@@ -358,7 +358,7 @@ class UtTests(unittest.TestCase):
 
         h.on(Handler.CONDITION, handler5)
 
-        r = h.handle(Handler.CONDITION)
+        r = h.handle([Handler.CONDITION], {})
         self.assertEquals(r, ((len(Handler.CONDITION), Handler.CONDITION), len(Handler.CONDITION), handler5))
 
         # Answer check
@@ -532,7 +532,7 @@ class UtTests(unittest.TestCase):
         strange = 'strange'
         n.on_forward(strange)
 
-        r = process(NEW, n, test='process_unknown')
+        r = process(process.NEW, n, test='process_unknown')
         self.assertTrue(r is False)
         self.assertEquals(process.current, n)
         self.assertEquals(len(process._queue), 1)
@@ -547,7 +547,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(process.message[0], strange)
 
         # Now we are good
-        r = process(NEW, test='process_new')
+        r = process(process.NEW, test='process_new')
         self.assertTrue(r is None)
         self.assertEquals(process.current, None)
         self.assertEquals(len(process._queue), 1)
@@ -556,26 +556,26 @@ class UtTests(unittest.TestCase):
         # Testing the correct processing of list replies
         cn = ComplexNotion('CN')
         n1 = Notion('N1')
-        n2 = ActionNotion('N2', [True, STOP])
+        n2 = ActionNotion('N2', [True, process.STOP])
 
         NextRelation(cn, n1)
         NextRelation(cn, n2)
 
         # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
-        r = process(NEW, cn, test='process_list')
-        self.assertEqual(r, STOP)
+        r = process(process.NEW, cn, test='process_list')
+        self.assertEqual(r, process.STOP)
         self.assertEquals(process.current, n2)
         self.assertEquals(len(process._queue), 1)
         self.assertFalse(process.message)
 
         # Skip test
-        r = process(NEW, strange)
+        r = process(process.NEW, strange)
         self.assertTrue(r is False)
         self.assertIsNone(process.current)
         self.assertEquals(process.message[0], strange)
         self.assertEquals(len(process._queue), 1)
 
-        r = process(NEW, SKIP, strange)
+        r = process(process.NEW, process.SKIP, strange)
         self.assertTrue(r is None)
         self.assertIsNone(process.current)
         self.assertFalse(process.message)
@@ -612,16 +612,16 @@ class UtTests(unittest.TestCase):
         debugger.clear_points()
 
         b = Notion('b')
-        b.on(QUERY, unk)
+        b.on(process.QUERY, unk)
         NextRelation(a, b)
 
-        c = ActionNotion('c', STOP)
+        c = ActionNotion('c', process.STOP)
         NextRelation(a, c)
 
-        debugger.unknown_event = Event(SKIP)
+        debugger.unknown_event = Event(process.SKIP)
 
-        r = process(NEW, root, test='test_skipping')
-        self.assertEqual(r, STOP)
+        r = process(process.NEW, root, test='test_skipping')
+        self.assertEqual(r, process.STOP)
         self.assertEqual(process.current, c)
         self.assertEqual(len(process._queue), 1)
 
@@ -656,14 +656,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(process._queue), 2)
         self.assertEqual(process.message[0], unk)
 
-        r = process(SKIP, test='test_skip_1')  # Make process pop from stack
+        r = process(process.SKIP, test='test_skip_1')  # Make process pop from stack
 
         self.assertEqual(process.current, e)
         self.assertTrue(r is False)
         self.assertEqual(len(process._queue), 1)
         self.assertEqual(process.message[0], unk)
 
-        r = process(SKIP, test='test_skip_2')  # Trying empty stack
+        r = process(process.SKIP, test='test_skip_2')  # Trying empty stack
 
         self.assertEqual(process.current, e)  # Nowhere to go
         self.assertTrue(r is None)
@@ -672,7 +672,7 @@ class UtTests(unittest.TestCase):
 
         # Trying list message
         process(e, b)
-        r = process(SKIP)
+        r = process(process.SKIP)
         self.assertTrue(r)
         self.assertEqual(process.current, b)
         self.assertEqual(len(process._queue), 1)
@@ -684,67 +684,67 @@ class UtTests(unittest.TestCase):
         root = ComplexNotion('root')
         a = Notion('a')
 
+        process = SharedProcess()
+
         ctx_key = 'ctx'
-        l = lambda: {ADD_CONTEXT: {ctx_key: True}}
+        l = lambda: {process.ADD_CONTEXT: {ctx_key: True}}
         a.on_forward(l)
 
-        b = ActionNotion('b', lambda **c: STOP if ctx_key in c else OK)
+        b = ActionNotion('b', lambda **c: process.STOP if ctx_key in c else process.OK)
 
         NextRelation(root, a)
         NextRelation(root, b)
 
-        process = SharedContextProcess()
-
         r = process(root, test='test_context_add_1')
-        self.assertEqual(r, STOP)
+        self.assertEqual(r, process.STOP)
         self.assertIn(ctx_key, process.context)
         self.assertEqual(process.current, b)
 
         # Testing the order of execution/update and keeping of source values in context if adding
         process.context[ctx_key] = 1
-        r = process(NEW, {ADD_CONTEXT: {'from': 'me'}}, root, test='test_context_add_2')
+        r = process(process.NEW, {process.ADD_CONTEXT: {'from': 'me'}}, root, test='test_context_add_2')
 
-        self.assertEqual(r, STOP)
+        self.assertEqual(r, process.STOP)
         self.assertEqual(1, process.context[ctx_key])
         self.assertEqual('me', process.context['from'])
         self.assertEqual(process.current, b)
 
         # Verify updating
         a.off_event(l)
-        l = lambda: {UPDATE_CONTEXT: {ctx_key: 'new'}}
+        l = lambda: {process.UPDATE_CONTEXT: {ctx_key: 'new'}}
         a.on_forward(l)
 
         process.context[ctx_key] = 2
 
-        r = process(NEW, root, test='test_context_update')
-        self.assertEqual(r, STOP)
+        r = process(process.NEW, root, test='test_context_update')
+        self.assertEqual(r, process.STOP)
         self.assertEqual('new', process.context[ctx_key])
         self.assertEqual(process.current, b)
 
         # Verify deleting & mass deleting
         a.off_event(l)
-        l = lambda: {DELETE_CONTEXT: ctx_key}
+        l = lambda: {process.DELETE_CONTEXT: ctx_key}
         a.on_forward(l)
 
-        r = process(NEW, root, test='test_context_del')
-        self.assertEqual(r, OK)
+        r = process(process.NEW, root, test='test_context_del')
+        self.assertEqual(r, process.OK)
         self.assertNotIn(ctx_key, process.context)
         self.assertEqual(process.current, b)
 
         a.off_event(l)
-        l = lambda: {DELETE_CONTEXT: ['more', 'more2']}
+        l = lambda: {process.DELETE_CONTEXT: ['more', 'more2']}
         a.on_forward(l)
 
-        r = process(NEW, root, test='test_context_del', more=False)
-        self.assertEqual(r, OK)
+        r = process(process.NEW, root, test='test_context_del', more=False)
+        self.assertEqual(r, process.OK)
         self.assertNotIn('more', process.context)
         self.assertEqual(process.current, b)
 
         # See what's happening if command argument is incorrect
         a.off_event(l)
-        a.on_forward(ADD_CONTEXT)
+        a.on_forward(process.ADD_CONTEXT)
 
-        r = process(NEW, root, test='test_context_bad')
+        r = process(process.NEW, root, test='test_context_bad')
         self.assertTrue(r is False)
         self.assertEqual(process.current, a)
 
@@ -794,19 +794,18 @@ class UtTests(unittest.TestCase):
     def test_b_stacking_context(self):
         # Testing without tracking
         root = ComplexNotion('root')
+        process = StackingContextProcess()
 
         NextRelation(root, ActionNotion('change_context',
-                                          {ADD_CONTEXT: {'inject': 'ninja'}}))
+                                          {process.ADD_CONTEXT: {'inject': 'ninja'}}))
 
         NextRelation(root, ActionNotion('change_context2',
-                                          {UPDATE_CONTEXT: {'inject': 'revenge of ninja'}}))
+                                          {process.UPDATE_CONTEXT: {'inject': 'revenge of ninja'}}))
 
-        NextRelation(root, ActionNotion('del_context', {DELETE_CONTEXT: 'inject'}))
+        NextRelation(root, ActionNotion('del_context', {process.DELETE_CONTEXT: 'inject'}))
 
         p = ActionNotion('pop_context', POP_CONTEXT)
         NextRelation(root, p)
-
-        process = StackingContextProcess()
 
         r = process(root, test='test_stacking_1')
 
@@ -820,27 +819,27 @@ class UtTests(unittest.TestCase):
         NextRelation(root, ActionNotion('push_context', PUSH_CONTEXT))
 
         NextRelation(root, ActionNotion('change_context',
-                                          {ADD_CONTEXT: {'terminator': '2'}}))
+                                          {process.ADD_CONTEXT: {'terminator': '2'}}))
 
         NextRelation(root, ActionNotion('delete_context',
-                                          {DELETE_CONTEXT: 'terminator'}))
+                                          {process.DELETE_CONTEXT: 'terminator'}))
 
         NextRelation(root, ActionNotion('change_context2',
-                                          {UPDATE_CONTEXT: {'alien': 'omnomnom'}}))
+                                          {process.UPDATE_CONTEXT: {'alien': 'omnomnom'}}))
 
         NextRelation(root, ActionNotion('check_context', lambda **c: None if 'alien' in c else 'Ripley!'))
 
         NextRelation(root, ActionNotion('push_context2', PUSH_CONTEXT))
 
         NextRelation(root, ActionNotion('change_context3',
-                                          {UPDATE_CONTEXT: {'test': 'predator'}}))
+                                          {process.UPDATE_CONTEXT: {'test': 'predator'}}))
 
         NextRelation(root, ActionNotion('forget_context', FORGET_CONTEXT))
 
         pop = ActionNotion('pop_context', POP_CONTEXT)
         NextRelation(root, pop)
 
-        r = process(NEW, root, test='test_stacking_2')
+        r = process(process.NEW, root, test='test_stacking_2')
 
         self.assertTrue(r is None)
         self.assertEqual(process.current, pop)
@@ -864,13 +863,13 @@ class UtTests(unittest.TestCase):
         process = StatefulProcess()
         r = process(root, test='test_states_1')
 
-        self.assertEqual(r, OK)
+        self.assertEqual(r, process.OK)
         self.assertEqual(process.current, check)
         self.assertEqual(process.states[inc]['v'], 2)
 
         # Checking clearing of states when new
-        r = process(NEW, root, test='test_states_2')
-        self.assertEqual(r, OK)
+        r = process(process.NEW, root, test='test_states_2')
+        self.assertEqual(r, process.OK)
         self.assertEqual(process.states[inc]['v'], 2)
         self.assertEqual(process.current, check)
 
@@ -878,7 +877,7 @@ class UtTests(unittest.TestCase):
         inc.action = CLEAR_STATE
         r = process(root, test='test_states_3')
 
-        self.assertEqual(r, OK)
+        self.assertEqual(r, process.OK)
         self.assertFalse(process.states)
         self.assertEqual(process.current, check)
 
@@ -889,11 +888,11 @@ class UtTests(unittest.TestCase):
         t = ActionNotion('terminator', has_notification)
         NextRelation(root, t)
 
-        notification = {NOTIFY: {TO: t, INFO: {'note': OK}}}
+        notification = {NOTIFY: {TO: t, INFO: {'note': process.OK}}}
 
-        r = process(NEW, dict(notification), root, test='test_states_4')
+        r = process(process.NEW, dict(notification), root, test='test_states_4')
 
-        self.assertEqual(r, OK)
+        self.assertEqual(r, process.OK)
         self.assertEqual(process.current, t)
 
         # Test states and the stacking context
@@ -909,7 +908,7 @@ class UtTests(unittest.TestCase):
         t3 = ActionNotion('terminator2', (POP_CONTEXT, ))
         NextRelation(root, t3)
 
-        r = process(NEW, root, test='test_states_5')
+        r = process(process.NEW, root, test='test_states_5')
 
         self.assertTrue(r is None)
         self.assertEqual(process.states.get(t), private)
@@ -919,7 +918,7 @@ class UtTests(unittest.TestCase):
         root.relations[0].subject = None
         t.action = {NOTIFY: {TO: t, INFO: {'note': False}}}
 
-        r = process(NEW, dict(notification), root, test='test_states_5')
+        r = process(process.NEW, dict(notification), root, test='test_states_5')
 
         self.assertTrue(r is None)
         self.assertEqual(process.states[t][NOTIFICATIONS],
@@ -941,7 +940,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual('go', process.last_parsed)
 
         # Bad (incomplete parsing)
-        r = process(NEW, root, **{TEXT: 'gogo', 'test': 'test_parsing_2'})
+        r = process(process.NEW, root, **{TEXT: 'gogo', 'test': 'test_parsing_2'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 2)
@@ -949,7 +948,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual('go', process.last_parsed)
 
         # State check - nothing changed if POP
-        r = process(NEW, PUSH_CONTEXT, root, POP_CONTEXT,
+        r = process(process.NEW, PUSH_CONTEXT, root, POP_CONTEXT,
                     **{TEXT: 'go', 'test': 'test_parsing_3'})
 
         self.assertTrue(r is False)
@@ -958,23 +957,23 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.last_parsed)
 
         # Changing of query
-        r = process(NEW, Element.NEXT, BREAK, STOP)
+        r = process(process.NEW, Element.NEXT, BREAK, process.STOP)
 
         self.assertFalse(r)
         self.assertEqual(process.query, BREAK)
 
-        r = process(NEW, CONTINUE, STOP)
+        r = process(process.NEW, CONTINUE, process.STOP)
 
         self.assertFalse(r)
         self.assertEqual(process.query, CONTINUE)
 
-        r = process(NEW, ERROR, STOP)
+        r = process(process.NEW, ERROR, process.STOP)
 
         self.assertFalse(r)
         self.assertEqual(process.query, ERROR)
 
-        r = process(NEW, STOP, **{TEXT: 1})
-        self.assertEqual(r, STOP)
+        r = process(process.NEW, process.STOP, **{TEXT: 1})
+        self.assertEqual(r, process.STOP)
 
     def test_e_conditions(self):
         # Simple positive condition test root -a-> d for 'a'
@@ -1002,7 +1001,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, action)
 
         # Simple negative condition test root -a-> a for 'n'
-        r = process(NEW, root, **{TEXT: 'n', 'test': 'conditions_3'})
+        r = process(process.NEW, root, **{TEXT: 'n', 'test': 'conditions_3'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
@@ -1012,13 +1011,13 @@ class UtTests(unittest.TestCase):
         parsing.condition = lambda **c: 1 if c.get(TEXT, '').startswith('a') else -1
         parsing.object = None
 
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'conditions_4'})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'conditions_4'})
 
         self.assertEqual(process.parsed_length, 1)
         self.assertTrue(r is None)
         self.assertEqual(process.current, parsing)
 
-        r = process(NEW, root, **{TEXT: 'b', 'test': 'conditions_5'})
+        r = process(process.NEW, root, **{TEXT: 'b', 'test': 'conditions_5'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
@@ -1026,7 +1025,7 @@ class UtTests(unittest.TestCase):
 
         # Optional check
         parsing.optional = True
-        r = process(NEW, root, **{TEXT: '', 'test': 'conditions_6'})
+        r = process(process.NEW, root, **{TEXT: '', 'test': 'conditions_6'})
 
         self.assertTrue(r is not False)
         self.assertEqual(process.parsed_length, 0)
@@ -1036,14 +1035,14 @@ class UtTests(unittest.TestCase):
         parsing.optional = False
         parsing.condition = re.compile(r'(\s)*')
 
-        r = process(NEW, root, **{TEXT: '     ', 'test': 'conditions_7'})
+        r = process(process.NEW, root, **{TEXT: '     ', 'test': 'conditions_7'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.parsed_length, 5)
         self.assertEqual(process.current, parsing)
 
         # Underflow check
-        r = process(NEW, root, **{TEXT: ' z', 'test': 'conditions_8'})
+        r = process(process.NEW, root, **{TEXT: ' z', 'test': 'conditions_8'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 1)
@@ -1059,7 +1058,7 @@ class UtTests(unittest.TestCase):
         parsing.check_only = True
         parsing.optional = False
 
-        r = process(NEW, root, **{TEXT: 'x', 'test': 'conditions_9'})
+        r = process(process.NEW, root, **{TEXT: 'x', 'test': 'conditions_9'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 0)
@@ -1067,7 +1066,7 @@ class UtTests(unittest.TestCase):
 
         parsing.check_only = False
 
-        r = process(NEW, root, **{TEXT: 'x', 'test': 'conditions_10'})
+        r = process(process.NEW, root, **{TEXT: 'x', 'test': 'conditions_10'})
 
         self.assertEqual(r, 1)
         self.assertEqual(process.parsed_length, 1)
@@ -1101,7 +1100,7 @@ class UtTests(unittest.TestCase):
         ParsingRelation(ab, a, 'a')
         r2 = ParsingRelation(ab, b, 'b')
 
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'test_complex_2', 'acc': 0})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'test_complex_2', 'acc': 0})
 
         self.assertTrue(r is False)
         self.assertEqual(process.parsed_length, 1)
@@ -1123,7 +1122,7 @@ class UtTests(unittest.TestCase):
         f = ActionNotion('f', True)
         ParsingRelation(ab, f, 'f')
 
-        r = process(NEW, root, **{TEXT: 'abf', 'test': 'test_complex_3', 'acc': 0})
+        r = process(process.NEW, root, **{TEXT: 'abf', 'test': 'test_complex_3', 'acc': 0})
 
         self.assertEqual(r, True)
         self.assertEqual(process.parsed_length, 3)
@@ -1151,7 +1150,7 @@ class UtTests(unittest.TestCase):
         check_test_result(self, process, b, 1)
 
         # Alternative negative test: same tree, message 'xx'
-        r = process(NEW, root, **{TEXT: 'xx', 'test': 'test_selective_2'})
+        r = process(process.NEW, root, **{TEXT: 'xx', 'test': 'test_selective_2'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.query, ERROR)  # No case found
@@ -1206,7 +1205,7 @@ class UtTests(unittest.TestCase):
         bb = ActionNotion('bb', common_state_acc)
         nbb = NextRelation(root, bb)
 
-        r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_selective_3'})
+        r = process(process.NEW, root, **{TEXT: 'aa', 'test': 'test_selective_3'})
 
         self.assertEqual(process.context['acc'], 1)
         self.assertTrue(r is None)
@@ -1226,14 +1225,14 @@ class UtTests(unittest.TestCase):
         s = ActionNotion('stop', ERROR)
         ParsingRelation(root, s, 'a')
 
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_selective_4'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_selective_4'})
 
         self.assertEqual(process.last_parsed, 'aaaa')
         self.assertTrue(r is None)
         check_test_result(self, process, bb, 4)
 
         # Negative test: just wrong text input
-        r = process(NEW, root, **{TEXT: 'x', 'test': 'test_selective_5'})
+        r = process(process.NEW, root, **{TEXT: 'x', 'test': 'test_selective_5'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.query, ERROR)
@@ -1248,7 +1247,7 @@ class UtTests(unittest.TestCase):
         c1 = ParsingRelation(root, breaker, 'a')
         NextRelation(root, ActionNotion('adder', common_state_acc))
 
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'test_selective_6'})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'test_selective_6'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.query, ERROR)
@@ -1259,7 +1258,7 @@ class UtTests(unittest.TestCase):
         c2.object = breaker
         c2.condition = 'a'
 
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'test_selective_7'})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'test_selective_7'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.query, ERROR)
@@ -1268,11 +1267,11 @@ class UtTests(unittest.TestCase):
         c2.subject = None
 
         # No error, 1 good relation so there are no returns
-        breaker.action = OK  # In this case Selective will not offer new cases
+        breaker.action = process.OK  # In this case Selective will not offer new cases
 
-        r = process(NEW, root, ** {TEXT: 'a', 'test': 'test_selective_8'})
+        r = process(process.NEW, root, ** {TEXT: 'a', 'test': 'test_selective_8'})
 
-        self.assertTrue(r, OK)
+        self.assertTrue(r, process.OK)
         check_test_result(self, process, breaker, 1)
 
         # Testing non-parsing relations
@@ -1280,7 +1279,7 @@ class UtTests(unittest.TestCase):
         c1.subject = None
         NextRelation(root, breaker)
 
-        r = process(NEW, root, **{TEXT: '', 'test': 'test_selective_9'})
+        r = process(process.NEW, root, **{TEXT: '', 'test': 'test_selective_9'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.context['acc'], 1)
@@ -1308,14 +1307,14 @@ class UtTests(unittest.TestCase):
         check_loop_result(self, process, l, 5)
 
         # Negative loop test: root -5!-> aa -a-> a for 'aaaa'
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_neg'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_neg'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 4)
 
         # n=0 test
         l.condition = 0
-        r = process(NEW, root, **{TEXT: '', 'test': 'test_loop_n=0'})
+        r = process(process.NEW, root, **{TEXT: '', 'test': 'test_loop_n=0'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 0)
@@ -1326,22 +1325,22 @@ class UtTests(unittest.TestCase):
         self.assertTrue(l.is_numeric())
         self.assertTrue(l.is_flexible())
 
-        r = process(NEW, root, **{TEXT: 'aaa', 'test': 'test_loop_m..n'})
+        r = process(process.NEW, root, **{TEXT: 'aaa', 'test': 'test_loop_m..n'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 3)
 
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'test_loop_m..n_2'})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'test_loop_m..n_2'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 1)
 
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_m..n_3'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_m..n_3'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 4)
 
-        r = process(NEW, root, **{TEXT: 'aaaaa', 'test': 'test_loop_m..n_neg'})
+        r = process(process.NEW, root, **{TEXT: 'aaaaa', 'test': 'test_loop_m..n_neg'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 4)
@@ -1353,17 +1352,17 @@ class UtTests(unittest.TestCase):
         self.assertTrue(l.is_numeric())
         self.assertTrue(l.is_flexible())
 
-        r = process(NEW, root, **{TEXT: '', 'test': 'test_loop_none..n'})
+        r = process(process.NEW, root, **{TEXT: '', 'test': 'test_loop_none..n'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 0)
 
-        r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_loop_none..n_2'})
+        r = process(process.NEW, root, **{TEXT: 'aa', 'test': 'test_loop_none..n_2'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 2)
 
-        r = process(NEW, root, **{TEXT: 'aaa', 'test': 'test_loop_none..n_3'})
+        r = process(process.NEW, root, **{TEXT: 'aaa', 'test': 'test_loop_none..n_3'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 2)
@@ -1374,17 +1373,17 @@ class UtTests(unittest.TestCase):
         self.assertTrue(l.is_numeric())
         self.assertTrue(l.is_flexible())
 
-        r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_loop_m..none_neg'})
+        r = process(process.NEW, root, **{TEXT: 'aa', 'test': 'test_loop_m..none_neg'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 2)
 
-        r = process(NEW, root, **{TEXT: 'aaa', 'test': 'test_loop_m..none'})
+        r = process(process.NEW, root, **{TEXT: 'aaa', 'test': 'test_loop_m..none'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 3)
 
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_m..none_2'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_m..none_2'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 4)
@@ -1395,7 +1394,7 @@ class UtTests(unittest.TestCase):
         self.assertTrue(l.is_wildcard())
         self.assertTrue(l.is_flexible())
 
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_*'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_*'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 4)
@@ -1406,13 +1405,13 @@ class UtTests(unittest.TestCase):
         self.assertTrue(l.is_wildcard())
         self.assertTrue(l.is_flexible())
 
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_+'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_+'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 4)
 
         # Loop negative test for >1 count root -+!-> a's -a-> a for 'b'
-        r = process(NEW, root, **{TEXT: 'b', 'test': 'test_loop_+_neg'})
+        r = process(process.NEW, root, **{TEXT: 'b', 'test': 'test_loop_+_neg'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 0)
@@ -1423,18 +1422,18 @@ class UtTests(unittest.TestCase):
         self.assertTrue(l.is_wildcard())
         self.assertTrue(l.is_flexible())
 
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'test_loop_?'})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'test_loop_?'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 1)
 
         # Loop test for ? count root -?-> a's -a-> a for ''
-        r = process(NEW, root, **{TEXT: '', 'test': 'test_loop_?_2'})
+        r = process(process.NEW, root, **{TEXT: '', 'test': 'test_loop_?_2'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 0)
 
-        r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_loop_?_2'})
+        r = process(process.NEW, root, **{TEXT: 'aa', 'test': 'test_loop_?_2'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 1)
@@ -1446,7 +1445,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(l.is_numeric())
         self.assertTrue(l.is_infinite())
 
-        r = process(NEW, root, **{TEXT: 'aaaaa', 'test': 'test_loop_true_n'})
+        r = process(process.NEW, root, **{TEXT: 'aaaaa', 'test': 'test_loop_true_n'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 5)
@@ -1458,20 +1457,20 @@ class UtTests(unittest.TestCase):
         self.assertFalse(l.is_flexible())
         self.assertTrue(l.is_custom())
 
-        r = process(NEW, root, **{TEXT: 'aaaaa', 'test': 'test_loop_ext_func'})
+        r = process(process.NEW, root, **{TEXT: 'aaaaa', 'test': 'test_loop_ext_func'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l, 5)  # External functions stops at 5
 
         # Error in the custom loop
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_ext_func_neg'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_ext_func_neg'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 4)
 
         # Error in custom loop start
         l.condition = lambda: False
-        r = process(NEW, root, **{TEXT: 'a', 'test': 'test_loop_ext_func_neg_2'})
+        r = process(process.NEW, root, **{TEXT: 'a', 'test': 'test_loop_ext_func_neg_2'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l, 0)
@@ -1485,13 +1484,13 @@ class UtTests(unittest.TestCase):
 
         l2 = LoopRelation(root, aaa, 2)
 
-        r = process(NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_nested'})
+        r = process(process.NEW, root, **{TEXT: 'aaaa', 'test': 'test_loop_nested'})
 
         self.assertTrue(r is None)
         check_loop_result(self, process, l2, 4)
 
         # Nested loops negative test: root -2!-> a2 -2!-> a's -a-> a for 'aaab'
-        r = process(NEW, root, **{TEXT: 'aaab', 'test': 'test_loop_nested_neg'})
+        r = process(process.NEW, root, **{TEXT: 'aaab', 'test': 'test_loop_nested_neg'})
 
         self.assertTrue(r is False)
         check_loop_result(self, process, l2, 3)
@@ -1511,7 +1510,7 @@ class UtTests(unittest.TestCase):
         # Try without break first
         a.action = common_state_acc
 
-        r = process(NEW, root, **{TEXT: 'ac', 'test': 'test_loop_break_neg'})
+        r = process(process.NEW, root, **{TEXT: 'ac', 'test': 'test_loop_break_neg'})
 
         self.assertTrue(r is False)
         self.assertEqual(process.query, ERROR)
@@ -1520,7 +1519,7 @@ class UtTests(unittest.TestCase):
 
         a.action = lambda **c: [common_state_acc(**c), BREAK]
 
-        r = process(NEW, root, **{TEXT: 'ac', 'test': 'test_loop_break'})
+        r = process(process.NEW, root, **{TEXT: 'ac', 'test': 'test_loop_break'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.query, Element.NEXT)
@@ -1532,7 +1531,7 @@ class UtTests(unittest.TestCase):
         a.action = common_state_acc
         p.subject = None
 
-        r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_loop_continue_neg'})
+        r = process(process.NEW, root, **{TEXT: 'aa', 'test': 'test_loop_continue_neg'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.states[b]['v'], 2)
@@ -1541,7 +1540,7 @@ class UtTests(unittest.TestCase):
 
         a.action = lambda **c: [common_state_acc(**c), CONTINUE]
 
-        r = process(NEW, root, **{TEXT: 'aa', 'test': 'test_loop_continue'})
+        r = process(process.NEW, root, **{TEXT: 'aa', 'test': 'test_loop_continue'})
 
         self.assertTrue(r is None)
         self.assertEqual(process.query, Element.NEXT)
