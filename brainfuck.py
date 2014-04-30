@@ -71,13 +71,13 @@ def make_interpreter_graph(vm):
         # Loop becomes the new top to add the simple commands
         LoopRelation(top, new_top, lambda: None if not vm.is_not_zero() else True)
 
-        return {SharedProcess.UPDATE_CONTEXT: {'top': new_top}}
+        return {ParsingProcess.UPDATE_CONTEXT: {'top': new_top}}
 
     def stop_loop(top_stack):
         if top_stack:
-            return {SharedProcess.UPDATE_CONTEXT: {'top': top_stack.pop()[0]}}
+            return {ParsingProcess.UPDATE_CONTEXT: {'top': top_stack.pop()[0]}}
         else:
-            return Process.STOP
+            return ParsingProcess.STOP
 
     # Building interpreter graph, Source is responsible for parsing and Program for execution
     b = GraphBuilder('Interpreter').next_rel().complex('Source').next_rel().complex('Commands')
@@ -91,11 +91,11 @@ def make_interpreter_graph(vm):
     b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
 
     # Invalid character error
-    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', Process.STOP)
+    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', ParsingProcess.STOP)
 
     # The program itself
     program_root = b.at(b.graph.root).act_rel(
-        lambda top_stack: None if not top_stack else Process.STOP).complex('Program').current
+        lambda top_stack: None if not top_stack else ParsingProcess.STOP).complex('Program').current
 
     return {'root': b.graph, 'top': program_root, 'top_stack': []}
 
@@ -105,7 +105,7 @@ def run(source, context):
 
     r = process(context['root'], text=source, **context)
 
-    if r == Process.STOP:
+    if r == process.STOP:
         message = 'Parsing error'
 
         if isinstance(process.current, Relation):
@@ -158,15 +158,15 @@ def make_converter_graph():
     def start_loop(code, level):
         add_with_tabs('\nwhile mem[i]:', code, level)
 
-        return {SharedProcess.UPDATE_CONTEXT: {'level': level + 1}}
+        return {ParsingProcess.UPDATE_CONTEXT: {'level': level + 1}}
 
     def stop_loop(code, level):
         add_with_tabs('\n', code, 0)
 
         if level:
-            return {SharedProcess.UPDATE_CONTEXT: {'level': level - 1}}
+            return {ParsingProcess.UPDATE_CONTEXT: {'level': level - 1}}
         else:
-            return Process.STOP
+            return ParsingProcess.STOP
 
     # Building converter graph
     b = GraphBuilder('Interpreter').next_rel().complex('code').next_rel().complex('Commands')
@@ -195,7 +195,7 @@ def make_converter_graph():
     b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
 
     # Invalid character error
-    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', Process.STOP)
+    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', ParsingProcess.STOP)
     
     # Initial source
     code = []

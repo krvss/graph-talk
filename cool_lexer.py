@@ -83,7 +83,7 @@ def out_token(line_no, token, data=''):
 
 # Universal line number incrementer
 def inc_line_no(line_no, inc=1):
-    return {SharedProcess.UPDATE_CONTEXT: {LINE_NO: line_no + inc}}
+    return {ParsingProcess.UPDATE_CONTEXT: {LINE_NO: line_no + inc}}
 
 
 # The lexing graph
@@ -134,7 +134,7 @@ def build_graph():
         act('Unexpected character', lambda line_no, last_parsed: out_token(line_no, ERROR_TOKEN, last_parsed))
 
     # Stopping
-    builder.at(statement).parse_rel(EOF, Process.OK)
+    builder.at(statement).parse_rel(EOF, ParsingProcess.OK)
 
 
 # One-line comment notion
@@ -142,7 +142,7 @@ def add_inline_comment(statement):
     builder.at(statement).parse_rel('--').complex('Inline comment')
     inline_comment_chars = builder.loop(True).select('Inline comment chars').current
 
-    builder.at(inline_comment_chars).parse_rel([R_EOL, EOF], BREAK).check_only()  # No need to parse here, just done
+    builder.at(inline_comment_chars).parse_rel([R_EOL, EOF], ParsingProcess.BREAK).check_only()  # No need to parse here, just done
     builder.at(inline_comment_chars).parse_rel(R_ANY_CHAR).default()  # Skip the chars
 
 
@@ -153,10 +153,10 @@ def add_multiline_comment(statement):
 
     builder.at(multiline_comment_body).parse_rel(R_EOL, inc_line_no)
     builder.at(multiline_comment_body).parse_rel(EOF).check_only().\
-        act('EOF in comment', lambda line_no: [out_token(line_no, ERROR_TOKEN, 'EOF in comment'), BREAK])
+        act('EOF in comment', lambda line_no: [out_token(line_no, ERROR_TOKEN, 'EOF in comment'), ParsingProcess.BREAK])
 
     builder.at(multiline_comment_body).parse_rel('(*', statement.owner.notion('Multi-line comment'))  # Nested comment
-    builder.at(multiline_comment_body).parse_rel('*)', BREAK)
+    builder.at(multiline_comment_body).parse_rel('*)', ParsingProcess.BREAK)
 
     builder.at(multiline_comment_body).parse_rel(R_ANY_CHAR).default()  # Consuming chars (gulp!)
 
@@ -168,9 +168,9 @@ def add_to_string(last_parsed, string_body, string_error):
         string_body = ''
     else:
         if len(string_body) == MAX_STR_CONST:
-            return {SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'overflow'}} if not string_error else None
+            return {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'overflow'}} if not string_error else None
 
-    return {SharedProcess.UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
+    return {ParsingProcess.UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
 
 
 # Out the string and clean-up
@@ -188,7 +188,7 @@ def out_string(line_no, string_body, string_error):
     else:
         out_token(line_no, STRING_CONST, string_body or '')
 
-    return {SharedProcess.DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
+    return {ParsingProcess.DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
 
 
 # String notion itself
@@ -199,15 +199,15 @@ def add_strings(statement):
 
     # 0 character error
     builder.at(string_chars).parse_rel(ZERO_CHAR).\
-        act('Null character error', lambda: {SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
+        act('Null character error', lambda: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
 
     # If EOL matched stop the string with error or just break
     builder.at(string_chars).parse_rel(R_EOL).check_only().\
-        act('EOL', lambda: [{SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, BREAK])
+        act('EOL', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, ParsingProcess.BREAK])
 
     # Stop if EOF
     builder.at(string_chars).parse_rel(EOF).check_only().\
-        act('EOF error', lambda: [{SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'eof'}}, BREAK])
+        act('EOF error', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'eof'}}, ParsingProcess.BREAK])
 
     # Escapes
     escapes = builder.at(string_chars).parse_rel('\\').select('Escapes').current
@@ -222,12 +222,12 @@ def add_strings(statement):
 
     builder.at(escapes).parse_rel(ZERO_CHAR).\
         act('Escaped null character error',
-            lambda line_no: {SharedProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
+            lambda line_no: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
 
     builder.at(escapes).parse_rel(R_ANY_CHAR, add_to_string)
 
     # Finishing the string
-    builder.at(string_chars).parse_rel('"', BREAK)
+    builder.at(string_chars).parse_rel('"', ParsingProcess.BREAK)
 
     # Just a good char
     builder.at(string_chars).parse_rel(R_ANY_CHAR, add_to_string).default()
@@ -253,7 +253,7 @@ def lex(content, filename):
     parser = ParsingProcess()
 
     out = parser(builder.graph, text=content, line_no=1)
-    if out != Process.OK:
+    if out != parser.OK:
         raise SyntaxError('Could not lex %s: %s at %s' % (filename, out, parser.current))
 
     return result

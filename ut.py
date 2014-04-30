@@ -942,18 +942,17 @@ class SharedProcess(Process):
         self.on(self.can_delete_context, self.do_delete_context)
 
 
-# StackingContextProcess dialect
-PUSH_CONTEXT = 'push_context'
-POP_CONTEXT = 'pop_context'
-FORGET_CONTEXT = 'forget_context'
-
-
-# Process that can save and restore context
-# Useful for cases when process needs to try various paths in the graph
-class StackingContextProcess(SharedProcess):
+class StackingProcess(SharedProcess):
+    """
+    Process that can save and restore context
+    Useful for cases when process needs to try various paths in the graph
+    """
+    PUSH_CONTEXT = 'push_context'
+    POP_CONTEXT = 'pop_context'
+    FORGET_CONTEXT = 'forget_context'
 
     def __init__(self):
-        super(StackingContextProcess, self).__init__()
+        super(StackingProcess, self).__init__()
 
         self._context_stack = []
 
@@ -962,7 +961,7 @@ class StackingContextProcess(SharedProcess):
 
     # Clearing stack if new
     def do_new(self):
-        super(StackingContextProcess, self).do_new()
+        super(StackingProcess, self).do_new()
         del self._context_stack[:]
 
     def run_tracking_operation(self, operation):
@@ -987,52 +986,50 @@ class StackingContextProcess(SharedProcess):
         self._context_stack.append(DictChangeGroup())
 
     def can_pop_context(self, *message):
-        return self.is_tracking() and has_first(message, POP_CONTEXT)
+        return self.is_tracking() and has_first(message, self.POP_CONTEXT)
 
     def do_pop_context(self):
         self.message.pop(0)
-        self._context_stack[-1].undo()
-        self._context_stack.pop()
+        self._context_stack.pop().undo()
 
     def can_forget_context(self, *message):
-        return self.is_tracking() and has_first(message, FORGET_CONTEXT)
+        return self.is_tracking() and has_first(message, self.FORGET_CONTEXT)
 
     def do_forget_context(self):
         self.message.pop(0)
         self._context_stack.pop()
 
     def setup_handlers(self):
-        super(StackingContextProcess, self).setup_handlers()
+        super(StackingProcess, self).setup_handlers()
 
-        self.on(PUSH_CONTEXT, self.do_push_context)
+        self.on(self.PUSH_CONTEXT, self.do_push_context)
         self.on(self.can_pop_context, self.do_pop_context)
         self.on(self.can_forget_context, self.do_forget_context)
 
 
-# StatefulProcess dialect
-STATE = 'state'
-SET_STATE = 'set_state'
-CLEAR_STATE = 'clear_state'
+class StatefulProcess(StackingProcess):
+    """
+    Process with support of abstract states and notifications between them
+    Useful to preserve private a state of an abstract
+    """
+    STATE = 'state'
+    SET_STATE = 'set_state'
+    CLEAR_STATE = 'clear_state'
 
-NOTIFY = 'notify'
-TO = 'to'
-INFO = 'info'
-NOTIFICATIONS = 'notifications'
-
-
-# Process with support of abstract states and notifications between them
-# Useful to preserve private a state of an abstract
-class StatefulProcess(StackingContextProcess):
+    NOTIFY = 'notify'
+    TO = 'to'
+    INFO = 'info'
+    NOTIFICATIONS = 'notifications'
 
     def __init__(self):
         super(StatefulProcess, self).__init__()
         self.states = {}
 
     def _add_current_state(self):
-        self.context[STATE] = self.states.get(self.current, {})
+        self.context[self.STATE] = self.states.get(self.current, {})
 
     def _del_current_state(self):
-        del self.context[STATE]
+        del self.context[self.STATE]
 
     def _set_state(self, abstract, state):
         if not abstract in self.states:
@@ -1044,8 +1041,10 @@ class StatefulProcess(StackingContextProcess):
         if abstract in self.states:
             self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.DELETE, abstract))
 
-    # Clearing states if new
     def do_new(self):
+        """
+        Clearing states if new
+        """
         super(StatefulProcess, self).do_new()
         self.states.clear()
 
@@ -1060,41 +1059,38 @@ class StatefulProcess(StackingContextProcess):
         return result
 
     # Events #
-    # Set state
     def can_set_state(self, *message):
         return self.current and message and isinstance(message[0], dict) \
-            and SET_STATE in message[0]
+            and self.SET_STATE in message[0]
 
     def do_set_state(self):
-        value = self.message[0].pop(SET_STATE)
+        value = self.message[0].pop(self.SET_STATE)
         self._set_state(self.current, value)
 
-    # Clear state
     def can_clear_state(self, *message):
-        return self.current and message and has_first(message, CLEAR_STATE)
+        return self.current and message and has_first(message, self.CLEAR_STATE)
 
     def do_clear_state(self):
         self.message.pop(0)
         self._clear_state(self.current)
 
-    # Notifications
     def can_notify(self, *message):
-        return message and isinstance(message[0], dict) and isinstance(message[0].get(NOTIFY), dict) \
-            and has_keys(message[0].get(NOTIFY), TO, INFO)
+        return message and isinstance(message[0], dict) and isinstance(message[0].get(self.NOTIFY), dict) \
+            and has_keys(message[0].get(self.NOTIFY), self.TO, self.INFO)
 
     def do_notify(self):
-        notification = self.message[0].pop(NOTIFY)
-        to = notification[TO]
-        info = notification[INFO]
+        notification = self.message[0].pop(self.NOTIFY)
+        to = notification[self.TO]
+        info = notification[self.INFO]
 
         if not to in self.states:
             self._set_state(to, {})
 
-        operation = DictChangeOperation.ADD if not NOTIFICATIONS in self.states[to] \
+        operation = DictChangeOperation.ADD if not self.NOTIFICATIONS in self.states[to] \
             else DictChangeOperation.SET
 
         self.run_tracking_operation(DictChangeOperation(self.states[to], operation,
-                                                        NOTIFICATIONS, info))
+                                                        self.NOTIFICATIONS, info))
 
     def setup_handlers(self):
         super(StatefulProcess, self).setup_handlers()
@@ -1104,25 +1100,25 @@ class StatefulProcess(StackingContextProcess):
         self.on(self.can_notify, self.do_notify)
 
 
-# ParsingProcess dialect
-ERROR = 'error'
-PROCEED = 'proceed'
-BREAK = 'break'
-CONTINUE = 'continue'
-
-PARSED_LENGTH = 'parsed_length'
-TEXT = 'text'
-LAST_PARSED = 'last_parsed'
-
-
-# Parsing process supports error and move commands for text processing
 class ParsingProcess(StatefulProcess):
+    """
+    Parsing process supports error and move commands for text processing
+    """
+    ERROR = 'error'
+    PROCEED = 'proceed'
+    BREAK = 'break'
+    CONTINUE = 'continue'
+
+    PARSED_LENGTH = 'parsed_length'
+    TEXT = 'text'
+    LAST_PARSED = 'last_parsed'
 
     def do_new(self):
         super(ParsingProcess, self).do_new()
+
         self.query = Element.NEXT
-        self.context_set(PARSED_LENGTH, 0)
-        self.context_set(LAST_PARSED, '')
+        self.context_set(self.PARSED_LENGTH, 0)
+        self.context_set(self.LAST_PARSED, '')
 
     def is_parsed(self):
         return self.query == Element.NEXT and not self.text
@@ -1133,24 +1129,28 @@ class ParsingProcess(StatefulProcess):
         return False if not self.is_parsed() and not result[0] == self.STOP else result[0], self.parsed_length, result[2]
 
     # Events #
-    # Proceed: part of the Text was parsed
     def can_proceed(self, *message):
+        """
+        Proceed: part of the Text was parsed, consume it
+        """
         if not message or not isinstance(message[0], dict):
             return False
 
-        distance = message[0].get(PROCEED)
-        return is_number(distance) and len(self.context.get(TEXT)) >= distance
+        distance = message[0].get(self.PROCEED)
+        return is_number(distance) and len(self.context.get(self.TEXT)) >= distance
 
     def do_proceed(self):
-        proceed = self.message[0].pop(PROCEED)
-        last_parsed = self.context[TEXT][0:proceed]
+        proceed = self.message[0].pop(self.PROCEED)
+        last_parsed = self.context[self.TEXT][0:proceed]
 
-        self.context_set(TEXT, self.context[TEXT][proceed:])
-        self.context_set(PARSED_LENGTH, self.parsed_length + proceed)
-        self.context_set(LAST_PARSED, last_parsed)
+        self.context_set(self.TEXT, self.context[self.TEXT][proceed:])
+        self.context_set(self.PARSED_LENGTH, self.parsed_length + proceed)
+        self.context_set(self.LAST_PARSED, last_parsed)
 
-    # Next, Break, Error or Continue
     def do_turn(self):
+        """
+        Next, Break, Error or Continue
+        """
         new_query = self.message.pop(0)
 
         if new_query in Element.BACKWARD:
@@ -1161,28 +1161,30 @@ class ParsingProcess(StatefulProcess):
     def setup_handlers(self):
         super(ParsingProcess, self).setup_handlers()
 
-        self.on((Element.NEXT, ERROR, BREAK, CONTINUE), self.do_turn)
+        self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn)
         self.on(self.can_proceed, self.do_proceed)
 
     @property
     def text(self):
-        return self.context.get(TEXT, '')
+        return self.context.get(self.TEXT, '')
 
     @property
     def parsed_length(self):
-        return self.context.get(PARSED_LENGTH, 0)
+        return self.context.get(self.PARSED_LENGTH, 0)
 
     @property
     def last_parsed(self):
-        return self.context.get(LAST_PARSED, '')
+        return self.context.get(self.LAST_PARSED, '')
 
 
 # Adding new backward commands
-Element.BACKWARD += [ERROR, BREAK, CONTINUE]
+Element.BACKWARD += [ParsingProcess.ERROR, ParsingProcess.BREAK, ParsingProcess.CONTINUE]
 
 
-# Parsing relation: should be passable in forward direction (otherwise returns Error)
 class ParsingRelation(NextRelation):
+    """
+    Parsing relation: should be passable in forward direction (otherwise returns Error)
+    """
     def __init__(self, subj, obj, condition=None, ignore_case=False, owner=None):
         super(ParsingRelation, self).__init__(subj, obj, condition, ignore_case, owner)
 
@@ -1191,28 +1193,32 @@ class ParsingRelation(NextRelation):
 
         self.unknown_event = Event(self.on_error)
 
-    # Here we check condition against the parsing text
     def check_condition(self, message, context):
-        return self.condition_access.check(tupled(context.get(TEXT), message), context)
+        """
+        Here we check condition against the parsing text, text goes first as a message
+        """
+        return self.condition_access.check(tupled(context.get(ParsingProcess.TEXT), message), context)
 
     def next_handler(self, *message, **context):
+        """
+        Consume the parsed part of the text
+        """
         next_result = super(ParsingRelation, self).next_handler(*message, **context)
         rank = context.get(self.RANK)
 
-        return ({PROCEED: rank}, next_result) if rank and not self.check_only else next_result
+        return ({ParsingProcess.PROCEED: rank}, next_result) if rank and not self.check_only else next_result
 
-    def on_error(self, *message, **context):
+    def on_error(self, *message):
         if not self.optional and self.is_forward(message):
-            return ERROR
+            return ParsingProcess.ERROR
 
 
-# SelectiveNotion dialect
-CASES = 'cases'
-
-
-# Selective notion: complex notion that can consist of one of its objects
-# It tries all relations and uses the one without errors
 class SelectiveNotion(ComplexNotion):
+    """
+    Selective notion: complex notion that can consist of one of its objects
+    It tries all relations and uses the one without errors
+    """
+    CASES = 'cases'
 
     def __init__(self, name, owner=None):
         super(SelectiveNotion, self).__init__(name, owner)
@@ -1222,8 +1228,10 @@ class SelectiveNotion(ComplexNotion):
 
         self._default = None
 
-    # Searching for the longest case, use default if none and it is specified
     def get_best_cases(self, message, context):
+        """
+        Searching for the longest case, use default if none and it is specified
+        """
         context[self.ANSWER] = self.RANK
 
         cases = []
@@ -1234,7 +1242,7 @@ class SelectiveNotion(ComplexNotion):
 
             result, length = rel(*message, **context)  # With the rank, please
 
-            if result != ERROR and length >= 0:
+            if result != ParsingProcess.ERROR and length >= 0:
                 max_len = max(length, max_len)
                 cases.append((rel, length))
 
@@ -1245,8 +1253,10 @@ class SelectiveNotion(ComplexNotion):
 
         return best_cases
 
-    # Default should be the part of relations
     def do_relation(self, *message, **context):
+        """
+        Default should be the part of relations
+        """
         super(SelectiveNotion, self).do_relation(*message, **context)
 
         if self.default and not self.default in self.relations:
@@ -1254,7 +1264,7 @@ class SelectiveNotion(ComplexNotion):
 
     # Events #
     def can_go_forward(self, *message, **context):
-        if not context.get(STATE):  # If we've been here before we need to try something different
+        if not context.get(StatefulProcess.STATE):  # If we've been here before we need to try something different
             return super(SelectiveNotion, self).can_go_forward(*message, **context)
 
     def do_forward(self, *message, **context):
@@ -1269,28 +1279,28 @@ class SelectiveNotion(ComplexNotion):
                 if not cases:
                     reply = case
                 else:
-                    reply = (PUSH_CONTEXT,  # Keep the context if re-try will needed
-                             {SET_STATE: {CASES: cases}},  # Store what to try next
+                    reply = (StackingProcess.PUSH_CONTEXT,  # Keep the context if re-try will needed
+                             {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Store what to try next
                              case,  # Try first case
                              self)  # And come back again
             else:
-                return ERROR
+                return ParsingProcess.ERROR
 
         return reply
 
     def can_retry(self, *message, **context):
-        return context.get(STATE) and has_first(message, ERROR)
+        return context.get(StatefulProcess.STATE) and has_first(message, ParsingProcess.ERROR)
 
     def do_retry(self, *message, **context):
-        cases = context[STATE][CASES]
+        cases = context[StatefulProcess.STATE][self.CASES]
 
         if cases:
             case = cases.pop(0)  # Try another case, if any
 
             # Pop context and update state, then try another case and come back here
-            return [POP_CONTEXT,  # Roll back to the initial context
-                    {SET_STATE: {CASES: cases}},  # Update cases
-                    PUSH_CONTEXT,  # Save updated context
+            return [StackingProcess.POP_CONTEXT,  # Roll back to the initial context
+                    {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Update cases
+                    StackingProcess.PUSH_CONTEXT,  # Save updated context
                     self.NEXT,  # Go forward again
                     case,  # Try another case
                     self]  # Come back
@@ -1298,10 +1308,10 @@ class SelectiveNotion(ComplexNotion):
             return self.do_finish()  # No more opportunities
 
     def can_finish(self, *message, **context):
-        return context.get(STATE) and self.is_forward(message)
+        return context.get(StatefulProcess.STATE) and self.is_forward(message)
 
     def do_finish(self):
-        return [FORGET_CONTEXT, CLEAR_STATE]
+        return [StackingProcess.FORGET_CONTEXT, StatefulProcess.CLEAR_STATE]
 
     @property
     def default(self):
@@ -1315,15 +1325,14 @@ class SelectiveNotion(ComplexNotion):
         self._default = value
 
 
-# LoopRelation dialect
-ITERATION = 'i'
-WILDCARDS = ('*', '?', '+')
-INFINITY = float('inf')
-
-
-# Loop relation specifies counts of the related object.
-# Possible conditions are: numeric (n; m..n; m..; ..n), wildcards (*, ?, +), true (infinite loop), and iterator function
 class LoopRelation(NextRelation):
+    """
+    Loop relation specifies counts of the related object.
+    Possible conditions are: numeric (n; m..n; m..; ..n), wildcards (*, ?, +), true (infinite loop), and iterator function
+    """
+    ITERATION = 'i'
+    WILDCARDS = ('*', '?', '+')
+    INFINITY = float('inf')
 
     def __init__(self, subj, obj, condition=None, owner=None):
         super(LoopRelation, self).__init__(subj, obj, condition, owner)
@@ -1342,44 +1351,59 @@ class LoopRelation(NextRelation):
         self.on(self.can_continue, self.do_continue)
 
     def check_condition(self, message, context):
-        if not self.condition_access == TRUE_CONDITION:  # Here we check only the simplest case
-            return False
+        return self.condition_access == TRUE_CONDITION  # Here we check only the simplest case
 
-    # Is a wildcard loop
     def is_wildcard(self):
-        return self.condition in WILDCARDS
+        """
+        Is a wildcard loop
+        """
+        return self.condition in self.WILDCARDS
 
-    # Is a numeric loop
     def is_numeric(self):
+        """
+        Is a numeric loop
+        """
         if self.condition_access.spec == Condition.NUMBER:
             return True
         elif self.condition_access.spec == Condition.LIST and len(self.condition) == 2:
             return (self.condition[0] is None or self.condition_access.list[0].spec == Condition.NUMBER) \
                 and (self.condition[1] is None or self.condition_access.list[1].spec == Condition.NUMBER)
 
-    # Infinite loop
     def is_infinite(self):
+        """
+        Infinite loop
+        """
         return self.condition is True
 
-    # Custom loop: not empty callable condition
     def is_custom(self):
+        """
+        Custom loop: not empty callable condition
+        """
         return self.condition_access.mode == Access.FUNCTION
 
-    # Flexible condition has no finite bound, lower or higher
     def is_flexible(self):
+        """
+        Flexible condition has no finite bound, lower or higher
+        """
         return (self.is_numeric() and self.condition_access.spec == Condition.LIST) or self.is_wildcard()
 
-    # Checking for the condition type
     def is_general(self):
+        """
+        Checking for the condition type
+        """
         return self.is_numeric() or self.is_wildcard() or self.is_infinite()
 
-    # Checking is we are in loop now
     def is_looping(self, context):
-        return ITERATION in context.get(STATE)
+        """
+        Checking is we are in loop now
+        """
+        return self.ITERATION in context.get(StatefulProcess.STATE)
 
-    # Get the limits of the loop
     def get_bounds(self):
-        lower, upper = 0, INFINITY
+        """
+        Get the limits of the loop
+        """
+        lower, upper = 0, self.INFINITY
 
         if self.is_numeric():
             if self.condition_access.spec == Condition.NUMBER:
@@ -1401,14 +1425,17 @@ class LoopRelation(NextRelation):
 
         return lower, upper
 
-    # Make the iteration reply
     def get_next_iteration_reply(self, i=1):
-        reply = [{SET_STATE: {ITERATION: i}}]
+        """
+        Make the iteration reply
+        """
+        reply = [{StatefulProcess.SET_STATE: {self.ITERATION: i}}]
 
         if self.is_flexible():
             if i != 1:
-                reply.insert(0, FORGET_CONTEXT)  # Forget the past
-            reply += [PUSH_CONTEXT]  # Save state if needed
+                reply.insert(0, StackingProcess.FORGET_CONTEXT)  # Forget the past
+
+            reply += [StackingProcess.PUSH_CONTEXT]  # Save state if needed
 
         return reply + [self.object, self]  # Try and come back
 
@@ -1424,7 +1451,7 @@ class LoopRelation(NextRelation):
         return self.is_forward(message) and self.is_looping(context) and self.is_general()
 
     def do_loop_general(self, **context):
-        i = context.get(STATE).get(ITERATION)
+        i = context.get(StatefulProcess.STATE).get(self.ITERATION)
 
         if i < self.get_bounds()[1]:
             return self.get_next_iteration_reply(i + 1)
@@ -1432,15 +1459,15 @@ class LoopRelation(NextRelation):
             reply = []
 
             if self.is_flexible():
-                reply += [FORGET_CONTEXT]
+                reply += [StackingProcess.FORGET_CONTEXT]
 
-            return reply + [CLEAR_STATE]
+            return reply + [StatefulProcess.CLEAR_STATE]
 
     def can_error_general(self, *message, **context):
-        return has_first(message, ERROR) and self.is_looping(context) and self.is_general()
+        return has_first(message, ParsingProcess.ERROR) and self.is_looping(context) and self.is_general()
 
     def do_error_general(self, **context):
-        i = context.get(STATE).get(ITERATION)
+        i = context.get(StatefulProcess.STATE).get(self.ITERATION)
         lower, upper = self.get_bounds()
 
         reply = []
@@ -1448,11 +1475,11 @@ class LoopRelation(NextRelation):
         if self.is_flexible():
             # Roll back to the previous good result
             if lower < i <= upper:
-                reply += [self.NEXT, POP_CONTEXT]
+                reply += [self.NEXT, StackingProcess.POP_CONTEXT]
             else:
-                reply += [FORGET_CONTEXT]
+                reply += [StackingProcess.FORGET_CONTEXT]
 
-        return reply + [CLEAR_STATE]
+        return reply + [StatefulProcess.CLEAR_STATE]
     
     # Custom loop
     def can_loop_custom(self, *message):
@@ -1462,30 +1489,30 @@ class LoopRelation(NextRelation):
         i = self.condition_access(*message, **context)
 
         if i:
-            return {SET_STATE: {ITERATION: i}}, self.object, self
+            return {StatefulProcess.SET_STATE: {self.ITERATION: i}}, self.object, self
         else:
-            return False if not self.is_looping(context) else CLEAR_STATE,
+            return False if not self.is_looping(context) else StatefulProcess.CLEAR_STATE,
 
     def can_error_custom(self, *message):
-        return has_first(message, ERROR) and self.is_custom()
+        return has_first(message, ParsingProcess.ERROR) and self.is_custom()
 
     def do_error_custom(self):
-        return CLEAR_STATE,
+        return StatefulProcess.CLEAR_STATE,
     
     # Common handling
     def can_break(self, *message, **context):
-        return has_first(message, BREAK) and self.is_looping(context)
+        return has_first(message, ParsingProcess.BREAK) and self.is_looping(context)
 
     def do_break(self):
         reply = [self.NEXT]
 
         if self.is_flexible():
-            reply += [FORGET_CONTEXT]
+            reply += [StackingProcess.FORGET_CONTEXT]
 
-        return reply + [CLEAR_STATE]
+        return reply + [StatefulProcess.CLEAR_STATE]
 
     def can_continue(self, *message, **context):
-        return has_first(message, CONTINUE) and self.is_looping(context)
+        return has_first(message, ParsingProcess.CONTINUE) and self.is_looping(context)
 
     def do_continue(self, **context):
         return [self.NEXT] + self.do_loop_general(**context)
