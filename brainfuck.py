@@ -81,7 +81,7 @@ def make_interpreter_graph(vm):
 
     # Building interpreter graph, Source is responsible for parsing and Program for execution
     b = GraphBuilder('Interpreter').next_rel().complex('Source').next_rel().complex('Commands')
-    command_root = b.loop(lambda text: text).select('Command').current
+    command_root = b.loop_rel(lambda text: text).select('Command').current
 
     # Simple command parsing
     b.parse_rel(simple_commands.keys(), add_simple_command)
@@ -170,7 +170,7 @@ def make_converter_graph():
 
     # Building converter graph
     b = GraphBuilder('Interpreter').next_rel().complex('code').next_rel().complex('Commands')
-    command_root = b.loop(lambda text: text).select('Command').current
+    command_root = b.loop_rel(lambda text: text).select('Command').current
 
     # Commands
     b.at(command_root).parse_rel(re.compile('\++')).act('+',

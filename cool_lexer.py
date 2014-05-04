@@ -89,7 +89,7 @@ def inc_line_no(line_no, inc=1):
 # The lexing graph
 def build_graph():
     global builder
-    statement = builder.loop(True).select('Statement').current
+    statement = builder.loop_rel(True).select('Statement').current
 
     # Operators
     builder.at(statement).parse_rel(TOKEN_DICT.keys(), ignore_case=True).\
@@ -140,7 +140,7 @@ def build_graph():
 # One-line comment notion
 def add_inline_comment(statement):
     builder.at(statement).parse_rel('--').complex('Inline comment')
-    inline_comment_chars = builder.loop(True).select('Inline comment chars').current
+    inline_comment_chars = builder.loop_rel(True).select('Inline comment chars').current
 
     builder.at(inline_comment_chars).parse_rel([R_EOL, EOF], ParsingProcess.BREAK).check_only()  # No need to parse here, just done
     builder.at(inline_comment_chars).parse_rel(R_ANY_CHAR).default()  # Skip the chars
@@ -149,7 +149,7 @@ def add_inline_comment(statement):
 # Multi-line comment notion
 def add_multiline_comment(statement):
     builder.at(statement).parse_rel('(*').complex('Multi-line comment')
-    multiline_comment_body = builder.loop(True).select('Multi-line comment body').current
+    multiline_comment_body = builder.loop_rel(True).select('Multi-line comment body').current
 
     builder.at(multiline_comment_body).parse_rel(R_EOL, inc_line_no)
     builder.at(multiline_comment_body).parse_rel(EOF).check_only().\
@@ -194,7 +194,7 @@ def out_string(line_no, string_body, string_error):
 # String notion itself
 def add_strings(statement):
     string = builder.at(statement).parse_rel('"').complex('String').current
-    string_chars = builder.loop(True).select('String chars').current
+    string_chars = builder.loop_rel(True).select('String chars').current
     builder.at(string).next_rel().act('Out string', out_string)
 
     # 0 character error

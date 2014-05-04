@@ -179,9 +179,6 @@ class Condition(Access):
         elif self._value is True or self._value is False:
             self._spec, self.check = self.BOOLEAN, self.check_boolean
 
-    def check(self, message, context):
-        raise TypeError('Undefined check for %s' % self.__str__())
-
     def check_function(self, message, context):
         check = self._call(message, context)
 
@@ -373,7 +370,7 @@ class Handler(Abstract):
         else:
             return [e[1] for e in self.events if e[0] == TRUE_CONDITION]
 
-    def handle(self, message, context):  # TODO check **'s, generalize
+    def handle(self, message, context):
         """
         Calling events basing on condition
         """
@@ -529,7 +526,12 @@ class Notion(Element):
         return '"%s"' % self.name
 
     def __repr__(self):
-        return '<%s(%s, %s)>' % (get_object_name(self.__class__), self.__str__(), self.owner)
+        rep = '<%s(%s' % (get_object_name(self.__class__), self.__str__())
+
+        if self.owner:
+            rep += ', %s' % self.owner
+
+        return rep + ')>'
 
     @property
     def name(self):
@@ -735,7 +737,7 @@ class Process(Handler):
         """
         Set the current message or inserts in the front of current message if insert = True
         """
-        message = [message] if not is_list(message) else list(message)  # TODO: all is_XXX check
+        message = [message] if not is_list(message) else list(message)
 
         if insert:
             message.extend(self.message)
@@ -1291,7 +1293,7 @@ class SelectiveNotion(ComplexNotion):
     def can_retry(self, *message, **context):
         return context.get(StatefulProcess.STATE) and has_first(message, ParsingProcess.ERROR)
 
-    def do_retry(self, *message, **context):
+    def do_retry(self, **context):
         cases = context[StatefulProcess.STATE][self.CASES]
 
         if cases:
@@ -1335,7 +1337,7 @@ class LoopRelation(NextRelation):
     INFINITY = float('inf')
 
     def __init__(self, subj, obj, condition=None, owner=None):
-        super(LoopRelation, self).__init__(subj, obj, condition, owner)
+        super(LoopRelation, self).__init__(subj, obj, condition, False, owner)
 
         # General loop
         self.on(self.can_start_general, self.do_start_general)
@@ -1518,8 +1520,10 @@ class LoopRelation(NextRelation):
         return [self.NEXT] + self.do_loop_general(**context)
 
 
-# Graph is a holder of Notions and Relation, it allows easy search and processing of them
 class Graph(Element):
+    """
+    Graph is a container for Notions, Relations, and other Graphs it allows easy search and processing of them
+    """
     def __init__(self, root=None, owner=None):
         super(Graph, self).__init__(owner)
 
@@ -1536,8 +1540,10 @@ class Graph(Element):
 
             self.root = root
 
-    # Gets the rank of notion when searching by criteria
     def get_notion_search_rank(self, notion, criteria):
+        """
+        Gets the rank of notion when searching by criteria
+        """
         if callable(criteria):
             return criteria(notion)
         else:
@@ -1562,6 +1568,7 @@ class Graph(Element):
                 if r > rank:
                     rank = r
                     del found[:]
+
                 found.append(element)
 
         return found
@@ -1575,23 +1582,23 @@ class Graph(Element):
 
         return found[0] if found else None
 
-    # Gets the rank of relation when searching by criteria
     def get_relation_search_rank(self, relation, criteria):
+        """
+        Gets the rank of relation when searching by criteria
+        """
         if callable(criteria):
             return criteria(relation)
         else:
             if isinstance(criteria, dict):
-                req, rel = [], []
+                rank = -1
 
-                if Relation.SUBJECT in criteria:
-                    req.append(criteria[Relation.SUBJECT])
-                    rel.append(relation.subject)
+                if Relation.SUBJECT in criteria and relation.subject == criteria.get(Relation.SUBJECT):
+                    rank += 1
 
-                if Relation.OBJECT in criteria:
-                    req.append(criteria[Relation.OBJECT])
-                    rel.append(relation.object)
+                if Relation.OBJECT in criteria and relation.object == criteria.get(Relation.OBJECT):
+                    rank += 1
 
-                return len(rel) if rel == req and rel else -1
+                return rank
 
     def relations(self, criteria=None):
         return self.search_elements(self._relations, self.get_relation_search_rank, criteria) if criteria else \
@@ -1603,6 +1610,9 @@ class Graph(Element):
         return found[0] if found else None
 
     def do_element(self, **context):
+        """
+        Add or remove element to graph
+        """
         element = context.get(self.SENDER)
 
         if isinstance(element, Notion) or isinstance(element, Graph):
@@ -1634,7 +1644,7 @@ class Graph(Element):
     @root.setter
     def root(self, value):
         if (self._root == value) or (value and (value.owner != self or not isinstance(value, Notion))):
-            return
+            raise ValueError('Invalid root %s' % value)
 
         self.change_property('root', value)
 
@@ -1642,7 +1652,12 @@ class Graph(Element):
         return '{"%s"}' % (self.root.name if self.root else '')
 
     def __repr__(self):
-        return '{%s(%s, %s)}' % (get_object_name(self.__class__), self.__str__(), self.owner)
+        rep = '{%s(%s' % (get_object_name(self.__class__), self.__str__())
+
+        if self.owner:
+            rep += ', %s' % self.owner
+
+        return rep + ')}'
 
     @property
     def name(self):
@@ -1652,9 +1667,11 @@ class Graph(Element):
     def name(self, value):
         self.root.name = value
 
-# TODO: test and exceptions if incorrect state
-# Graph builder helps to create graph structures
+
 class GraphBuilder(object):
+    """
+    Graph builder helps to create graph structures
+    """
     def __init__(self, graph=None):
         if is_string(graph):
             graph = Graph(graph)
@@ -1668,11 +1685,11 @@ class GraphBuilder(object):
                 self.current.object = new
 
         elif isinstance(new, Relation):
-            if isinstance(self.current, Notion) and not new.subject:
+            if isinstance(self.current, ComplexNotion) and not new.subject:
                 new.subject = self.current
 
-                if isinstance(self.current, ComplexNotion):
-                    return self  # Do not update last, just connect
+        else:
+            raise TypeError('Invalid element type for %s' % new)
 
         self.current = new
 
@@ -1684,42 +1701,46 @@ class GraphBuilder(object):
     def notion(self, name):
         return self.attach(Notion(name, self.graph))
 
+    def act(self, name, action):
+        return self.attach(ActionNotion(name, action, self.graph))
+
     def next_rel(self, condition=None, obj=None, ignore_case=None):
-        rel = NextRelation(self.current, obj, condition, ignore_case, self.graph)
+        rel = NextRelation(None, obj, condition, ignore_case, self.graph)
 
         return self.attach(rel)
 
     def act_rel(self, action, obj=None):
-        return self.attach(ActionRelation(self.current, obj, action, self.graph))
+        return self.attach(ActionRelation(None, obj, action, self.graph))
 
     def parse_rel(self, condition, obj=None, ignore_case=None, optional=None):
-        rel = ParsingRelation(self.current, obj, condition, ignore_case, self.graph)
+        rel = ParsingRelation(None, obj, condition, ignore_case, self.graph)
         rel.optional = optional
 
         return self.attach(rel)
 
-    def default(self):
-        if isinstance(self.current, Relation) and isinstance(self.current.subject, SelectiveNotion):
-            self.current.subject.default = self.current
-
-        return self
-
     def check_only(self, value=True):
         if isinstance(self.current, ParsingRelation):
             self.current.check_only = value
+        else:
+            raise TypeError('Not a ParsingRelation - %s' % self.current)
 
         return self
-
-    def loop(self, condition, obj=None):
-        return self.attach(LoopRelation(self.current, obj, condition, self.graph))
 
     def select(self, name):
         return self.attach(SelectiveNotion(name, self.graph))
 
-    def act(self, name, action):
-        return self.attach(ActionNotion(name, action, self.graph))
+    def default(self):
+        if isinstance(self.current, Relation) and isinstance(self.current.subject, SelectiveNotion):
+            self.current.subject.default = self.current
+        else:
+            raise TypeError('Cannot make %s the default' % self.current)
 
-    def graph(self, name):
+        return self
+
+    def loop_rel(self, condition, obj=None):
+        return self.attach(LoopRelation(None, obj, condition, self.graph))
+
+    def sub_graph(self, name):
         new = Graph(name, self.graph if self.graph else None)
 
         if not self.graph:
@@ -1731,19 +1752,23 @@ class GraphBuilder(object):
 
         return self
 
+    def pop(self):
+        """
+        Go to the higher level of the current element
+        """
+        if self.current and self.current.owner and self.current.owner.owner:
+            self.graph = self.current.owner.owner
+            self.current = self.graph.root
+        else:
+            raise IndexError('On the top already')
+
+        return self
+
     def at(self, element):
         if element != self.current:
             self.current = element
 
             if element and element.owner != self.graph:
                 self.graph = element.owner
-
-        return self
-
-    # Go to the higher level of the current element
-    def pop(self):
-        if self.current and self.current.owner:
-            self.graph = self.current.owner.owner
-            self.current = self.graph.root
 
         return self

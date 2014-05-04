@@ -105,6 +105,8 @@ class UtTests(unittest.TestCase):
         self.assertEqual(Access(abstract.return_true)('7', a=4), True)
         self.assertEqual(Access(abstract)(), True)
 
+        self.assertEqual(access.__repr__(), '%s, %s: %s' % (access.mode, access.spec, access.value))
+
         # Conditions
         condition = Condition(1)
         self.assertEqual(condition.mode, Condition.VALUE)
@@ -190,6 +192,9 @@ class UtTests(unittest.TestCase):
 
         condition = Condition(lambda: (1, 2, 3))
         self.assertEquals(condition.check([], {}), ((1, 2, 3), (1, 2, 3)))
+
+        condition = Condition({})
+        self.assertEqual(condition.spec, condition.DICT)
 
         self.assertEquals(TrueCondition().check('Yey', 'cheers!'), (0, True))
 
@@ -431,6 +436,7 @@ class UtTests(unittest.TestCase):
 
         n1.owner = None
         self.assertEqual(n2.owner, 1)
+        self.assertEqual(n1.__repr__(), '<' + get_object_name(n1.__class__) + '("' + n1.name + '")>')
 
         # Relations test
         r1 = Relation(n1, n2)
@@ -1578,14 +1584,13 @@ class UtTests(unittest.TestCase):
         self.assertFalse(graph.do_element(**{Handler.SENDER: self}))
 
         # Root
-        graph.root = rel
-
-        self.assertIsNone(graph.root)
+        with self.assertRaises(ValueError):
+            graph.root = rel
 
         rave.owner = None
-        graph.root = rave
 
-        self.assertIsNone(graph.root)
+        with self.assertRaises(ValueError):
+            graph.root = rave
 
         graph.root = root
 
@@ -1642,7 +1647,162 @@ class UtTests(unittest.TestCase):
         self.assertEqual(sub_graph.__repr__(), '{%s(%s, %s)}' % (get_object_name(sub_graph.__class__),
                                                                  sub_graph.__str__(), graph))
 
+        self.assertEqual(graph.__repr__(), '{%s(%s)}' % (get_object_name(graph.__class__), graph.__str__()))
+
         self.assertEqual(graph.notion('sub'), sub_graph)
+
+    def test_h_builder(self):
+        b = GraphBuilder()
+
+        self.assertIsNone(b.graph)
+        self.assertIsNone(b.current)
+
+        # Constructor
+        graph = Graph()
+        b = GraphBuilder(graph)
+        self.assertEqual(b.graph, graph)
+        self.assertIsNone(b.current)
+
+        b = GraphBuilder('BT')
+        self.assertIsNotNone(b.graph)
+        self.assertEqual(b.current, b.graph.root)
+        graph = b.graph
+
+        # Complex
+        self.assertEqual(b, b.complex('Complex'))
+        c = b.current
+
+        self.assertEqual(c.name, 'Complex')
+        self.assertEqual(c.owner, graph)
+        self.assertEqual(graph.notion(c.name), c)
+        self.assertTrue(isinstance(b.current, ComplexNotion))
+
+        # Notion
+        self.assertEqual(b, b.notion('Notion'))
+        n = b.current
+
+        self.assertEqual(n.name, 'Notion')
+        self.assertEqual(n.owner, graph)
+        self.assertEqual(graph.notion(n.name), n)
+        self.assertTrue(isinstance(b.current, Notion))
+
+        b.current = c
+        self.assertEqual(b.current, c)
+
+        # Next
+        self.assertEqual(b, b.next_rel(1, n, True))
+        n_r = b.current
+
+        self.assertEqual(n_r.owner, graph)
+        self.assertEqual(n_r.subject, c)
+        self.assertEqual(n_r.object, n)
+        self.assertTrue(n_r.condition, 1)
+        self.assertTrue(n_r.ignore_case, True)
+        self.assertEqual(graph.relation({Relation.SUBJECT: c}), n_r)
+        self.assertTrue(isinstance(n_r, NextRelation))
+
+        # Action
+        self.assertEqual(b, b.act('Action', True))
+        a = b.current
+
+        self.assertEqual(a.name, 'Action')
+        self.assertEqual(a.owner, graph)
+        self.assertEqual(a.action, True)
+        self.assertEqual(graph.notion(a.name), a)
+        self.assertTrue(isinstance(b.current, ActionNotion))
+
+        # Action relation
+        self.assertEqual(b, b.act_rel(2, a))
+        a_r = b.current
+
+        self.assertEqual(a_r.owner, graph)
+        self.assertEqual(a_r.subject, None)
+        self.assertEqual(a_r.object, a)
+        self.assertTrue(a_r.action, 2)
+        self.assertEqual(a_r, graph.relation({Relation.OBJECT: a}))
+        self.assertTrue(isinstance(a_r, ActionRelation))
+
+        # Parsing relation
+        self.assertEqual(b, b.parse_rel(3, None, True, True))
+        p_r = b.current
+
+        self.assertEqual(p_r.owner, graph)
+        self.assertEqual(p_r.subject, None)
+        self.assertEqual(p_r.object, None)
+        self.assertTrue(p_r.condition, 3)
+        self.assertTrue(p_r.ignore_case)
+        self.assertTrue(p_r.optional)
+        self.assertIn(p_r, graph.relations())
+        self.assertTrue(isinstance(p_r, ParsingRelation))
+
+        self.assertFalse(p_r.check_only)
+        b.check_only(True)
+        self.assertTrue(p_r.check_only)
+
+        # Selective
+        self.assertEqual(b, b.select('Select'))
+        s = b.current
+
+        self.assertEqual(s.name, 'Select')
+        self.assertEqual(s.owner, graph)
+        self.assertEqual(graph.notion(s.name), s)
+        self.assertTrue(isinstance(b.current, SelectiveNotion))
+        self.assertEqual(p_r.object, s)
+
+        # Loop
+        self.assertEqual(b, b.loop_rel(4, n))
+        l_r = b.current
+
+        self.assertEqual(l_r.owner, graph)
+        self.assertEqual(l_r.subject, s)
+        self.assertEqual(l_r.object, n)
+        self.assertTrue(l_r.condition, 4)
+        self.assertEqual(l_r, graph.relation({Relation.SUBJECT: s}))
+        self.assertTrue(isinstance(l_r, LoopRelation))
+
+        # Default
+        b.default()
+        self.assertEqual(s.default, l_r)
+
+        # Sub-graphs
+        self.assertEqual(b, b.sub_graph('Sub'))
+        sub = b.graph
+
+        self.assertEqual(sub.owner, graph)
+        self.assertNotEqual(b.graph, graph)
+        self.assertEqual(sub.root, b.current)
+
+        b2 = GraphBuilder()
+        b2.sub_graph('Sub2')
+
+        self.assertEqual(b2.graph.name, 'Sub2')
+        self.assertEqual(b2.graph.root.name, 'Sub2')
+
+        # Pop
+        self.assertEqual(b, b.pop())
+        self.assertEqual(b.current, graph.root)
+
+        with self.assertRaises(IndexError):
+            b.pop()
+
+        self.assertEqual(b.current, graph.root)
+
+        # At
+        self.assertTrue(b, b.at(a))
+        self.assertEqual(b.current, a)
+
+        b.at(sub.root)
+        self.assertEqual(b.graph, sub)
+
+        # Errors
+        with self.assertRaises(TypeError):
+            b.default()
+
+        with self.assertRaises(TypeError):
+            b.check_only()
+
+        with self.assertRaises(TypeError):
+            b.attach(b)
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
