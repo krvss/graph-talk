@@ -1787,11 +1787,11 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(b.current, graph.root)
 
-        # At
-        self.assertTrue(b, b.at(a))
+        # At ([])
+        self.assertTrue(b, b[a])
         self.assertEqual(b.current, a)
 
-        b.at(sub.root)
+        b[sub.root]
         self.assertEqual(b.graph, sub)
 
         # Errors

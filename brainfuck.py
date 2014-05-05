@@ -1,17 +1,15 @@
-import sys
-
 from ut import *
 import re
 
-# TODO: optimization and white space
 
-# Brainfuck virtual machine that runs language commands
 class BFVM(object):
+    """
+    Brainfuck virtual machine that runs language commands
+    """
     def __init__(self, test=None):
-        self.memory = bytearray(30000)
-        self.position = 0
-
+        self.memory, self.position = bytearray(30000), 0
         self.test = test
+
         if self.test:
             self.input_buffer = test
             self.out_buffer = ''
@@ -55,8 +53,10 @@ class BFVM(object):
             sys.stdout.write(out)
 
 
-# Create the parsing/interpreting graph for the specified VM
-def make_interpreter_graph(vm):
+def build_interpreter(vm):
+    """
+    Create the parsing/interpreting graph for the specified VM and set-up the environment
+    """
     simple_commands = dict((('+', vm.inc), ('-', vm.dec), ('.', vm.output), (',', vm.input),
                             ('>', vm.right), ('<', vm.left)))
 
@@ -65,10 +65,11 @@ def make_interpreter_graph(vm):
         NextRelation(top, ActionNotion(last_parsed, simple_commands[last_parsed], top.owner), owner=top.owner)
 
     def start_loop(top, top_stack, parsed_length):
+        # Push the current to to the stack to come back later, parsed length is needed for the error message
         top_stack.append((top, parsed_length))
         new_top = ComplexNotion('Loop', top.owner)
 
-        # Loop becomes the new top to add the simple commands
+        # Loop becomes a new top to add simple commands; condition is to repeat while not zero in memort
         LoopRelation(top, new_top, lambda: None if not vm.is_not_zero() else True)
 
         return {ParsingProcess.UPDATE_CONTEXT: {'top': new_top}}
@@ -77,43 +78,51 @@ def make_interpreter_graph(vm):
         if top_stack:
             return {ParsingProcess.UPDATE_CONTEXT: {'top': top_stack.pop()[0]}}
         else:
-            return ParsingProcess.STOP
+            return ParsingProcess.STOP  # Here we use very simple error processing, just stopping at certain element
 
     # Building interpreter graph, Source is responsible for parsing and Program for execution
     b = GraphBuilder('Interpreter').next_rel().complex('Source').next_rel().complex('Commands')
+
+    # Root to add the available commands, looping while there is a text
     command_root = b.loop_rel(lambda text: text).select('Command').current
 
     # Simple command parsing
     b.parse_rel(simple_commands.keys(), add_simple_command)
 
     # Loops
-    b.at(command_root).parse_rel('[').act('Start loop', start_loop)
-    b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
+    b[command_root].parse_rel('[').act('Start loop', start_loop)
+    b[command_root].parse_rel(']').act('Stop loop', stop_loop)
+
+    # Whitespace, just for convenience
+    b[command_root].parse_rel(re.compile('\s+'))
 
     # Invalid character error
-    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', ParsingProcess.STOP)
+    b[command_root].parse_rel(re.compile('.')).default().act('Bad character', ParsingProcess.STOP)
 
-    # The program itself
-    program_root = b.at(b.graph.root).act_rel(
+    # The program itself, loop stack should be empty!
+    program_root = b[b.graph.root].act_rel(
         lambda top_stack: None if not top_stack else ParsingProcess.STOP).complex('Program').current
 
     return {'root': b.graph, 'top': program_root, 'top_stack': []}
 
 
-def run(source, context):
+def run(source, env):
+    """
+    Execute the source program in the specified environment
+    """
     process = ParsingProcess()
 
-    r = process(context['root'], text=source, **context)
+    r = process(env.pop('root'), text=source, **env)
 
     if r == process.STOP:
         message = 'Parsing error'
 
         if isinstance(process.current, Relation):
-            message = 'Start loop without end at position %s' % context['top_stack'][0][1]
+            message = 'Start loop without end at the position %s' % env['top_stack'][0][1]
 
         elif isinstance(process.current, Notion):
             if process.current.name == 'Bad character':
-                message = 'Unknown char "%s" at position %s' % (process.last_parsed, process.parsed_length)
+                message = 'Unknown char "%s" at the position %s' % (process.last_parsed, process.parsed_length)
 
             elif process.current.name == 'Stop loop':
                 message = 'End loop without start at position %s' % process.parsed_length
@@ -121,24 +130,28 @@ def run(source, context):
         return message
 
 
-# Interprets specified string using buffer for testing
 def interpret(source, test=None):
+    """
+    Interprets specified string using buffer for testing
+    """
     vm = BFVM(test)
 
-    result = run(source, make_interpreter_graph(vm))
+    result = run(source, build_interpreter(vm))
 
     return result if not test else result or vm.out_buffer
 
 
-# Self-test
 def test_interpreter():
-    result = interpret(',>,.<.', 'ab')
+    """
+    Self-test
+    """
+    result = interpret(',>, .<.', 'ab')
     assert result == 'ba'
 
-    result = interpret('++[.-]', True)
+    result = interpret('++ [.-]', True)
     assert result == '(2)(1)'
 
-    result = interpret('++>++<[.->[.-]<]', True)
+    result = interpret('++>  ++<\n[.->[.-]<]', True)
     assert result == '(2)(2)(1)(1)'
 
     result = interpret('[.[[]', True)
@@ -151,83 +164,87 @@ def test_interpreter():
     assert result.startswith('End loop') and result.endswith('3')
 
 
-def make_converter_graph():
-    def add_with_tabs(s, code, tabs=0):
-        code.append(" " * tabs * 4 + s)
+def build_converter():
+    """
+    Create Brainfuck to Python converter graph
+    """
+    def add_with_tabs(s, src, tabs=0):
+        src.append(" " * tabs * 4 + s)
 
-    def start_loop(code, level):
-        add_with_tabs('\nwhile mem[i]:', code, level)
+    def start_loop(src, level):
+        add_with_tabs('\nwhile mem[i]:', src, level)
 
         return {ParsingProcess.UPDATE_CONTEXT: {'level': level + 1}}
 
-    def stop_loop(code, level):
-        add_with_tabs('\n', code, 0)
+    def stop_loop(src, level):
+        add_with_tabs('\n', src, 0)
 
         if level:
             return {ParsingProcess.UPDATE_CONTEXT: {'level': level - 1}}
         else:
-            return ParsingProcess.STOP
+            return ParsingProcess.STOP  # Error!
 
-    # Building converter graph
-    b = GraphBuilder('Interpreter').next_rel().complex('code').next_rel().complex('Commands')
+    b = GraphBuilder('Converter').next_rel().complex('Code').next_rel().complex('Commands')
     command_root = b.loop_rel(lambda text: text).select('Command').current
 
-    # Commands
-    b.at(command_root).parse_rel(re.compile('\++')).act('+',
-                    lambda level, code, last_parsed: add_with_tabs('mem[i] += %s' % len(last_parsed), code, level))
+    # Commands, with compression
+    b[command_root].parse_rel(re.compile('\++')).act('+',
+                    lambda level, src, last_parsed: add_with_tabs('mem[i] += %s' % len(last_parsed), src, level))
 
-    b.at(command_root).parse_rel(re.compile('-+')).act('-',
-                    lambda level, code, last_parsed: add_with_tabs('mem[i] -= %s' % len(last_parsed), code, level))
+    b[command_root].parse_rel(re.compile('-+')).act('-',
+                    lambda level, src, last_parsed: add_with_tabs('mem[i] -= %s' % len(last_parsed), src, level))
 
-    b.at(command_root).parse_rel(re.compile('>+')).act('>',
-                    lambda level, code, last_parsed: add_with_tabs('i += %s' % len(last_parsed), code, level))
+    b[command_root].parse_rel(re.compile('>+')).act('>',
+                    lambda level, src, last_parsed: add_with_tabs('i += %s' % len(last_parsed), src, level))
 
-    b.at(command_root).parse_rel(re.compile('<+')).act('>',
-                    lambda level, code, last_parsed: add_with_tabs('i -= %s' % len(last_parsed), code, level))
+    b[command_root].parse_rel(re.compile('<+')).act('>',
+                    lambda level, src, last_parsed: add_with_tabs('i -= %s' % len(last_parsed), src, level))
 
-    b.at(command_root).parse_rel('.').act('.',
-                    lambda level, code: add_with_tabs('sys.stdout.write(chr(mem[i]))', code, level))
+    b[command_root].parse_rel('.').act('.',
+                    lambda level, src: add_with_tabs('sys.stdout.write(chr(mem[i]))', src, level))
 
-    b.at(command_root).parse_rel(',').act(',',
-                    lambda level, code: add_with_tabs('mem[i] = ord(sys.stdin.read(1))', code, level))
+    b[command_root].parse_rel(',').act(',',
+                    lambda level, src: add_with_tabs('mem[i] = ord(sys.stdin.read(1))', src, level))
 
-    b.at(command_root).parse_rel('[').act('Start loop', start_loop)
-    b.at(command_root).parse_rel(']').act('Stop loop', stop_loop)
+    b[command_root].parse_rel('[').act('Start loop', start_loop)
+    b[command_root].parse_rel(']').act('Stop loop', stop_loop)
 
     # Invalid character error
-    b.at(command_root).parse_rel(re.compile('.')).default().act('Bad character', ParsingProcess.STOP)
-    
-    # Initial source
-    code = []
-    code.append('import sys\n')
-    code.append('i, mem = 0, bytearray(30000)\n')
+    b[command_root].parse_rel(re.compile('.')).default().act('Bad character', ParsingProcess.STOP)
 
-    return {'root': b.graph, 'code': code, 'level': 0, }
+    return {'root': b.graph,
+            'src': ['import sys\n', 'i, mem = 0, bytearray(30000)\n'],
+            'level': 0, }
 
 
 def convert(source):
-    context = make_converter_graph()
+    """
+    Convert source on BF to Python
+    """
+    context = build_converter()
 
     result = run(source, context)
 
     if result is None:
-        for line in context['code']:
+        for line in context['src']:
             print line
     else:
         print result
 
 
 def main():
+    import sys
+
     if len(sys.argv) >= 2:
         with open(sys.argv[1], 'r') as f:
             source = f.read()
-            result = convert(source) if 'c' in sys.argv else interpret(source)
+            result = convert(source) if '-c' in sys.argv else interpret(source)
 
             if result:
                 print result
     else:
         test_interpreter()
-        print "Usage: " + sys.argv[0] + " filename [c]"
+        print "Usage: " + sys.argv[0] + " filename [-c]"
 
 if __name__ == "__main__":
     main()

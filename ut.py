@@ -1764,7 +1764,7 @@ class GraphBuilder(object):
 
         return self
 
-    def at(self, element):
+    def __getitem__(self, element):
         if element != self.current:
             self.current = element
 
