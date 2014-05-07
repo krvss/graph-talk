@@ -62,8 +62,40 @@ R_TYPE_ID = re.compile('[A-Z]' + IDENTIFIER)
 builder = GraphBuilder('COOL program')
 
 # Lexing result
-result = ''
+result = ''  # TODO class
 
+
+class Eater(object):
+    """
+    Eater class finds the minimum position of string in the text
+    """
+    def __init__(self, stops):
+        self.stops = stops
+
+    def eat(self, text):
+        pos = text.find(EOF)  # End of file is a last position in any case
+
+        for stop in self.stops:
+            new_pos = -1
+
+            if is_regex(stop):
+                p = stop.search(text)
+                if p:
+                    new_pos = p.start()
+            else:
+                new_pos = text.find(stop)
+
+            if 0 <= new_pos < pos:
+                pos = new_pos
+
+        return pos if pos else True
+
+    @staticmethod
+    def get_eater(stops):
+        if not is_list(stops):
+            stops = [stops]
+
+        return Eater(stops).eat
 
 # Out token to result
 def out_token(line_no, token, data=''):
@@ -121,8 +153,10 @@ def build_graph():
     # Skipping white space
     builder[statement].parse_rel(R_WHITE_SPACE)
 
+    # Inline comments
+    builder[statement].parse_rel('--').complex('Inline comment').parse_rel(Eater.get_eater(R_EOL))
+
     # Complex notions
-    add_inline_comment(statement)
     add_multiline_comment(statement)
     add_strings(statement)
 
@@ -137,19 +171,13 @@ def build_graph():
     builder[statement].parse_rel(EOF, ParsingProcess.OK)
 
 
-# One-line comment notion
-def add_inline_comment(statement):
-    builder[statement].parse_rel('--').complex('Inline comment')
-    inline_comment_chars = builder.loop_rel(True).select('Inline comment chars').current
-
-    builder[inline_comment_chars].parse_rel([R_EOL, EOF], ParsingProcess.BREAK).check_only()  # No need to parse here, just done
-    builder[inline_comment_chars].parse_rel(R_ANY_CHAR).default()  # Skip the chars
-
-
 # Multi-line comment notion
 def add_multiline_comment(statement):
     builder[statement].parse_rel('(*').complex('Multi-line comment')
     multiline_comment_body = builder.loop_rel(True).select('Multi-line comment body').current
+
+    # Consuming chars (gulp!) until something interesting pops up
+    builder[multiline_comment_body].parse_rel(Eater.get_eater([R_EOL, '(*', '*)']))
 
     builder[multiline_comment_body].parse_rel(R_EOL, inc_line_no)
     builder[multiline_comment_body].parse_rel(EOF).check_only().\
@@ -157,8 +185,6 @@ def add_multiline_comment(statement):
 
     builder[multiline_comment_body].parse_rel('(*', statement.owner.notion('Multi-line comment'))  # Nested comment
     builder[multiline_comment_body].parse_rel('*)', ParsingProcess.BREAK)
-
-    builder[multiline_comment_body].parse_rel(R_ANY_CHAR).default()  # Consuming chars (gulp!)
 
 
 # Strings
@@ -251,6 +277,9 @@ def lex(content, filename):
 
     content += EOF
     parser = ParsingProcess()
+
+    #from debug import ProcessDebugger
+    #ProcessDebugger(parser).show_log()
 
     out = parser(builder.graph, text=content, line_no=1)
     if out != parser.OK:

@@ -893,7 +893,7 @@ class SharedProcess(Process):
         Do we have add context command
         """
         return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(self.ADD_CONTEXT), dict)  # TODO less isinstances
+            and isinstance(message[0].get(self.ADD_CONTEXT), dict)
 
     def do_add_context(self):
         """
