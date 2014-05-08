@@ -2,7 +2,6 @@
 # (c) krvss 2011-2014
 
 import re
-import sys
 
 from ut import *
 
@@ -57,17 +56,10 @@ IDENTIFIER = '[A-Za-z0-9_]*'
 R_OBJECT_ID = re.compile('[a-z]' + IDENTIFIER)
 R_TYPE_ID = re.compile('[A-Z]' + IDENTIFIER)
 
-# Globals
-# Graph builder
-builder = GraphBuilder('COOL program')
-
-# Lexing result
-result = ''  # TODO class
-
 
 class Eater(object):
     """
-    Eater class finds the minimum position of string in the text
+    Eater class finds the minimum position of the string in the text
     """
     def __init__(self, stops):
         self.stops = stops
@@ -88,7 +80,7 @@ class Eater(object):
             if 0 <= new_pos < pos:
                 pos = new_pos
 
-        return pos if pos else True
+        return pos or True
 
     @staticmethod
     def get_eater(stops):
@@ -97,169 +89,205 @@ class Eater(object):
 
         return Eater(stops).eat
 
-# Out token to result
-def out_token(line_no, token, data=''):
-    global result
 
-    if token in (ERROR_TOKEN, STRING_CONST):
-        data = data.replace("\\", "\\\\")
-        data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
-               replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
-               replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
-               replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
-
-        data = '"' + data + '"'
-
-    result += '#%s %s %s\n' % (line_no, token, data) if data else '#%s %s\n' % (line_no, token)
-
-
-# Universal line number incrementer
 def inc_line_no(line_no, inc=1):
+    """
+    Universal line number incrementer
+    """
     return {ParsingProcess.UPDATE_CONTEXT: {LINE_NO: line_no + inc}}
 
 
-# The lexing graph
-def build_graph():
-    global builder
-    statement = builder.loop_rel(True).select('Statement').current
-
-    # Operators
-    builder[statement].parse_rel(TOKEN_DICT.keys(), ignore_case=True).\
-        act('Operator', lambda line_no, last_parsed: out_token(line_no, TOKEN_DICT[last_parsed.upper()]))
-
-    builder[statement].parse_rel(SINGLE_CHAR_OP).\
-        act('Single Char Operator', lambda line_no, last_parsed: out_token(line_no, '\'' + last_parsed + '\''))
-
-    # Integers
-    builder[statement].parse_rel(R_INTEGER).\
-        act('Integer', lambda line_no, last_parsed: out_token(line_no, 'INT_CONST', last_parsed))
-
-    # Booleans
-    builder[statement].parse_rel(R_BOOLEAN).\
-        act('Boolean', lambda line_no, last_parsed: out_token(line_no, 'BOOL_CONST', last_parsed.lower()))
-
-    # Object ID
-    builder[statement].parse_rel(R_OBJECT_ID).\
-        act('Object ID', lambda line_no, last_parsed: out_token(line_no, 'OBJECTID', last_parsed))
-
-    # Type ID
-    builder[statement].parse_rel(R_TYPE_ID).\
-        act('Object ID', lambda line_no, last_parsed: out_token(line_no, 'TYPEID', last_parsed))
-
-    # New line: increment the counter
-    builder[statement].parse_rel(R_EOL).\
-        act('New Line', inc_line_no)
-
-    # Skipping white space
-    builder[statement].parse_rel(R_WHITE_SPACE)
-
-    # Inline comments
-    builder[statement].parse_rel('--').complex('Inline comment').parse_rel(Eater.get_eater(R_EOL))
-
-    # Complex notions
-    add_multiline_comment(statement)
-    add_strings(statement)
-
-    # Errors
-    builder[statement].parse_rel('*)').\
-        act('Unmatched multi-line', lambda line_no: out_token(line_no, ERROR_TOKEN, 'Unmatched *)'))
-
-    builder[statement].parse_rel(R_ANY_CHAR).default().\
-        act('Unexpected character', lambda line_no, last_parsed: out_token(line_no, ERROR_TOKEN, last_parsed))
-
-    # Stopping
-    builder[statement].parse_rel(EOF, ParsingProcess.OK)
-
-
-# Multi-line comment notion
-def add_multiline_comment(statement):
-    builder[statement].parse_rel('(*').complex('Multi-line comment')
-    multiline_comment_body = builder.loop_rel(True).select('Multi-line comment body').current
-
-    # Consuming chars (gulp!) until something interesting pops up
-    builder[multiline_comment_body].parse_rel(Eater.get_eater([R_EOL, '(*', '*)']))
-
-    builder[multiline_comment_body].parse_rel(R_EOL, inc_line_no)
-    builder[multiline_comment_body].parse_rel(EOF).check_only().\
-        act('EOF in comment', lambda line_no: [out_token(line_no, ERROR_TOKEN, 'EOF in comment'), ParsingProcess.BREAK])
-
-    builder[multiline_comment_body].parse_rel('(*', statement.owner.notion('Multi-line comment'))  # Nested comment
-    builder[multiline_comment_body].parse_rel('*)', ParsingProcess.BREAK)
-
-
-# Strings
-# Adding character to the string
 def add_to_string(last_parsed, string_body, string_error):
+    """
+    Adding parsed characters to the string body
+    """
     if not string_body:
         string_body = ''
     else:
-        if len(string_body) == MAX_STR_CONST:
+        l = len(string_body)
+
+        if l + len(last_parsed) > MAX_STR_CONST:
             return {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'overflow'}} if not string_error else None
 
     return {ParsingProcess.UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
 
 
-# Out the string and clean-up
-def out_string(line_no, string_body, string_error):
-    if string_error == 'unescaped_eol':
-        out_token(line_no + 1, ERROR_TOKEN, 'Unterminated string constant')  # +1 here is for compatibility purposes
-    elif string_error == 'null_char':
-        out_token(line_no, ERROR_TOKEN, 'String contains null character.')
-    elif string_error == 'null_char_esc':
-        out_token(line_no, ERROR_TOKEN, 'String contains escaped null character.')
-    elif string_error == 'overflow':
-        out_token(line_no, ERROR_TOKEN, 'String constant too long')
-    elif string_error == 'eof':
-        out_token(line_no, ERROR_TOKEN, 'EOF in string constant')
-    else:
-        out_token(line_no, STRING_CONST, string_body or '')
+class CoolLexer(object):
+    """
+    Main lexer class
+    """
+    def __init__(self, content, filename=None):
+        self.content, self.filename = content, filename
+        self.result = ''
 
-    return {ParsingProcess.DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
+        self.builder = GraphBuilder('COOL program')
+        self.build_graph()
 
+        self.parser = ParsingProcess()
 
-# String notion itself
-def add_strings(statement):
-    string = builder[statement].parse_rel('"').complex('String').current
-    string_chars = builder.loop_rel(True).select('String chars').current
-    builder[string].next_rel().act('Out string', out_string)
+    def out_token(self, line_no, token, data=''):
+        """
+        Out token to result
+        """
 
-    # 0 character error
-    builder[string_chars].parse_rel(ZERO_CHAR).\
-        act('Null character error', lambda: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
+        if token in (ERROR_TOKEN, STRING_CONST):
+            data = data.replace("\\", "\\\\")
+            data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
+                replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+                replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
+                replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
 
-    # If EOL matched stop the string with error or just break
-    builder[string_chars].parse_rel(R_EOL).check_only().\
-        act('EOL', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, ParsingProcess.BREAK])
+            data = '"' + data + '"'
 
-    # Stop if EOF
-    builder[string_chars].parse_rel(EOF).check_only().\
-        act('EOF error', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'eof'}}, ParsingProcess.BREAK])
+        self.result += '#%s %s %s\n' % (line_no, token, data) if data else '#%s %s\n' % (line_no, token)
 
-    # Escapes
-    escapes = builder[string_chars].parse_rel('\\').select('Escapes').current
+    def build_graph(self):
+        """
+        Make the lexing graph
+        """
+        statement = self.builder.loop_rel(True).select('Statement').current
 
-    builder[escapes].parse_rel(R_EOL,
-                  lambda string_body, string_error: tupled(add_to_string('\n', string_body, string_error), inc_line_no))
+        # Operators
+        self.builder[statement].parse_rel(TOKEN_DICT.keys(), ignore_case=True).\
+            act('Operator', lambda line_no, last_parsed: self.out_token(line_no, TOKEN_DICT[last_parsed.upper()]))
 
-    builder[escapes].parse_rel('n', lambda string_body, string_error: add_to_string('\n', string_body, string_error))
-    builder[escapes].parse_rel('t', lambda string_body, string_error: add_to_string('\t', string_body, string_error))
-    builder[escapes].parse_rel('b', lambda string_body, string_error: add_to_string('\b', string_body, string_error))
-    builder[escapes].parse_rel('f', lambda string_body, string_error: add_to_string('\f', string_body, string_error))
+        self.builder[statement].parse_rel(SINGLE_CHAR_OP).\
+            act('Single Char Operator', lambda line_no, last_parsed: self.out_token(line_no, '\'' + last_parsed + '\''))
 
-    builder[escapes].parse_rel(ZERO_CHAR).\
-        act('Escaped null character error',
-            lambda line_no: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
+        # Integers
+        self.builder[statement].parse_rel(R_INTEGER).\
+            act('Integer', lambda line_no, last_parsed: self.out_token(line_no, 'INT_CONST', last_parsed))
 
-    builder[escapes].parse_rel(R_ANY_CHAR, add_to_string)
+        # Booleans
+        self.builder[statement].parse_rel(R_BOOLEAN).\
+            act('Boolean', lambda line_no, last_parsed: self.out_token(line_no, 'BOOL_CONST', last_parsed.lower()))
 
-    # Finishing the string
-    builder[string_chars].parse_rel('"', ParsingProcess.BREAK)
+        # Object ID
+        self.builder[statement].parse_rel(R_OBJECT_ID).\
+            act('Object ID', lambda line_no, last_parsed: self.out_token(line_no, 'OBJECTID', last_parsed))
 
-    # Just a good char
-    builder[string_chars].parse_rel(R_ANY_CHAR, add_to_string).default()
+        # Type ID
+        self.builder[statement].parse_rel(R_TYPE_ID).\
+            act('Object ID', lambda line_no, last_parsed: self.out_token(line_no, 'TYPEID', last_parsed))
 
+        # New line: increment the counter
+        self.builder[statement].parse_rel(R_EOL).\
+            act('New Line', inc_line_no)
 
-build_graph()
+        # Skipping white space
+        self.builder[statement].parse_rel(R_WHITE_SPACE)
+
+        # Inline comments
+        self.builder[statement].parse_rel('--').complex('Inline comment').parse_rel(Eater.get_eater(R_EOL))
+
+        # Complex notions
+        self.add_multiline_comment(statement)
+        self.add_strings(statement)
+
+        # Errors
+        self.builder[statement].parse_rel('*)').\
+            act('Unmatched multi-line', lambda line_no: self.out_token(line_no, ERROR_TOKEN, 'Unmatched *)'))
+
+        self.builder[statement].parse_rel(R_ANY_CHAR).default().\
+            act('Unexpected character', lambda line_no, last_parsed: self.out_token(line_no, ERROR_TOKEN, last_parsed))
+
+        # Stopping
+        self.builder[statement].parse_rel(EOF, ParsingProcess.OK)
+
+    # Multi-line comment notion
+    def add_multiline_comment(self, statement):
+        self.builder[statement].parse_rel('(*').complex('Multi-line comment')
+        multiline_comment_body = self.builder.loop_rel(True).select('Multi-line comment body').current
+
+        self.builder[multiline_comment_body].parse_rel(R_EOL, inc_line_no)
+        self.builder[multiline_comment_body].parse_rel(EOF).check_only().\
+            act('EOF in comment', lambda line_no: [self.out_token(line_no, ERROR_TOKEN, 'EOF in comment'),
+                                                   ParsingProcess.BREAK])
+
+        # Nested comment
+        self.builder[multiline_comment_body].parse_rel('(*', statement.owner.notion('Multi-line comment'))
+        self.builder[multiline_comment_body].parse_rel('*)', ParsingProcess.BREAK)
+
+        # Consuming chars (gulp!) until something interesting pops up
+        self.builder[multiline_comment_body].parse_rel(Eater.get_eater([R_EOL, '(*', '*)'])).default()
+
+    def out_string(self, line_no, string_body, string_error):
+        """
+        Out the string and clean-up
+        """
+        if string_error == 'unescaped_eol':
+            self.out_token(line_no + 1, ERROR_TOKEN, 'Unterminated string constant')  # +1 here is for compatibility
+        elif string_error == 'null_char':
+            self.out_token(line_no, ERROR_TOKEN, 'String contains null character.')
+        elif string_error == 'null_char_esc':
+            self.out_token(line_no, ERROR_TOKEN, 'String contains escaped null character.')
+        elif string_error == 'overflow':
+            self.out_token(line_no, ERROR_TOKEN, 'String constant too long')
+        elif string_error == 'eof':
+            self.out_token(line_no, ERROR_TOKEN, 'EOF in string constant')
+        else:
+            self.out_token(line_no, STRING_CONST, string_body or '')
+
+        return {ParsingProcess.DELETE_CONTEXT: [STRING_BODY, STRING_ERROR]}
+
+    def add_strings(self, statement):
+        """
+        String notion itself
+        """
+        string = self.builder[statement].parse_rel('"').complex('String').current
+        string_chars = self.builder.loop_rel(True).select('String chars').current
+        self.builder[string].next_rel().act('Out string', self.out_string)
+
+        # 0 character error
+        self.builder[string_chars].parse_rel(ZERO_CHAR).\
+            act('Null character error', lambda: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
+
+        # If EOL matched stop the string with error or just break
+        self.builder[string_chars].parse_rel(R_EOL).check_only().\
+            act('EOL', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, ParsingProcess.BREAK])
+
+        # Stop if EOF
+        self.builder[string_chars].parse_rel(EOF).check_only().\
+            act('EOF error', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'eof'}}, ParsingProcess.BREAK])
+
+        # Escapes
+        escapes = self.builder[string_chars].parse_rel('\\').select('Escapes').current
+
+        self.builder[escapes].parse_rel(R_EOL,
+            lambda string_body, string_error: tupled(add_to_string('\n', string_body, string_error), inc_line_no))
+
+        self.builder[escapes].\
+            parse_rel('n', lambda string_body, string_error: add_to_string('\n', string_body, string_error))
+        self.builder[escapes].\
+            parse_rel('t', lambda string_body, string_error: add_to_string('\t', string_body, string_error))
+        self.builder[escapes].\
+            parse_rel('b', lambda string_body, string_error: add_to_string('\b', string_body, string_error))
+        self.builder[escapes].\
+            parse_rel('f', lambda string_body, string_error: add_to_string('\f', string_body, string_error))
+
+        self.builder[escapes].parse_rel(ZERO_CHAR).\
+            act('Escaped null character error',
+                lambda line_no: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char_esc'}})
+
+        self.builder[escapes].parse_rel(R_ANY_CHAR, add_to_string)
+
+        # Finishing the string
+        self.builder[string_chars].parse_rel('"', ParsingProcess.BREAK)
+
+        # Just a good chars
+        self.builder[string_chars].parse_rel(Eater.get_eater([ZERO_CHAR, R_EOL, '\\', '"']), add_to_string).default()
+
+    def lex(self):
+        """
+        Run lexing
+        """
+        self.result = ''
+        out = self.parser(Process.NEW, self.builder.graph, text=self.content, line_no=1)
+
+        if out != self.parser.OK:
+            raise SyntaxError('Could not lex %s: %s at %s' % (self.filename, out, self.parser.current))
+
+        return self.result
 
 
 def get_content(filename):
@@ -272,23 +300,18 @@ def lex_file(filename):
 
 
 def lex(content, filename):
-    global result
-    result = ''
-
     content += EOF
-    parser = ParsingProcess()
+    lexer = CoolLexer(content, filename)
 
     #from debug import ProcessDebugger
     #ProcessDebugger(parser).show_log()
 
-    out = parser(builder.graph, text=content, line_no=1)
-    if out != parser.OK:
-        raise SyntaxError('Could not lex %s: %s at %s' % (filename, out, parser.current))
-
-    return result
+    return lexer.lex()
 
 
 def main():
+    import sys
+
     if len(sys.argv) >= 2:
         print lex_file(sys.argv[1])
     else:
@@ -297,4 +320,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
