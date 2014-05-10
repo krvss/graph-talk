@@ -1246,9 +1246,9 @@ class SelectiveNotion(ComplexNotion):
 
             if result != ParsingProcess.ERROR and length >= 0:
                 max_len = max(length, max_len)
-                cases.append((rel, length))
+                cases.append((result, length))
 
-        best_cases = [case for case, length in cases if length == max_len]
+        best_cases = [result for result, length in cases if length == max_len]
 
         if not best_cases and self.default:  # Right time to use the default
             best_cases = [self.default]
@@ -1281,10 +1281,10 @@ class SelectiveNotion(ComplexNotion):
                 if not cases:
                     reply = case
                 else:
-                    reply = (StackingProcess.PUSH_CONTEXT,  # Keep the context if re-try will needed
-                             {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Store what to try next
-                             case,  # Try first case
-                             self)  # And come back again
+                    reply = tupled(StackingProcess.PUSH_CONTEXT,  # Keep the context if re-try will needed
+                                   {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Store what to try next
+                                   case,  # Try first case
+                                   self)  # And come back again
             else:
                 return ParsingProcess.ERROR
 
@@ -1300,12 +1300,12 @@ class SelectiveNotion(ComplexNotion):
             case = cases.pop(0)  # Try another case, if any
 
             # Pop context and update state, then try another case and come back here
-            return [StackingProcess.POP_CONTEXT,  # Roll back to the initial context
-                    {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Update cases
-                    StackingProcess.PUSH_CONTEXT,  # Save updated context
-                    self.NEXT,  # Go forward again
-                    case,  # Try another case
-                    self]  # Come back
+            return tupled(StackingProcess.POP_CONTEXT,  # Roll back to the initial context
+                          {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Update cases
+                          StackingProcess.PUSH_CONTEXT,  # Save updated context
+                          self.NEXT,  # Go forward again
+                          case,  # Try another case
+                          self)  # Come back
         else:
             return self.do_finish()  # No more opportunities
 

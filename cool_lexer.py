@@ -194,8 +194,10 @@ class CoolLexer(object):
         # Stopping
         self.builder[statement].parse_rel(EOF, ParsingProcess.OK)
 
-    # Multi-line comment notion
     def add_multiline_comment(self, statement):
+        """
+        Multi-line comment notion
+        """
         self.builder[statement].parse_rel('(*').complex('Multi-line comment')
         multiline_comment_body = self.builder.loop_rel(True).select('Multi-line comment body').current
 
