@@ -143,8 +143,8 @@ class Condition(Access):
 
     NO_CHECK = -1, None
 
-    def __init__(self, value, ignore_case=False):
-        self._ignore_case = ignore_case
+    def __init__(self, value, ignore_case=False, state=None):
+        self._ignore_case, self.state = ignore_case, tupled(state or [])
         self.check, self._conditions = self.check_compare, tuple([self])
         super(Condition, self).__init__(value)
 
@@ -202,6 +202,7 @@ class Condition(Access):
         return rank, check
 
     def check_string(self, message, context):
+        #print "checking string %s %s for %s" % (message, context, self.value)  # TODO: check type of message[0] before calling
         try:
             message0 = message[0][:len(self._value)]
 
@@ -314,15 +315,18 @@ class Handler(Abstract):
     def __init__(self):
         Access.get_access(self, True)
 
-        self.events = []
+        self._state = ()
+        self._events, self.active_events = [], tuple()
         self.unknown_event = None
 
     def on_access(self, condition_access, event_access):
         """
         Adding the accesses
         """
-        if (condition_access, event_access) not in self.events:
-            self.events.append((condition_access, event_access))
+        if (condition_access, event_access) not in self._events:
+            self._events.append((condition_access, event_access))
+
+            self.update_events()
 
     def on(self, condition, event):
         """
@@ -340,8 +344,10 @@ class Handler(Abstract):
         """
         Removing the condition - event pair
         """
-        if (condition, event) in self.events:
-            self.events.remove((condition, event))
+        if (condition, event) in self._events:
+            self._events.remove((condition, event))
+
+            self.update_events()
 
     def off_any(self, event):
         """
@@ -353,22 +359,64 @@ class Handler(Abstract):
         """
         Removing all the events for the condition
         """
-        self.events = filter(lambda e: not (e[0] == condition), self.events)
+        self._events = filter(lambda e: not (e[0] == condition), self._events)
+
+        self.update_events()
 
     def off_event(self, event):
         """
         Remove all occurrences of the event
         """
-        self.events = filter(lambda e: not (e[1] == event), self.events)
+        self._events = filter(lambda e: not (e[1] == event), self._events)
+
+        self.update_events()
 
     def get_events(self, condition=None):
         """
         Getting the events for the specified condition
         """
         if condition:
-            return [e[1] for e in self.events if has_first(e, condition)]
+            return [e[1] for e in self._events if has_first(e, condition)]
         else:
-            return [e[1] for e in self.events if e[0] == TRUE_CONDITION]
+            return [e[1] for e in self._events if e[0] == TRUE_CONDITION]
+
+    def update_state(self):
+        """
+        Called when update needed, returns new state
+        """
+        return self._state
+
+    def update_events(self):
+        """
+        Called when event update needed (for example, after new event was added or state was changed)
+        """
+        new_active = []
+
+        for condition, event in self._events:
+            append = False
+
+            if condition.state:
+                for state in condition.state:  # If any specified state presents in current state - good to go
+                    if state in self._state:
+                        append = True
+            else:
+                append = not self._state  # Default state
+
+            if append:
+                new_active.append((condition, event))
+
+        self.active_events = tuple(new_active)
+
+    def update(self):
+        """
+        Update is called by the object itself when something is changed and it could change the state
+        """
+        new_state = self.update_state()
+
+        if new_state != self.state:
+            self.state = new_state
+
+            self.update_events()
 
     def handle(self, message, context):
         """
@@ -376,7 +424,7 @@ class Handler(Abstract):
         """
         global logging
         if logging:
-            print "%s.handle of %s, events %s" % (type(self), message, len(self.events))
+            print "%s.handle of %s, events %s" % (type(self), message, len(self._events))
 
         check, rank, event_found = self.NO_HANDLE
 
@@ -384,7 +432,7 @@ class Handler(Abstract):
             context[self.SENDER] = self
 
         # Searching for the best event
-        for condition_access, event_access in self.events:
+        for condition_access, event_access in self.active_events:
             if logging:
                 t1 = time.time()
 
@@ -423,6 +471,18 @@ class Handler(Abstract):
             return result[0], result[1]
 
         return result[0]  # No need to know the details
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, value):
+        self._state = tupled(value)
+
+    @property
+    def events(self):
+        return self._events
 
 
 class Element(Handler):
@@ -853,7 +913,7 @@ class Process(Handler):
             elif result[0] in (None, True):
                 continue  # No need to put it into the message
 
-            self.set_message(result[0], True)
+            self.set_message(result[0], True)  # TODO Update here?
 
         return result
 
