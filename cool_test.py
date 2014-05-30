@@ -1,6 +1,7 @@
 from cool_lexer import *
-from brainfuck import test_interpreter
+from debug import *
 from line_profiler import LineProfiler
+from pycparser import CppHeaderParser
 
 import glob
 
@@ -10,6 +11,7 @@ h_pr = hotshot.Profile("ut.prof")
 l_pr = LineProfiler()
 
 mode = None
+
 
 # Total test of grading
 def total_test():
@@ -79,7 +81,22 @@ def end_profiler():
         l_pr.disable()
         l_pr.print_stats()
 
-start_profiler('c')
+
+def get_test_graph():
+    #from ut import *
+    builder = GraphBuilder('Test')
+    c = builder.next_rel().select('s').current
+    builder.parse_rel('a').act('A', True)
+    builder[c].parse_rel('b').act('B', True)
+
+    p = ParsingProcess()
+    set_logging(True)
+    #ProcessDebugger(p).show_log()
+    return p, builder.graph
+
+#p, g = get_test_graph()
+
+#start_profiler('c')
 
 #l_pr.add_function(Handler.handle)
 l_pr.add_function(Condition.check_string)
@@ -87,30 +104,33 @@ l_pr.add_function(Condition.check_function)
 l_pr.add_function(Condition.check_list)
 
 
+#print lex(generate_tokens(), '')
 #print lex(generate_ints(), '')
 #h_pr.runcall(lex_file, "grading/arith.cool")
 
-#set_logging(True)
+t1 = time.time()
 
-#total_test()
-#t1 = time.time()
+#print lex(r'"\"this"', "")
+
+#print lex_file("grading/backslash.cool")
 lex_file("grading/arith.cool")
-#print time.time() - t1
+#total_test()
+
+#print p(g, text='b')
+
 
 '''
-from ut import *
-builder = GraphBuilder('Test')
-builder.next_rel('a').act('A', True)
+try:
+    cppHeader = CppHeaderParser.CppHeader("/Users/skravets/Desktop/ui.h")
+except CppHeaderParser.CppParseError as e:
+    print(e)
+    sys.exit(1)
 
-p = ParsingProcess()
-start_profiler('c')
-set_logging(True)
-print p(builder.graph.root, TEXT='a')
+print cppHeader.classes
 '''
 
-'''
-test_interpreter()
-'''
+print time.time() - t1
+
 # TODO: profiler
 
 end_profiler()
@@ -127,6 +147,4 @@ atoi.cool - 7
 io.cool - 6
 new_complex.cool - 2
 hairyscary.cool - 2
-
-
 '''

@@ -380,15 +380,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h('strange'), 'handler1')
 
         # States check
-        spec = Condition('strange', state=['spec', 'case'])
-        h.on_access(spec, Event(True))
+        h.on('strange', Event(True), ['spec', 'case'])
 
         self.assertEqual(h('strange'), 'handler1')
 
         h.state = 'strange'
         h.update()
 
-        self.assertTrue(h('strange'))
+        self.assertEqual(h('strange'), 'handler1')
 
         h.state = ['case', 'strange']
         h.update()
@@ -399,6 +398,9 @@ class UtTests(unittest.TestCase):
         h.update()
 
         self.assertEqual(h('strange'), 'handler1')
+
+        h.on('stranger', Event(True), '*')
+        self.assertTrue(h('stranger'))
 
     def test_4_element(self):
         e = Element()
@@ -707,7 +709,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(process._queue), 1)
         self.assertFalse(process.message)
 
-    def test_9_context(self):
+    def test_9_shared(self):
         # Verify correctness of adding
         # Root -> (a, b)
         root = ComplexNotion('root')
@@ -906,52 +908,9 @@ class UtTests(unittest.TestCase):
         inc.action = process.CLEAR_STATE
         r = process(root, test='test_states_3')
 
-        self.assertEqual(r, process.OK)
+        self.assertEqual(r, False)  # Because cleared 2 times
         self.assertFalse(process.states)
-        self.assertEqual(process.current, check)
-
-        # Notifications
-        while root.relations:
-            root.relations[0].subject = None
-
-        t = ActionNotion('terminator', has_notification)
-        NextRelation(root, t)
-
-        notification = {process.NOTIFY: {process.TO: t, process.INFO: {'note': process.OK}}}
-
-        r = process(process.NEW, dict(notification), root, test='test_states_4')
-
-        self.assertEqual(r, process.OK)
-        self.assertEqual(process.current, t)
-
-        # Test states and the stacking context
-        private = {'private': {'super_private': 'traveling'}}
-        t.action = lambda **c: {process.SET_STATE: private} if not 'private' in c[process.STATE] else \
-                                   {process.SET_STATE: {'private': {'super_private': 'home', 'more': 'none'}}}
-
-        t2 = ActionNotion('terminator2', (process.PUSH_CONTEXT, ))
-        NextRelation(root, t2)
-
-        NextRelation(root, t)
-
-        t3 = ActionNotion('terminator2', (process.POP_CONTEXT, ))
-        NextRelation(root, t3)
-
-        r = process(process.NEW, root, test='test_states_5')
-
-        self.assertTrue(r is None)
-        self.assertEqual(process.states.get(t), private)
-        self.assertNotIn('more', process.states.get(t)['private'])
-
-        # Test notifications and the stacking context
-        root.relations[0].subject = None
-        t.action = {process.NOTIFY: {process.TO: t, process.INFO: {'note': False}}}
-
-        r = process(process.NEW, dict(notification), root, test='test_states_5')
-
-        self.assertTrue(r is None)
-        self.assertEqual(process.states[t][process.NOTIFICATIONS],
-                         notification[process.NOTIFY][process.INFO])
+        self.assertEqual(process.current, inc)
 
     def test_d_parsing(self):
         # Proceed test

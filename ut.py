@@ -328,11 +328,11 @@ class Handler(Abstract):
 
             self.update_events()
 
-    def on(self, condition, event):
+    def on(self, condition, event, state=None):
         """
         Adding the condition - event pair
         """
-        self.on_access(Condition(condition), Event(event))
+        self.on_access(Condition(condition, state=state), Event(event))
 
     def on_any(self, event):
         """
@@ -393,12 +393,12 @@ class Handler(Abstract):
         new_active = []
 
         for condition, event in self._events:
-            append = False
+            append = True
 
             if condition.state:
-                for state in condition.state:  # If any specified state presents in current state - good to go
-                    if state in self._state:
-                        append = True
+                for state in condition.state:  # If any specified state absent in the current state - no way
+                    if state not in self._state and state != '*':
+                        append = False
             else:
                 append = not self._state  # Default state
 
@@ -424,7 +424,7 @@ class Handler(Abstract):
         """
         global logging
         if logging:
-            print "%s.handle of %s, events %s" % (type(self), message, len(self._events))
+            print "%s.handle of %s, events %s" % (type(self), message, len(self.active_events))
 
         check, rank, event_found = self.NO_HANDLE
 
@@ -760,6 +760,8 @@ class Process(Handler):
     MESSAGE = 'message'
     QUERY = 'query'
 
+    EMPTY_MESSAGE = 'empty_' + MESSAGE
+
     def __init__(self):
         super(Process, self).__init__()
 
@@ -818,8 +820,7 @@ class Process(Handler):
         """
         Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
         """
-        if self.message:
-            return Access.get_access(self.message[0], True).mode in (Access.CALL, Access.FUNCTION)
+        return Access.get_access(self.message[0], True).mode in (Access.CALL, Access.FUNCTION)
 
     def do_queue_push(self):
         self.to_queue({self.CURRENT: self.message.pop(0),
@@ -829,16 +830,10 @@ class Process(Handler):
         """
         Queue pop: when current queue item is empty we can remove it
         """
-        return len(self._queue) > 1 and not message
+        return len(self._queue) > 1
 
     def do_queue_pop(self):
         self._queue.pop()
-
-    def can_query(self, *message):
-        """
-        Query: should we ask the query to the current current
-        """
-        return self.current and has_first(message, self.QUERY)
 
     def do_query(self):
         self.message.pop(0)
@@ -863,8 +858,7 @@ class Process(Handler):
         """
         Cleanup: remove empty message item
         """
-        if message:
-            return not message[0]
+        return not message[0]
 
     def do_clear_message(self):
         self.message.pop(0)
@@ -872,18 +866,36 @@ class Process(Handler):
     def do_finish(self):
         return self.message.pop(0)
 
+    def update_state(self):
+        """
+        Check and return the new state
+        """
+        state = []
+
+        if self.message:
+            state.append(self.MESSAGE)
+        else:
+            state.append(self.EMPTY_MESSAGE)
+
+        if self.current:
+            state.append(self.CURRENT)
+
+        return state
+
     def setup_handlers(self):
         """
         Init handlers
         """
-        self.on(self.NEW, self.do_new)
-        self.on(self.SKIP, self.do_skip)
-        self.on((self.STOP, self.OK, True, False), self.do_finish)
+        self.on(self.NEW, self.do_new, self.MESSAGE)
+        self.on(self.SKIP, self.do_skip, self.MESSAGE)
+        self.on((self.STOP, self.OK, True, False), self.do_finish, self.MESSAGE)
 
-        self.on(self.can_query, self.do_query)
-        self.on(self.can_push_queue, self.do_queue_push)
-        self.on(self.can_pop_queue, self.do_queue_pop)
-        self.on(self.can_clear_message, self.do_clear_message)
+        self.on(self.QUERY, self.do_query, self.CURRENT)
+
+        self.on(self.can_push_queue, self.do_queue_push, self.MESSAGE)
+        self.on(self.can_pop_queue, self.do_queue_pop, self.EMPTY_MESSAGE)
+
+        self.on(self.can_clear_message, self.do_clear_message, self.MESSAGE)
 
     def on_start(self, new_message, new_context):
         """
@@ -905,6 +917,7 @@ class Process(Handler):
         result = self.NO_HANDLE
 
         while self.message or len(self._queue) > 1:
+            self.update()
             result = super(Process, self).handle(self.message, self.context)
 
             if result[0] in (self.OK, self.STOP, False):
@@ -913,7 +926,7 @@ class Process(Handler):
             elif result[0] in (None, True):
                 continue  # No need to put it into the message
 
-            self.set_message(result[0], True)  # TODO Update here?
+            self.set_message(result[0], True)
 
         return result
 
@@ -938,6 +951,8 @@ class SharedProcess(Process):
     UPDATE_CONTEXT = 'update_context'
     DELETE_CONTEXT = 'delete_context'
 
+    FIRST_DICT = 'first_dict'
+
     def context_add(self, key, value):
         self.context[key] = value
 
@@ -952,8 +967,7 @@ class SharedProcess(Process):
         """
         Do we have add context command
         """
-        return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(self.ADD_CONTEXT), dict)
+        return isinstance(message[0].get(self.ADD_CONTEXT), dict)
 
     def do_add_context(self):
         """
@@ -969,8 +983,7 @@ class SharedProcess(Process):
         """
         Updating the context
         """
-        return message and isinstance(message[0], dict) \
-            and isinstance(message[0].get(self.UPDATE_CONTEXT), dict)
+        return isinstance(message[0].get(self.UPDATE_CONTEXT), dict)
 
     def do_update_context(self):
         update = self.message[0].pop(self.UPDATE_CONTEXT)
@@ -982,8 +995,7 @@ class SharedProcess(Process):
         """
         Deleting items from the context
         """
-        return message and isinstance(message[0], dict) \
-            and self.DELETE_CONTEXT in message[0]
+        return self.DELETE_CONTEXT in message[0]
 
     def do_delete_context(self):
         delete = self.message[0].pop(self.DELETE_CONTEXT)
@@ -996,12 +1008,21 @@ class SharedProcess(Process):
         elif delete in self.context:
             self.context_delete(delete)
 
+    def update_state(self):
+        state = super(SharedProcess, self).update_state()
+
+        if self.MESSAGE in state:
+            if isinstance(self.message[0], dict):
+                state.append(self.FIRST_DICT)
+
+        return state
+
     def setup_handlers(self):
         super(SharedProcess, self).setup_handlers()
 
-        self.on(self.can_add_context, self.do_add_context)
-        self.on(self.can_update_context, self.do_update_context)
-        self.on(self.can_delete_context, self.do_delete_context)
+        self.on(self.can_add_context, self.do_add_context, self.FIRST_DICT)
+        self.on(self.can_update_context, self.do_update_context, self.FIRST_DICT)
+        self.on(self.can_delete_context, self.do_delete_context, self.FIRST_DICT)
 
 
 class StackingProcess(SharedProcess):
@@ -1012,6 +1033,8 @@ class StackingProcess(SharedProcess):
     PUSH_CONTEXT = 'push_context'
     POP_CONTEXT = 'pop_context'
     FORGET_CONTEXT = 'forget_context'
+
+    TRACKING = 'tracking'
 
     def __init__(self):
         super(StackingProcess, self).__init__()
@@ -1047,26 +1070,28 @@ class StackingProcess(SharedProcess):
         self.message.pop(0)
         self._context_stack.append(DictChangeGroup())
 
-    def can_pop_context(self, *message):
-        return self.is_tracking() and has_first(message, self.POP_CONTEXT)
-
     def do_pop_context(self):
         self.message.pop(0)
         self._context_stack.pop().undo()
-
-    def can_forget_context(self, *message):
-        return self.is_tracking() and has_first(message, self.FORGET_CONTEXT)
 
     def do_forget_context(self):
         self.message.pop(0)
         self._context_stack.pop()
 
+    def update_state(self):
+        state = super(StackingProcess, self).update_state()
+
+        if self.is_tracking():
+            state.append(self.TRACKING)
+
+        return state
+
     def setup_handlers(self):
         super(StackingProcess, self).setup_handlers()
 
-        self.on(self.PUSH_CONTEXT, self.do_push_context)
-        self.on(self.can_pop_context, self.do_pop_context)
-        self.on(self.can_forget_context, self.do_forget_context)
+        self.on(self.PUSH_CONTEXT, self.do_push_context, self.MESSAGE)
+        self.on(self.POP_CONTEXT, self.do_pop_context, self.TRACKING)
+        self.on(self.FORGET_CONTEXT, self.do_forget_context, self.TRACKING)
 
 
 class StatefulProcess(StackingProcess):
@@ -1078,14 +1103,14 @@ class StatefulProcess(StackingProcess):
     SET_STATE = 'set_state'
     CLEAR_STATE = 'clear_state'
 
-    NOTIFY = 'notify'
-    TO = 'to'
-    INFO = 'info'
-    NOTIFICATIONS = 'notifications'
+    HAS_STATES = 'has_states'
 
     def __init__(self):
         super(StatefulProcess, self).__init__()
         self.states = {}
+
+    def has_states(self):
+        return len(self.states) > 0
 
     def _add_current_state(self):
         self.context[self.STATE] = self.states.get(self.current, {})
@@ -1122,44 +1147,29 @@ class StatefulProcess(StackingProcess):
 
     # Events #
     def can_set_state(self, *message):
-        return self.current and message and isinstance(message[0], dict) \
-            and self.SET_STATE in message[0]
+        return self.SET_STATE in message[0]
 
     def do_set_state(self):
         value = self.message[0].pop(self.SET_STATE)
         self._set_state(self.current, value)
 
-    def can_clear_state(self, *message):
-        return self.current and message and has_first(message, self.CLEAR_STATE)
-
     def do_clear_state(self):
         self.message.pop(0)
         self._clear_state(self.current)
 
-    def can_notify(self, *message):
-        return message and isinstance(message[0], dict) and isinstance(message[0].get(self.NOTIFY), dict) \
-            and has_keys(message[0].get(self.NOTIFY), self.TO, self.INFO)
+    def update_state(self):
+        state = super(StatefulProcess, self).update_state()
 
-    def do_notify(self):
-        notification = self.message[0].pop(self.NOTIFY)
-        to = notification[self.TO]
-        info = notification[self.INFO]
+        if self.has_states():
+            state.append(self.HAS_STATES)
 
-        if not to in self.states:
-            self._set_state(to, {})
-
-        operation = DictChangeOperation.ADD if not self.NOTIFICATIONS in self.states[to] \
-            else DictChangeOperation.SET
-
-        self.run_tracking_operation(DictChangeOperation(self.states[to], operation,
-                                                        self.NOTIFICATIONS, info))
+        return state
 
     def setup_handlers(self):
         super(StatefulProcess, self).setup_handlers()
 
-        self.on(self.can_set_state, self.do_set_state)
-        self.on(self.can_clear_state, self.do_clear_state)
-        self.on(self.can_notify, self.do_notify)
+        self.on(self.can_set_state, self.do_set_state, (self.CURRENT, self.FIRST_DICT))
+        self.on(self.CLEAR_STATE, self.do_clear_state, (self.CURRENT, self.MESSAGE, self.HAS_STATES))
 
 
 class ParsingProcess(StatefulProcess):
@@ -1195,9 +1205,6 @@ class ParsingProcess(StatefulProcess):
         """
         Proceed: part of the Text was parsed, consume it
         """
-        if not message or not isinstance(message[0], dict):
-            return False
-
         distance = message[0].get(self.PROCEED)
         return is_number(distance) and len(self.context.get(self.TEXT)) >= distance
 
@@ -1223,8 +1230,8 @@ class ParsingProcess(StatefulProcess):
     def setup_handlers(self):
         super(ParsingProcess, self).setup_handlers()
 
-        self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn)
-        self.on(self.can_proceed, self.do_proceed)
+        self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, self.MESSAGE)
+        self.on(self.can_proceed, self.do_proceed, self.FIRST_DICT)
 
     @property
     def text(self):
