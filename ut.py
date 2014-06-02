@@ -202,7 +202,6 @@ class Condition(Access):
         return rank, check
 
     def check_string(self, message, context):
-        #print "checking string %s %s for %s" % (message, context, self.value)  # TODO: check type of message[0] before calling
         try:
             message0 = message[0][:len(self._value)]
 
@@ -390,13 +389,7 @@ class Handler(Abstract):
         """
         Called when event update needed (for example, after new event was added or state was changed)
         """
-        new_active = []
-
-        for condition, event in self._events:
-            if condition.state.issubset(self.state):
-                new_active.append((condition, event))
-
-        self.active_events = tuple(new_active)
+        self.active_events = tuple(filter(lambda e: e[0].state.issubset(self._state), self._events))
 
     def update(self):
         """
@@ -404,7 +397,7 @@ class Handler(Abstract):
         """
         new_state = self.update_state()
 
-        if new_state != self.state:
+        if new_state != self._state:
             self.state = new_state
 
             self.update_events()
@@ -780,7 +773,7 @@ class Process(Handler):
         Put the new item in the queue, updating the empty one, if presents
         """
         if not self.message:
-            self.queue_top.update(values)  # No need to keep the empty one in the queue
+           self._queue[-1].update(values)  # No need to keep the empty one in the queue
         else:
             if not self.CURRENT in values:
                 values[self.CURRENT] = self.current  # It is better to keep the current current
@@ -796,7 +789,7 @@ class Process(Handler):
         if insert:
             message.extend(self.message)
 
-        self.queue_top[self.MESSAGE] = message
+        self._queue[-1][self.MESSAGE] = message
 
     # Events #
     def do_new(self):
@@ -806,7 +799,7 @@ class Process(Handler):
         self.message.pop(0)
         del self._queue[:-1]
 
-        self.queue_top[self.CURRENT] = None
+        self._queue[-1][self.CURRENT] = None
 
     def can_push_queue(self):
         """
@@ -883,9 +876,10 @@ class Process(Handler):
         """
         self.on(self.NEW, self.do_new, self.FIRST_STRING)
         self.on(self.SKIP, self.do_skip, self.FIRST_STRING)
-        self.on((self.STOP, self.OK, True, False), self.do_finish, self.MESSAGE)
+        self.on((self.STOP, self.OK), self.do_finish, self.FIRST_STRING)
+        self.on((True, False), self.do_finish, self.MESSAGE)
 
-        self.on(self.QUERY, self.do_query, self.CURRENT)
+        self.on(self.QUERY, self.do_query, self.FIRST_STRING, self.CURRENT)
 
         self.on(self.can_push_queue, self.do_queue_push, self.MESSAGE)
         self.on(self.can_pop_queue, self.do_queue_pop, self.EMPTY_MESSAGE)
@@ -926,16 +920,12 @@ class Process(Handler):
         return result
 
     @property
-    def queue_top(self):
-        return self._queue[-1]
-
-    @property
     def message(self):
-        return self.queue_top.get(self.MESSAGE)
+        return self._queue[-1].get(self.MESSAGE)
 
     @property
     def current(self):
-        return self.queue_top.get(self.CURRENT)
+        return self._queue[-1].get(self.CURRENT)
 
 
 class SharedProcess(Process):
