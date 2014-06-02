@@ -380,7 +380,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h('strange'), 'handler1')
 
         # States check
-        h.on('strange', Event(True), ['spec', 'case'])
+        h.on('strange', Event(True), 'spec', 'case')
 
         self.assertEqual(h('strange'), 'handler1')
 
@@ -389,18 +389,15 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(h('strange'), 'handler1')
 
-        h.state = ['case', 'strange']
+        h.state = set(['case', 'strange'])
         h.update()
 
         self.assertTrue(h('strange'))
 
-        h.state = []
+        h.state = set()
         h.update()
 
         self.assertEqual(h('strange'), 'handler1')
-
-        h.on('stranger', Event(True), '*')
-        self.assertTrue(h('stranger'))
 
     def test_4_element(self):
         e = Element()
