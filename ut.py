@@ -1291,7 +1291,7 @@ class SelectiveNotion(ComplexNotion):
         cases = []
         max_len = -1
         for rel in self.relations:
-            if rel == self.default:  # Not now
+            if rel == self._default:  # Not now
                 continue
 
             result, length = rel(*message, **context)  # With the rank, please
@@ -1302,8 +1302,8 @@ class SelectiveNotion(ComplexNotion):
 
         best_cases = [result for result, length in cases if length == max_len]
 
-        if not best_cases and self.default:  # Right time to use the default
-            best_cases = [self.default]
+        if not best_cases and self._default:  # Right time to use the default
+            best_cases = [self._default]
 
         return best_cases
 
@@ -1313,7 +1313,7 @@ class SelectiveNotion(ComplexNotion):
         """
         super(SelectiveNotion, self).do_relation(*message, **context)
 
-        if self.default and not self.default in self.relations:
+        if self._default and not self._default in self.relations:
             self.default = None
 
     # Events #
