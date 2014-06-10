@@ -143,9 +143,13 @@ class Condition(Access):
 
     NO_CHECK = -1, None
 
-    def __init__(self, value, ignore_case=False, *state):
-        self._ignore_case, self.state = ignore_case, frozenset(state)
+    def __init__(self, value, ignore_case=False, *state, **kwstate):
+        self._ignore_case = ignore_case
         self.check, self._conditions = self.check_compare, tuple([self])
+
+        self.state = kwstate
+        self.state.update(dict.fromkeys(state, True))
+
         super(Condition, self).__init__(value)
 
     def setup(self):
@@ -314,7 +318,7 @@ class Handler(Abstract):
     def __init__(self):
         Access.get_access(self, True)
 
-        self._state = set()
+        self._state = {}
         self._events, self.active_events = [], tuple()
         self.unknown_event = None
 
@@ -327,11 +331,11 @@ class Handler(Abstract):
 
             self.update_events()
 
-    def on(self, condition, event, *state):
+    def on(self, condition, event, *state, **kwstate):
         """
         Adding the condition - event pair
         """
-        self.on_access(Condition(condition, False, *state), Event(event))
+        self.on_access(Condition(condition, False, *state, **kwstate), Event(event))
 
     def on_any(self, event):
         """
@@ -379,6 +383,13 @@ class Handler(Abstract):
         else:
             return [e[1] for e in self._events if e[0] == TRUE_CONDITION]
 
+    def set_state_item(self, name, value):
+        """
+        Sets the value of the individual state item
+        """
+        self._state[name] = value
+        self.update_events()
+
     def update_state(self):
         """
         Called when update needed, returns new state
@@ -389,18 +400,30 @@ class Handler(Abstract):
         """
         Called when event update needed (for example, after new event was added or state was changed)
         """
-        self.active_events = tuple(filter(lambda e: e[0].state.issubset(self._state), self._events))
+        new_events = []
+        for condition, event in self._events:
+            append = True
+
+            if condition.state:
+                for k, v in condition.state.iteritems():
+                    if v is True:
+                        if not k in self._state:
+                            append = False
+                    elif self._state.get(k) != v:
+                        append = False
+            else:
+                append = not self._state
+
+            if append:
+                new_events.append((condition, event))
+
+        self.active_events = tuple(new_events)
 
     def update(self):
         """
         Update is called by the object itself when something is changed and it could change the state
         """
-        new_state = self.update_state()
-
-        if new_state != self._state:
-            self.state = new_state
-
-            self.update_events()
+        self.state = self.update_state()
 
     def handle(self, message, context):
         """
@@ -462,7 +485,10 @@ class Handler(Abstract):
 
     @state.setter
     def state(self, value):
-        self._state = frozenset(value)
+        if value != self._state:
+            self._state = value
+
+            self.update_events()
 
     @property
     def events(self):
@@ -745,7 +771,6 @@ class Process(Handler):
     QUERY = 'query'
 
     EMPTY_MESSAGE = 'empty_' + MESSAGE
-    FIRST_STRING = 'first_string'
 
     def __init__(self):
         super(Process, self).__init__()
@@ -855,18 +880,18 @@ class Process(Handler):
         """
         Check and return the new state
         """
-        state = set()
+        state = {}
 
         if self.message:
-            state.add(self.MESSAGE)
+            state[self.MESSAGE] = True
 
             if is_string(self.message[0]):
-                state.add(self.FIRST_STRING)
+                state[Condition.STRING] = True
         else:
-            state.add(self.EMPTY_MESSAGE)
+            state[self.EMPTY_MESSAGE] = True
 
         if self.current:
-            state.add(self.CURRENT)
+            state[self.CURRENT] = True
 
         return state
 
@@ -874,12 +899,12 @@ class Process(Handler):
         """
         Init handlers
         """
-        self.on(self.NEW, self.do_new, self.FIRST_STRING)
-        self.on(self.SKIP, self.do_skip, self.FIRST_STRING)
-        self.on((self.STOP, self.OK), self.do_finish, self.FIRST_STRING)
+        self.on(self.NEW, self.do_new, Condition.STRING)
+        self.on(self.SKIP, self.do_skip, Condition.STRING)
+        self.on((self.STOP, self.OK), self.do_finish, Condition.STRING)
         self.on((True, False), self.do_finish, self.MESSAGE)
 
-        self.on(self.QUERY, self.do_query, self.FIRST_STRING, self.CURRENT)
+        self.on(self.QUERY, self.do_query, Condition.STRING, self.CURRENT)
 
         self.on(self.can_push_queue, self.do_queue_push, self.MESSAGE)
         self.on(self.can_pop_queue, self.do_queue_pop, self.EMPTY_MESSAGE)
@@ -935,8 +960,6 @@ class SharedProcess(Process):
     ADD_CONTEXT = 'add_context'
     UPDATE_CONTEXT = 'update_context'
     DELETE_CONTEXT = 'delete_context'
-
-    FIRST_DICT = 'first_dict'
 
     def context_add(self, key, value):
         self.context[key] = value
@@ -998,16 +1021,16 @@ class SharedProcess(Process):
 
         if self.MESSAGE in state:
             if isinstance(self.message[0], dict):
-                state.add(self.FIRST_DICT)
+                state[Condition.DICT] = True
 
         return state
 
     def setup_handlers(self):
         super(SharedProcess, self).setup_handlers()
 
-        self.on(self.can_add_context, self.do_add_context, self.FIRST_DICT)
-        self.on(self.can_update_context, self.do_update_context, self.FIRST_DICT)
-        self.on(self.can_delete_context, self.do_delete_context, self.FIRST_DICT)
+        self.on(self.can_add_context, self.do_add_context, Condition.DICT)
+        self.on(self.can_update_context, self.do_update_context, Condition.DICT)
+        self.on(self.can_delete_context, self.do_delete_context, Condition.DICT)
 
 
 class StackingProcess(SharedProcess):
@@ -1067,16 +1090,16 @@ class StackingProcess(SharedProcess):
         state = super(StackingProcess, self).update_state()
 
         if self.is_tracking():
-            state.add(self.TRACKING)
+            state[self.TRACKING] = True
 
         return state
 
     def setup_handlers(self):
         super(StackingProcess, self).setup_handlers()
 
-        self.on(self.PUSH_CONTEXT, self.do_push_context, self.FIRST_STRING)
-        self.on(self.POP_CONTEXT, self.do_pop_context, self.TRACKING, self.FIRST_STRING)
-        self.on(self.FORGET_CONTEXT, self.do_forget_context, self.TRACKING, self.FIRST_STRING)
+        self.on(self.PUSH_CONTEXT, self.do_push_context, Condition.STRING)
+        self.on(self.POP_CONTEXT, self.do_pop_context, self.TRACKING, Condition.STRING)
+        self.on(self.FORGET_CONTEXT, self.do_forget_context, self.TRACKING, Condition.STRING)
 
 
 class StatefulProcess(StackingProcess):
@@ -1146,15 +1169,15 @@ class StatefulProcess(StackingProcess):
         state = super(StatefulProcess, self).update_state()
 
         if self.has_states():
-            state.add(self.HAS_STATES)
+            state[self.HAS_STATES] = True
 
         return state
 
     def setup_handlers(self):
         super(StatefulProcess, self).setup_handlers()
 
-        self.on(self.can_set_state, self.do_set_state, self.CURRENT, self.FIRST_DICT)
-        self.on(self.CLEAR_STATE, self.do_clear_state, self.CURRENT, self.FIRST_STRING, self.HAS_STATES)
+        self.on(self.can_set_state, self.do_set_state, self.CURRENT, Condition.DICT)
+        self.on(self.CLEAR_STATE, self.do_clear_state, self.CURRENT, self.HAS_STATES, Condition.STRING)
 
 
 class ParsingProcess(StatefulProcess):
@@ -1215,8 +1238,8 @@ class ParsingProcess(StatefulProcess):
     def setup_handlers(self):
         super(ParsingProcess, self).setup_handlers()
 
-        self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, self.FIRST_STRING)
-        self.on(self.can_proceed, self.do_proceed, self.FIRST_DICT)
+        self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, Condition.STRING)
+        self.on(self.can_proceed, self.do_proceed, Condition.DICT)
 
     @property
     def text(self):

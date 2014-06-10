@@ -380,22 +380,18 @@ class UtTests(unittest.TestCase):
         self.assertEqual(h('strange'), 'handler1')
 
         # States check
-        h.on('strange', Event(True), 'spec', 'case')
-
+        h.on('strange', Event(True), 'spec', case=1)
         self.assertEqual(h('strange'), 'handler1')
 
-        h.state = 'strange'
-        h.update()
-
+        h.set_state_item('strange', 0)
         self.assertEqual(h('strange'), 'handler1')
 
-        h.state = set(['case', 'strange'])
-        h.update()
-
+        h.set_state_item('case', 1)
         self.assertTrue(h('strange'))
 
-        h.state = set()
-        h.update()
+        self.assertEqual(h.state, h.update_state())
+
+        h.state = {}
 
         self.assertEqual(h('strange'), 'handler1')
 
