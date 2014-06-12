@@ -683,7 +683,11 @@ class NextRelation(Relation):
     def __init__(self, subj, obj, condition=None, ignore_case=False, owner=None):
         super(NextRelation, self).__init__(subj, obj, owner)
         self.ignore_case = ignore_case
-        self.condition_access = Condition(condition, ignore_case) if condition else TRUE_CONDITION
+
+        if condition:
+            self.set_condition(condition)
+        else:
+            self.condition_access = TRUE_CONDITION
 
         self.on(self.can_pass, self.next_handler)
 
@@ -697,13 +701,16 @@ class NextRelation(Relation):
     def next_handler(self, *message, **context):
         return self.object
 
+    def set_condition(self, value):
+        self.condition_access = Condition(value, self.ignore_case)
+
     @property
     def condition(self):
         return self.condition_access.value
 
     @condition.setter
     def condition(self, value):
-        self.condition_access = Condition(value, self.ignore_case)
+        self.set_condition(value)
 
 
 class ActionRelation(Relation):
@@ -1393,20 +1400,30 @@ class LoopRelation(NextRelation):
         super(LoopRelation, self).__init__(subj, obj, condition, False, owner)
 
         # General loop
-        self.on(self.can_start_general, self.do_start_general)
-        self.on(self.can_loop_general, self.do_loop_general)
-        self.on(self.can_error_general, self.do_error_general)
-        
+        self.on(self.can_start_general, self.do_start_general, Condition.VALUE)
+        self.on(self.can_loop_general, self.do_loop_general, Condition.VALUE)
+        self.on(self.can_error_general, self.do_error_general, Condition.VALUE)
+
         # Custom loop
-        self.on(self.can_loop_custom, self.do_loop_custom)
-        self.on(self.can_error_custom, self.do_error_custom)
-        
+        self.on(self.can_loop_custom, self.do_loop_custom, Condition.FUNCTION)
+        self.on(ParsingProcess.ERROR, self.do_error_custom, Condition.FUNCTION)
+
         # Common events
         self.on(self.can_break, self.do_break)
         self.on(self.can_continue, self.do_continue)
 
     def check_condition(self, message, context):
         return self.condition_access == TRUE_CONDITION  # Here we check only the simplest case
+
+    def set_condition(self, value):
+        super(LoopRelation, self).set_condition(value)
+
+        if self.is_general():
+            self.tags = [Condition.VALUE]
+        elif self.is_custom():
+            self.tags = [Condition.FUNCTION]
+
+        self.update_events()
 
     def is_wildcard(self):
         """
@@ -1497,13 +1514,13 @@ class LoopRelation(NextRelation):
     # Events #
     # General loop
     def can_start_general(self, *message, **context):
-        return self.is_forward(message) and not self.is_looping(context) and self.is_general()
+        return self.is_forward(message) and not self.is_looping(context)
 
     def do_start_general(self):
         return self.get_next_iteration_reply()
 
     def can_loop_general(self, *message, **context):
-        return self.is_forward(message) and self.is_looping(context) and self.is_general()
+        return self.is_forward(message) and self.is_looping(context)
 
     def do_loop_general(self, **context):
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
@@ -1519,7 +1536,7 @@ class LoopRelation(NextRelation):
             return reply + [StatefulProcess.CLEAR_STATE]
 
     def can_error_general(self, *message, **context):
-        return has_first(message, ParsingProcess.ERROR) and self.is_looping(context) and self.is_general()
+        return has_first(message, ParsingProcess.ERROR) and self.is_looping(context)
 
     def do_error_general(self, **context):
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
@@ -1538,7 +1555,7 @@ class LoopRelation(NextRelation):
     
     # Custom loop
     def can_loop_custom(self, *message):
-        return self.is_forward(message) and self.is_custom()
+        return self.is_forward(message)
 
     def do_loop_custom(self, *message, **context):
         i = self.condition_access(*message, **context)
@@ -1547,9 +1564,6 @@ class LoopRelation(NextRelation):
             return {StatefulProcess.SET_STATE: {self.ITERATION: i}}, self.object, self
         else:
             return False if not self.is_looping(context) else StatefulProcess.CLEAR_STATE,
-
-    def can_error_custom(self, *message):
-        return has_first(message, ParsingProcess.ERROR) and self.is_custom()
 
     def do_error_custom(self):
         return StatefulProcess.CLEAR_STATE,
