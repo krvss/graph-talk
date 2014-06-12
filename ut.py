@@ -166,6 +166,7 @@ class Condition(Access):
 
         elif is_string(self._value):
             self._spec, self.check = self.STRING, self.check_string
+            self._value_len = len(self._value)
 
             if self._ignore_case:
                 self._value = self._value.upper()
@@ -203,13 +204,13 @@ class Condition(Access):
 
     def check_string(self, message, context):
         try:
-            message0 = message[0][:len(self._value)]
+            message0 = message[0][:self._value_len]
 
             if self._ignore_case:
                 message0 = message0.upper()
 
             if message0 == self._value:
-                return len(self._value), self._value
+                return self._value_len, self._value
 
         except (TypeError, IndexError):
             pass
@@ -815,13 +816,13 @@ class Process(Handler):
         """
         Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
         """
-        return Access.get_access(self.message[0], True).mode in (Access.CALL, Access.FUNCTION)
+        return Access.get_access(self.message[0], True).mode in Access.CACHEABLE
 
     def do_queue_push(self):
         self.to_queue({self.CURRENT: self.message.pop(0),
                        self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
 
-    def can_pop_queue(self, *message):
+    def can_pop_queue(self):
         """
         Queue pop: when current queue item is empty we can remove it
         """
@@ -1004,9 +1005,8 @@ class SharedProcess(Process):
     def update_tags(self):
         tags = super(SharedProcess, self).update_tags()
 
-        if self.MESSAGE in tags:
-            if isinstance(self.message[0], dict):
-                tags.add(Condition.DICT)
+        if self.MESSAGE in tags and isinstance(self.message[0], dict):
+            tags.add(Condition.DICT)
 
         return tags
 
