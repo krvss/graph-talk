@@ -143,13 +143,9 @@ class Condition(Access):
 
     NO_CHECK = -1, None
 
-    def __init__(self, value, ignore_case=False, *state, **kwstate):
-        self._ignore_case = ignore_case
+    def __init__(self, value, ignore_case=False, *tags):
+        self._ignore_case, self.tags = ignore_case, frozenset(tags)
         self.check, self._conditions = self.check_compare, tuple([self])
-
-        self.state = kwstate
-        self.state.update(dict.fromkeys(state, True))
-
         super(Condition, self).__init__(value)
 
     def setup(self):
@@ -318,7 +314,7 @@ class Handler(Abstract):
     def __init__(self):
         Access.get_access(self, True)
 
-        self._state = {}
+        self._tags = set()
         self._events, self.active_events = [], tuple()
         self.unknown_event = None
 
@@ -331,11 +327,11 @@ class Handler(Abstract):
 
             self.update_events()
 
-    def on(self, condition, event, *state, **kwstate):
+    def on(self, condition, event, *tags):
         """
         Adding the condition - event pair
         """
-        self.on_access(Condition(condition, False, *state, **kwstate), Event(event))
+        self.on_access(Condition(condition, False, *tags), Event(event))
 
     def on_any(self, event):
         """
@@ -383,47 +379,32 @@ class Handler(Abstract):
         else:
             return [e[1] for e in self._events if e[0] == TRUE_CONDITION]
 
-    def set_state_item(self, name, value):
-        """
-        Sets the value of the individual state item
-        """
-        self._state[name] = value
-        self.update_events()
+    def clear_events(self):
+        del self._events[:]
+        self.active_events = tuple()
 
-    def update_state(self):
+    def update_tags(self):
         """
-        Called when update needed, returns new state
+        Called when update needed, returns new tags
         """
-        return self._state
+        return self._tags
 
     def update_events(self):
         """
-        Called when event update needed (for example, after new event was added or state was changed)
+        Called when event update needed (for example, after new event was added or tags was changed)
         """
-        new_events = []
-        for condition, event in self._events:
-            append = True
-
-            if condition.state:
-                for k, v in condition.state.iteritems():
-                    if v is True:
-                        if not k in self._state:
-                            append = False
-                    elif self._state.get(k) != v:
-                        append = False
-            else:
-                append = not self._state
-
-            if append:
-                new_events.append((condition, event))
-
-        self.active_events = tuple(new_events)
+        self.active_events = tuple(filter(lambda e: e[0].tags.issubset(self._tags), self._events))
 
     def update(self):
         """
-        Update is called by the object itself when something is changed and it could change the state
+        Update is called by the object itself when something is changed and it could change tags
         """
-        self.state = self.update_state()
+        new_tags = self.update_tags()
+
+        if new_tags != self._tags:
+            self.tags = new_tags
+
+            self.update_events()
 
     def handle(self, message, context):
         """
@@ -480,15 +461,12 @@ class Handler(Abstract):
         return result[0]  # No need to know the details
 
     @property
-    def state(self):
-        return self._state
+    def tags(self):
+        return self._tags
 
-    @state.setter
-    def state(self, value):
-        if value != self._state:
-            self._state = value
-
-            self.update_events()
+    @tags.setter
+    def tags(self, value):
+        self._tags = frozenset(value)
 
     @property
     def events(self):
@@ -876,24 +854,24 @@ class Process(Handler):
     def do_finish(self):
         return self.message.pop(0)
 
-    def update_state(self):
+    def update_tags(self):
         """
-        Check and return the new state
+        Check and return the new tags
         """
-        state = {}
+        tags = set()
 
         if self.message:
-            state[self.MESSAGE] = True
+            tags.add(self.MESSAGE)
 
             if is_string(self.message[0]):
-                state[Condition.STRING] = True
+                tags.add(Condition.STRING)
         else:
-            state[self.EMPTY_MESSAGE] = True
+            tags.add(self.EMPTY_MESSAGE)
 
         if self.current:
-            state[self.CURRENT] = True
+            tags.add(self.CURRENT)
 
-        return state
+        return tags
 
     def setup_handlers(self):
         """
@@ -1016,14 +994,14 @@ class SharedProcess(Process):
         elif delete in self.context:
             self.context_delete(delete)
 
-    def update_state(self):
-        state = super(SharedProcess, self).update_state()
+    def update_tags(self):
+        tags = super(SharedProcess, self).update_tags()
 
-        if self.MESSAGE in state:
+        if self.MESSAGE in tags:
             if isinstance(self.message[0], dict):
-                state[Condition.DICT] = True
+                tags.add(Condition.DICT)
 
-        return state
+        return tags
 
     def setup_handlers(self):
         super(SharedProcess, self).setup_handlers()
@@ -1086,13 +1064,13 @@ class StackingProcess(SharedProcess):
         self.message.pop(0)
         self._context_stack.pop()
 
-    def update_state(self):
-        state = super(StackingProcess, self).update_state()
+    def update_tags(self):
+        tags = super(StackingProcess, self).update_tags()
 
         if self.is_tracking():
-            state[self.TRACKING] = True
+            tags.add(self.TRACKING)
 
-        return state
+        return tags
 
     def setup_handlers(self):
         super(StackingProcess, self).setup_handlers()
@@ -1165,13 +1143,13 @@ class StatefulProcess(StackingProcess):
         self.message.pop(0)
         self._clear_state(self.current)
 
-    def update_state(self):
-        state = super(StatefulProcess, self).update_state()
+    def update_tags(self):
+        tags = super(StatefulProcess, self).update_tags()
 
         if self.has_states():
-            state[self.HAS_STATES] = True
+            tags.add(self.HAS_STATES)
 
-        return state
+        return tags
 
     def setup_handlers(self):
         super(StatefulProcess, self).setup_handlers()

@@ -306,8 +306,7 @@ class UtTests(unittest.TestCase):
 
         # Handle itself
         # Longest wins
-        del h.events[:]
-        h.update_events()
+        h.clear_events()
         h.on('event', handler1)
         h.on('event1', handler2)
         r = h.handle(['event'], {})
@@ -373,27 +372,31 @@ class UtTests(unittest.TestCase):
 
         # Unknown check
         handler1 = 'handler1'
-        del h.events[:]
-        h.update_events()
+        h.clear_events()
 
         h.unknown_event = Event(handler1)
         self.assertEqual(h('strange'), 'handler1')
 
-        # States check
-        h.on('strange', Event(True), 'spec', case=1)
+        # Tags check
+        h.on('strange', Event(True), 'spec', 'case')
+
         self.assertEqual(h('strange'), 'handler1')
 
-        h.set_state_item('strange', 0)
+        h.tags = 'strange'
+        h.update()
+
         self.assertEqual(h('strange'), 'handler1')
 
-        h.set_state_item('case', 1)
+        h.tags = set(['case', 'strange'])
+        h.update()
+
         self.assertTrue(h('strange'))
 
-        self.assertEqual(h.state, h.update_state())
-
-        h.state = {}
+        h.tags = set()
+        h.update()
 
         self.assertEqual(h('strange'), 'handler1')
+
 
     def test_4_element(self):
         e = Element()
