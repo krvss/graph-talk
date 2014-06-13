@@ -1,5 +1,6 @@
 import unittest
 
+from inspect import ArgSpec
 from debug import *
 
 import re
@@ -816,7 +817,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(repr(s1), '%s %s=%s<-%s' % (DictChangeOperation.SET,  s1._key, s1._value, s1._old_value))
 
         with self.assertRaises(ValueError):
-            DictChangeOperation('fail', 1, 2)
+            DictChangeOperation('fail', 1, 2).do()
 
     def test_b_stacking_context(self):
         # Testing without tracking

@@ -761,7 +761,7 @@ class Process(Handler):
     def __init__(self):
         super(Process, self).__init__()
 
-        self._queue, self.context = [], {}
+        self._queue, self.context = NotifyList(self.update_fields), {}
         self.new_queue_item({})
 
         self.query = Element.NEXT
@@ -772,8 +772,9 @@ class Process(Handler):
         """
         Generate the new queue item and add it to the queue updated with values
         """
-        item = {self.CURRENT: values.get(self.CURRENT),
-                self.MESSAGE: values.get(self.MESSAGE, [])}
+        item = NotifyDict(self.update_fields,
+                          ((self.CURRENT, values.get(self.CURRENT)),
+                           (self.MESSAGE, values.get(self.MESSAGE, NotifyList(self.update_message)))))
 
         self._queue.append(item)
 
@@ -784,7 +785,7 @@ class Process(Handler):
         Put the new item in the queue, updating the empty one, if presents
         """
         if not self.message:
-           self._queue[-1].update(values)  # No need to keep the empty one in the queue
+            self._queue[-1].update(values)  # No need to keep the empty one in the queue
         else:
             if not self.CURRENT in values:
                 values[self.CURRENT] = self.current  # It is better to keep the current current
@@ -795,12 +796,20 @@ class Process(Handler):
         """
         Set the current message or inserts in the front of current message if insert = True
         """
-        message = [message] if not is_list(message) else list(message)
+        message = NotifyList(self.update_message, [message] if not is_list(message) else message)
 
         if insert:
             message.extend(self.message)
 
         self._queue[-1][self.MESSAGE] = message
+
+    def update_message(self):
+        self.message = self._queue[-1].get(self.MESSAGE)
+
+    def update_fields(self):
+        top = self._queue[-1]
+        self.message = top.get(self.MESSAGE)
+        self.current = top.get(self.CURRENT)
 
     # Events #
     def do_new(self):
@@ -930,14 +939,6 @@ class Process(Handler):
 
         return result
 
-    @property
-    def message(self):
-        return self._queue[-1].get(self.MESSAGE)
-
-    @property
-    def current(self):
-        return self._queue[-1].get(self.CURRENT)
-
 
 class SharedProcess(Process):
     """
@@ -1034,16 +1035,13 @@ class StackingProcess(SharedProcess):
 
         self._context_stack = []
 
-    def is_tracking(self):
-        return len(self._context_stack) > 0
-
     # Clearing stack if new
     def do_new(self):
         super(StackingProcess, self).do_new()
         del self._context_stack[:]
 
     def run_tracking_operation(self, operation):
-        if self.is_tracking():
+        if self._context_stack:
             self._context_stack[-1].add(operation)
         else:
             operation.do()
@@ -1074,7 +1072,7 @@ class StackingProcess(SharedProcess):
     def update_tags(self):
         tags = super(StackingProcess, self).update_tags()
 
-        if self.is_tracking():
+        if self._context_stack:
             tags.add(self.TRACKING)
 
         return tags
