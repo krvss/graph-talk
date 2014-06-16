@@ -576,7 +576,7 @@ class UtTests(unittest.TestCase):
 
         # Now we are good
         r = process(process.NEW, test='process_new')
-        self.assertTrue(r is None)
+        self.assertTrue(r is False)
         self.assertEquals(process.current, None)
         self.assertEquals(len(process._queue), 1)
         self.assertFalse(process.message)
@@ -603,8 +603,9 @@ class UtTests(unittest.TestCase):
         self.assertEquals(process.message[0], strange)
         self.assertEquals(len(process._queue), 1)
 
-        r = process(process.NEW, process.SKIP, strange)
-        self.assertTrue(r is None)
+        n2.action = process.skip
+        r = process(process.NEW, n2, strange)
+        self.assertTrue(r)
         self.assertIsNone(process.current)
         self.assertFalse(process.message)
         self.assertEquals(len(process._queue), 1)
@@ -646,7 +647,7 @@ class UtTests(unittest.TestCase):
         c = ActionNotion('c', process.STOP)
         NextRelation(a, c)
 
-        debugger.unknown_event = Event(process.SKIP)
+        debugger.unknown_event = Event(process.skip)
 
         r = process(process.NEW, root, test='test_skipping')
         self.assertEqual(r, process.STOP)
@@ -684,23 +685,26 @@ class UtTests(unittest.TestCase):
         self.assertEqual(len(process._queue), 2)
         self.assertEqual(process.message[0], unk)
 
-        r = process(process.SKIP, test='test_skip_1')  # Make process pop from stack
+        process.skip()
+        r = process(test='test_skip_1')  # Make process pop from stack
 
         self.assertEqual(process.current, e)
         self.assertTrue(r is False)
         self.assertEqual(len(process._queue), 1)
         self.assertEqual(process.message[0], unk)
 
-        r = process(process.SKIP, test='test_skip_2')  # Trying empty stack
+        process.skip()
+        r = process(test='test_skip_2')  # Trying empty stack
 
         self.assertEqual(process.current, e)  # Nowhere to go
-        self.assertTrue(r is None)
+        self.assertTrue(r is False)
         self.assertEqual(len(process._queue), 1)
         self.assertFalse(process.message)
 
         # Trying list message
         process(e, b)
-        r = process(process.SKIP)
+        process.skip()
+        r = process()
         self.assertTrue(r)
         self.assertEqual(process.current, b)
         self.assertEqual(len(process._queue), 1)

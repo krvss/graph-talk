@@ -413,7 +413,7 @@ class Handler(Abstract):
         """
         global logging
         if logging:
-            print "%s.handle of %s, events %s" % (type(self), message, len(self.active_events))
+            print ">>> %s.handle of |%s|, events %s" % (type(self), message, len(self.active_events))
 
         check, rank, event_found = self.NO_HANDLE
 
@@ -750,7 +750,6 @@ class Process(Handler):
     NEW = 'new'
     OK = 'ok'
     STOP = 'stop'
-    SKIP = 'skip'
 
     CURRENT = 'current'
     MESSAGE = 'message'
@@ -811,16 +810,18 @@ class Process(Handler):
         self.message = top.get(self.MESSAGE)
         self.current = top.get(self.CURRENT)
 
+    def skip(self):
+        """
+        Skip: remove current and the next item from the queue
+        """
+        while not self.message and self._queue:  # Looking for the item to skip
+            self.do_queue_pop()
+
+        # It is ok if the message is empty to ignore skip
+        if self.message:
+            self.message.pop(0)
+
     # Events #
-    def do_new(self):
-        """
-        New: cleaning up the queue
-        """
-        self.message.pop(0)
-        del self._queue[:-1]
-
-        self._queue[-1][self.CURRENT] = None
-
     def can_push_queue(self):
         """
         Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
@@ -846,19 +847,6 @@ class Process(Handler):
         # If abstract returns False/None, we just continue to the next one
         return getattr(self.current, Access.CACHE_ATTR)(self.query, **self.context) or True
 
-    def do_skip(self):
-        """
-        Skip: remove current and the next item from the queue
-        """
-        self.message.pop(0)  # Remove the command itself
-
-        while not self.message and self._queue:  # Looking for the item to skip
-            self.do_queue_pop()
-
-        # It is ok if the message is empty to ignore skip
-        if self.message:
-            self.message.pop(0)
-
     def can_clear_message(self, *message):
         """
         Cleanup: remove empty message item
@@ -882,6 +870,11 @@ class Process(Handler):
 
             if is_string(self.message[0]):
                 tags.add(Condition.STRING)
+            elif self.message[0] is True or self.message[0] is False:
+                tags.add(Condition.BOOLEAN)
+            elif isinstance(self.message[0], dict):
+                tags.add(Condition.DICT)
+
         else:
             tags.add(self.EMPTY_MESSAGE)
 
@@ -894,10 +887,8 @@ class Process(Handler):
         """
         Init handlers
         """
-        self.on(self.NEW, self.do_new, Condition.STRING)
-        self.on(self.SKIP, self.do_skip, Condition.STRING)
         self.on((self.STOP, self.OK), self.do_finish, Condition.STRING)
-        self.on((True, False), self.do_finish, self.MESSAGE)
+        self.on((True, False), self.do_finish, Condition.BOOLEAN)
 
         self.on(self.QUERY, self.do_query, Condition.STRING, self.CURRENT)
 
@@ -906,22 +897,26 @@ class Process(Handler):
 
         self.on(self.can_clear_message, self.do_clear_message, self.MESSAGE)
 
-    def on_start(self, new_message, new_context):
+    def on_handle(self, message, context):
         """
-        Start new process
+        Starting the handle loop
         """
-        if has_first(new_message, self.NEW):
-            self.context = new_context
-        else:
-            self.context.update(new_context)
+        if has_first(message, self.NEW):  # Very special case
+            message.pop(0)
 
-        self.to_queue({self.MESSAGE: list(new_message)})
+            self.to_queue({self.MESSAGE: message, self.CURRENT: None})
+            del self._queue[:-1]  # And kill the rest
+
+            self.context = context
+        else:
+            self.to_queue({self.MESSAGE: message})
+            self.context.update(context)
 
     def handle(self, message, context):
         """
         Process' handle works in step-by-step manner, processing message and then popping the queue
         """
-        self.on_start(message, context)
+        self.on_handle(list(message), context)
 
         result = self.NO_HANDLE
 
@@ -1003,14 +998,6 @@ class SharedProcess(Process):
         elif delete in self.context:
             self.context_delete(delete)
 
-    def update_tags(self):
-        tags = super(SharedProcess, self).update_tags()
-
-        if self.MESSAGE in tags and isinstance(self.message[0], dict):
-            tags.add(Condition.DICT)
-
-        return tags
-
     def setup_handlers(self):
         super(SharedProcess, self).setup_handlers()
 
@@ -1036,8 +1023,8 @@ class StackingProcess(SharedProcess):
         self._context_stack = []
 
     # Clearing stack if new
-    def do_new(self):
-        super(StackingProcess, self).do_new()
+    def on_handle(self, message, context):
+        super(StackingProcess, self).on_handle(message, context)
         del self._context_stack[:]
 
     def run_tracking_operation(self, operation):
@@ -1119,11 +1106,11 @@ class StatefulProcess(StackingProcess):
         if abstract in self.states:
             self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.DELETE, abstract))
 
-    def do_new(self):
+    def on_handle(self, message, context):
         """
         Clearing states if new
         """
-        super(StatefulProcess, self).do_new()
+        super(StatefulProcess, self).on_handle(message, context)
         self.states.clear()
 
     def do_query(self):
@@ -1176,8 +1163,8 @@ class ParsingProcess(StatefulProcess):
     TEXT = 'text'
     LAST_PARSED = 'last_parsed'
 
-    def do_new(self):
-        super(ParsingProcess, self).do_new()
+    def on_handle(self, message, context):
+        super(ParsingProcess, self).on_handle(message, context)
 
         self.query = Element.NEXT
         self.context_set(self.PARSED_LENGTH, 0)
