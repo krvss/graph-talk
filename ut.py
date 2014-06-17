@@ -177,7 +177,7 @@ class Condition(Access):
         elif isinstance(self._value, dict):
             self._spec = self.DICT
 
-        elif self._value is True or self._value is False:
+        elif type(self._value) == bool:
             self._spec, self.check = self.BOOLEAN, self.check_boolean
 
     def check_function(self, message, context):
@@ -870,10 +870,12 @@ class Process(Handler):
 
             if is_string(self.message[0]):
                 tags.add(Condition.STRING)
-            elif self.message[0] is True or self.message[0] is False:
+            elif type(self.message[0]) == bool:
                 tags.add(Condition.BOOLEAN)
             elif isinstance(self.message[0], dict):
                 tags.add(Condition.DICT)
+            else:
+                tags.add(Condition.OTHER)
 
         else:
             tags.add(self.EMPTY_MESSAGE)
@@ -892,7 +894,7 @@ class Process(Handler):
 
         self.on(self.QUERY, self.do_query, Condition.STRING, self.CURRENT)
 
-        self.on(self.can_push_queue, self.do_queue_push, self.MESSAGE)
+        self.on(self.can_push_queue, self.do_queue_push, Condition.OTHER)
         self.on(self.can_pop_queue, self.do_queue_pop, self.EMPTY_MESSAGE)
 
         self.on(self.can_clear_message, self.do_clear_message, self.MESSAGE)
