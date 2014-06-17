@@ -171,8 +171,7 @@ class CoolLexer(object):
             act('Object ID', lambda line_no, last_parsed: self.out_token(line_no, 'TYPEID', last_parsed))
 
         # New line: increment the counter
-        self.builder[statement].parse_rel(R_EOL).\
-            act('New Line', inc_line_no)
+        self.builder[statement].parse_rel(R_EOL).current.object = inc_line_no
 
         # Skipping white space
         self.builder[statement].parse_rel(R_WHITE_SPACE)
