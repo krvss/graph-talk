@@ -6,14 +6,6 @@ from operator import attrgetter
 
 from utils import *
 
-# TODO remove
-logging = False
-import time
-def set_logging(value):
-    global logging
-    logging = value
-
-
 class Abstract(object):
     """
     Base abstract class for all communicable objects
@@ -411,10 +403,6 @@ class Handler(Abstract):
         """
         Calling events basing on condition
         """
-        global logging
-        if logging:
-            print ">>> %s.handle of |%s|, events %s" % (type(self), message, len(self.active_events))
-
         check, rank, event_found = self.NO_HANDLE
 
         if not self.SENDER in context:
@@ -422,14 +410,8 @@ class Handler(Abstract):
 
         # Searching for the best event
         for condition_access, event_access in self.active_events:
-            if logging:
-                t1 = time.time()
-
             # Condition check, if no condition the result is true with zero rank
             c_rank, c_check = condition_access.check(message, context)
-
-            if logging:
-                print "trying %s, spent %s" % (condition_access.value, time.time() - t1)
 
             if c_rank > rank:
                 rank, check, event_found = c_rank, c_check, event_access
@@ -868,12 +850,16 @@ class Process(Handler):
         if self.message:
             tags.add(self.MESSAGE)
 
+            # Most wanted types
             if is_string(self.message[0]):
                 tags.add(Condition.STRING)
+
             elif type(self.message[0]) == bool:
                 tags.add(Condition.BOOLEAN)
+
             elif isinstance(self.message[0], dict):
                 tags.add(Condition.DICT)
+
             else:
                 tags.add(Condition.OTHER)
 

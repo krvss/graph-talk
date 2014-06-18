@@ -129,7 +129,6 @@ class CoolLexer(object):
         """
         Out token to result
         """
-
         if token in (ERROR_TOKEN, STRING_CONST):
             data = data.replace("\\", "\\\\")
             data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
@@ -171,7 +170,7 @@ class CoolLexer(object):
             act('Object ID', lambda line_no, last_parsed: self.out_token(line_no, 'TYPEID', last_parsed))
 
         # New line: increment the counter
-        self.builder[statement].parse_rel(R_EOL).current.object = inc_line_no
+        self.builder[statement].parse_rel(R_EOL, inc_line_no)
 
         # Skipping white space
         self.builder[statement].parse_rel(R_WHITE_SPACE)
