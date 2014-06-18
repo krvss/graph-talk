@@ -28,13 +28,6 @@ def common_state_acc(**context):
         return {SharedProcess.ADD_CONTEXT: {'acc': 1}}
 
 
-def has_notification(**context):
-    if StatefulProcess.STATE in context and StatefulProcess.NOTIFICATIONS in context[StatefulProcess.STATE]:
-        return context[StatefulProcess.STATE][StatefulProcess.NOTIFICATIONS]['note']
-    else:
-        return False
-
-
 def check_test_result(test_case, process, current, length):
     test_case.assertNotIn(current, process.states)
     test_case.assertFalse(process._context_stack)
@@ -1826,5 +1819,5 @@ class UtTests(unittest.TestCase):
 
 def test():
     suite = unittest.TestLoader().loadTestsFromTestCase(UtTests)
-    #suite = unittest.TestLoader().loadTestsFromName('test.UtTests.test_special')
+    #suite = unittest.TestLoader().loadTestsFromName('test.UtTests.test_z_special')
     unittest.TextTestRunner(verbosity=2).run(suite)
