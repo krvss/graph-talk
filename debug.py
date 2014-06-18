@@ -1,10 +1,9 @@
 # Universal Translator debug classes
-# (c) krvss 2011-2013
+# (c) krvss 2011-2014
 
 from collections import defaultdict
 
 from ut import *
-from utils import has_first, get_object_name
 
 try:
     import pydevd
@@ -13,8 +12,10 @@ except ImportError:
     _DEBUGGER = 'pdb'
 
 
-# Process analyzer/debugger, sample usage: ProcessDebugger(process, True) to show the log
 class ProcessDebugger(Handler):
+    """
+    Process analyzer/debugger, sample usage: ProcessDebugger(process, True) to show the log
+    """
     AT = 'at'
     REPLY = 'reply'
     LOG = 'log'
@@ -64,7 +65,7 @@ class ProcessDebugger(Handler):
         if self._process in self._points:
             del self._points[self._process]
 
-    def do_reply_at(self, *message, **context):
+    def do_reply_at(self, **context):
         process = context[self.SENDER]
         point = self._points.get(process.current)
 
@@ -74,7 +75,7 @@ class ProcessDebugger(Handler):
         if ProcessDebugger.REPLY in point:
             return self._points[process.current].get(self.REPLY)
 
-    def is_log(self, *message, **context):
+    def is_log(self, **context):
         process = context[self.SENDER]
         point = self._points.get(process)
 
