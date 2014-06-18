@@ -6,6 +6,7 @@ from operator import attrgetter
 
 from utils import *
 
+
 class Abstract(object):
     """
     Base abstract class for all communicable objects

@@ -383,12 +383,13 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(h('strange'), 'handler1')
 
-        h.tags = 'strange'
+        h.tags = {'strange'}
         h.update()
 
         self.assertEqual(h('strange'), 'handler1')
+        self.assertEqual(h.tags, {'strange'})
 
-        h.tags = set(['case', 'strange'])
+        h.tags = {'case', 'strange'}
         h.update()
 
         self.assertTrue(h('strange'))
