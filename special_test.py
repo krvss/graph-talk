@@ -104,11 +104,16 @@ class SpecialTestRunner(SpecialTest):
         elif self.mode == 'h':
             import hotshot.stats
 
+            print 'Processing results...'
+
             self.profiler.close()
-            stats = hotshot.stats.load(self.info['name'])
+            name = self.info['name']
+            stats = hotshot.stats.load(name)
             stats.strip_dirs()
             stats.sort_stats('time', 'calls')
             stats.print_stats(50)
+
+            print 'Run "hotshot2calltree -o %s.out %s" to generate the cachegrind file' % (name, name)
 
         elif self.mode == 'l':
             self.profiler.disable()
@@ -164,6 +169,6 @@ class CoolGradingTest(SpecialTest):
 
 
 # Special test itself, for nerds only B-\
-runner = SpecialTestRunner(CoolGradingTest(selection='arith'), 'l')
+runner = SpecialTestRunner(CoolGradingTest(selection='arith'), 'h')
 runner.setup()
 runner.run()
