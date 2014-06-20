@@ -3,7 +3,7 @@
 
 import re
 
-from core import *
+from gt.core import *
 
 # Shared variables
 LINE_NO = 'line_no'

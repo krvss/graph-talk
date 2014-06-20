@@ -4,7 +4,7 @@
 import sys
 import re
 
-from core import *
+from gt.core import *
 
 
 class BFVM(object):

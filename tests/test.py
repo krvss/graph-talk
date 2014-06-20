@@ -2,8 +2,8 @@ import unittest
 from inspect import ArgSpec
 import re
 
-from core import *
-from debug import *
+from gt.core import *
+from gt.debug import *
 
 
 # Test functions

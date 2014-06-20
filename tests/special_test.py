@@ -2,7 +2,7 @@ import datetime
 import glob
 
 from examples.cool_lexer import *
-from debug import *
+from gt.debug import *
 
 
 class Timer(object):
