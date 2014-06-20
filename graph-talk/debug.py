@@ -1,7 +1,7 @@
 # Graph-talk debug classes
 # (c) krvss 2011-2014
 
-from core import Handler
+from core import Handler, Event
 
 from collections import defaultdict
 
