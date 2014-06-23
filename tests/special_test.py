@@ -1,3 +1,6 @@
+# Special tests (profiling and stress) for Graph-talk
+# (c) Stas Kravets (krvss) 2011-2014
+
 import datetime
 import glob
 

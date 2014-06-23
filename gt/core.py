@@ -1,5 +1,5 @@
 # Graph-talk base classes
-# (c) krvss 2011-2014
+# (c) Stas Kravets (krvss) 2011-2014
 
 from inspect import getargspec
 from operator import attrgetter

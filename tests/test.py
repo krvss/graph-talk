@@ -1,3 +1,6 @@
+# Unit tests for Graph-talk
+# (c) Stas Kravets (krvss) 2011-2014
+
 import unittest
 from inspect import ArgSpec
 import re

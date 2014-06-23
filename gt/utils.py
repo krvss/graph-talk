@@ -1,5 +1,5 @@
 # Graph-talk utility classes
-# (c) krvss 2011-2014
+# (c) Stas Kravets (krvss) 2011-2014
 
 
 class DictChangeOperation(object):

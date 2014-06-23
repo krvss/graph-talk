@@ -1,5 +1,5 @@
 # COOL lexer example for Graph-talk
-# (c) krvss 2011-2014
+# (c) Stas Kravets (krvss) 2011-2014
 
 import re
 
