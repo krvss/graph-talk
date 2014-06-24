@@ -19,7 +19,7 @@ Features
     * Needs just Python 2.7.5+
     * Very small footprint
 
-Check the docs_ folder for the documentation and examples folder for examples of
+Check the docs_ folder for the documentation and examples_ folder for examples of
 lexing, interpreting, and converting using Graph-talk.
 
 Installation
@@ -48,17 +48,17 @@ Testing::
 
 Support
 =======
-
-If you're having problems with using the project, make the ticket at GitHub:
-    https://github.com/krvss/graph-talk/issues
+If you're having problems with using the project, make the issue_ at GitHub.
 
 Copyrights and License
 ======================
 
-``graph-talk`` is protected by Apache Software License. Check the LICENSE_ for
+``graph-talk`` is protected by Apache Software License. Check the LICENSE_ file for
 details.
 
 .. _LICENSE: https://github.com/krvss/graph-talk/blob/master/LICENSE
 .. _docs: https://github.com/krvss/graph-talk/tree/master/docs
+.. _examples: https://github.com/krvss/graph-talk/tree/master/examples
 .. _github: https://github.com
 .. _pypi: http://pypi.python.org/pypi/graph-talk
+.. _issue: https://github.com/krvss/graph-talk/issues
