@@ -6,11 +6,11 @@ version = __import__('gt').__version__
 
 LONG_DESCRIPTION = """
 Graph-talk is a library for structured data processing to solve tasks like parsing,
-interpreting, or converting in a simple and comprehensible for humans manner.
+interpreting, or converting, in a simple and comprehensible for humans manner.
 
-Library uses 3 key concepts to achieve the goal: use graph-like representation of
-information and its processing; dialog-like communication between the model and
-the process; handler-event approach to recognize the input messages.
+Library uses 3 key concepts to achieve the goal: a graph-like representation of
+information and its processing; a dialog-like communication between the model and
+the process; a handler-event approach to recognize the input messages.
 """
 
 
@@ -46,5 +46,6 @@ setup(
         'Operating System :: OS Independent',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Text Processing :: General',
-    ]
+    ],
+    test_suite='tests'
 )
