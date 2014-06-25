@@ -1,12 +1,12 @@
-Graph-talk
+Graph-Talk
 ==========
 
 Graph-talk is a library for structured data processing to solve tasks like parsing,
-interpreting, or converting, in a simple and comprehensible for humans manner.
+interpreting, or converting in a simple and comprehensible manner.
 
-Library uses 3 key concepts to achieve the goal: a graph-like representation of
-information and its processing; a dialogue-like communication between the model and
-the process; a handler-event approach to recognize the input messages.
+The library uses 3 key concepts to achieve the goal: a graph-like representation of
+information and its processing; a dialog-like communication between the model and
+the process; and a handler-event approach to recognize the input messages.
 
 .. contents:: Table of Contents
 
@@ -16,7 +16,7 @@ Features
 
     * Easy to learn architecture
     * Unlimited customization
-    * Needs just Python 2.7.5+
+    * Only requires Python 2.7.5+
     * Very small footprint
 
 Check the docs_ folder for the documentation and examples_ folder for examples of
@@ -48,7 +48,7 @@ Testing::
 
 Support
 =======
-If you're having problems with using the project, make the issue_ at GitHub.
+If you're having problems using the project, make the issue_ at GitHub.
 
 Copyrights and License
 ======================
