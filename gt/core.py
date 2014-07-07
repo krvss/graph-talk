@@ -673,7 +673,7 @@ class NextRelation(Relation):
         else:
             self.condition_access = TRUE_CONDITION
 
-        self.on(self.can_pass, self.next_handler)
+        self.on(self.can_pass, self.do_next)
 
     def check_condition(self, message, context):
         return self.condition_access.check(message, context)
@@ -682,7 +682,7 @@ class NextRelation(Relation):
         if self.is_forward(message):  # We use 0 rank to make condition prevail other forward command
             return self.check_condition(message, context)
 
-    def next_handler(self, *message, **context):
+    def do_next(self, *message, **context):
         return self.object
 
     def set_condition(self, value):
@@ -748,7 +748,7 @@ class Process(Handler):
 
         self.query = Element.NEXT
 
-        self.setup_handlers()
+        self.setup_events()
 
     def new_queue_item(self, values):
         """
@@ -872,9 +872,9 @@ class Process(Handler):
 
         return tags
 
-    def setup_handlers(self):
+    def setup_events(self):
         """
-        Init handlers
+        Init events
         """
         self.on((self.STOP, self.OK), self.do_finish, Condition.STRING)
         self.on((True, False), self.do_finish, Condition.BOOLEAN)
@@ -886,26 +886,33 @@ class Process(Handler):
 
         self.on(self.can_clear_message, self.do_clear_message, self.MESSAGE)
 
-    def on_handle(self, message, context):
+    def on_new(self, message, context):
         """
         Starting the handle loop
         """
-        if has_first(message, self.NEW):  # Very special case
-            message.pop(0)
+        message.pop(0)
 
-            self.to_queue({self.MESSAGE: message, self.CURRENT: None})
-            del self._queue[:-1]  # And kill the rest
+        self.to_queue({self.MESSAGE: message, self.CURRENT: None})
+        del self._queue[:-1]  # And kill the rest
 
-            self.context = context
-        else:
-            self.to_queue({self.MESSAGE: message})
-            self.context.update(context)
+        self.context = context
+
+    def on_continue(self, message, context):
+        """
+        Continue the stopped process
+        """
+        self.to_queue({self.MESSAGE: message})
+        self.context.update(context)
 
     def handle(self, message, context):
         """
         Process' handle works in step-by-step manner, processing message and then popping the queue
         """
-        self.on_handle(list(message), context)
+        message = list(message)
+        if has_first(message, self.NEW):  # Very special case
+            self.on_new(message, context)
+        else:
+            self.on_continue(message, context)
 
         result = self.NO_HANDLE
 
@@ -987,8 +994,8 @@ class SharedProcess(Process):
         elif delete in self.context:
             self.context_delete(delete)
 
-    def setup_handlers(self):
-        super(SharedProcess, self).setup_handlers()
+    def setup_events(self):
+        super(SharedProcess, self).setup_events()
 
         self.on(self.can_add_context, self.do_add_context, Condition.DICT)
         self.on(self.can_update_context, self.do_update_context, Condition.DICT)
@@ -1012,8 +1019,8 @@ class StackingProcess(SharedProcess):
         self._context_stack = []
 
     # Clearing stack if new
-    def on_handle(self, message, context):
-        super(StackingProcess, self).on_handle(message, context)
+    def on_new(self, message, context):
+        super(StackingProcess, self).on_new(message, context)
         del self._context_stack[:]
 
     def run_tracking_operation(self, operation):
@@ -1053,8 +1060,8 @@ class StackingProcess(SharedProcess):
 
         return tags
 
-    def setup_handlers(self):
-        super(StackingProcess, self).setup_handlers()
+    def setup_events(self):
+        super(StackingProcess, self).setup_events()
 
         self.on(self.PUSH_CONTEXT, self.do_push_context, Condition.STRING)
         self.on(self.POP_CONTEXT, self.do_pop_context, self.TRACKING, Condition.STRING)
@@ -1095,11 +1102,11 @@ class StatefulProcess(StackingProcess):
         if abstract in self.states:
             self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.DELETE, abstract))
 
-    def on_handle(self, message, context):
+    def on_new(self, message, context):
         """
         Clearing states if new
         """
-        super(StatefulProcess, self).on_handle(message, context)
+        super(StatefulProcess, self).on_new(message, context)
         self.states.clear()
 
     def do_query(self):
@@ -1132,8 +1139,8 @@ class StatefulProcess(StackingProcess):
 
         return tags
 
-    def setup_handlers(self):
-        super(StatefulProcess, self).setup_handlers()
+    def setup_events(self):
+        super(StatefulProcess, self).setup_events()
 
         self.on(self.can_set_state, self.do_set_state, self.CURRENT, Condition.DICT)
         self.on(self.CLEAR_STATE, self.do_clear_state, self.CURRENT, self.HAS_STATES, Condition.STRING)
@@ -1152,8 +1159,8 @@ class ParsingProcess(StatefulProcess):
     TEXT = 'text'
     LAST_PARSED = 'last_parsed'
 
-    def on_handle(self, message, context):
-        super(ParsingProcess, self).on_handle(message, context)
+    def on_new(self, message, context):
+        super(ParsingProcess, self).on_new(message, context)
 
         self.query = Element.NEXT
         self.context_set(self.PARSED_LENGTH, 0)
@@ -1194,8 +1201,8 @@ class ParsingProcess(StatefulProcess):
 
         self.query = new_query
 
-    def setup_handlers(self):
-        super(ParsingProcess, self).setup_handlers()
+    def setup_events(self):
+        super(ParsingProcess, self).setup_events()
 
         self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, Condition.STRING)
         self.on(self.can_proceed, self.do_proceed, Condition.DICT)
@@ -1235,11 +1242,11 @@ class ParsingRelation(NextRelation):
         """
         return self.condition_access.check(tupled(context.get(ParsingProcess.TEXT), message), context)
 
-    def next_handler(self, *message, **context):
+    def do_next(self, *message, **context):
         """
         Consume the parsed part of the text
         """
-        next_result = super(ParsingRelation, self).next_handler(*message, **context)
+        next_result = super(ParsingRelation, self).do_next(*message, **context)
         rank = context.get(self.RANK)
 
         return ({ParsingProcess.PROCEED: rank}, next_result) if rank and not self.check_only else next_result
