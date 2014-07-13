@@ -198,3 +198,8 @@ def tupled(*args):
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
+
+
+def get_content(filename):
+    with open(filename) as f:
+        return f.read()

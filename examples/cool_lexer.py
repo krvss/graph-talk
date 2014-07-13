@@ -290,11 +290,6 @@ class CoolLexer(object):
         return self.result
 
 
-def get_content(filename):
-    with open(filename) as f:
-        return f.read()
-
-
 def lex_file(filename):
     return lex(get_content(filename), filename)
 
