@@ -26,7 +26,7 @@ class Access(Abstract):
     OTHER = 'other'
 
     CACHE_ATTR = '__access__'
-    CACHEABLE = (CALL, FUNCTION)
+    CACHEABLE = frozenset([CALL, FUNCTION])
 
     def __init__(self, value):
         self._value = value
@@ -472,8 +472,8 @@ class Element(Handler):
 
     SEP = '_'
 
-    FORWARD = [NEXT]
-    BACKWARD = [PREVIOUS]
+    FORWARD = set([NEXT])
+    BACKWARD = set([PREVIOUS])
 
     def __init__(self, owner=None):
         super(Element, self).__init__()
@@ -655,6 +655,13 @@ class ComplexNotion(Notion):
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
+    def remove_all(self):
+        """
+        Disconnect all relations
+        """
+        while self._relations:
+            self._relations[0].subject = None
+
     @property
     def relations(self):
         return self._relations
@@ -739,6 +746,9 @@ class Process(Handler):
     QUERY = 'query'
 
     EMPTY_MESSAGE = 'empty_' + MESSAGE
+
+    BREAK_CRITERIA = (OK, STOP, False)
+    CONTINUE_CRITERIA = (None, True)
 
     def __init__(self):
         super(Process, self).__init__()
@@ -920,10 +930,10 @@ class Process(Handler):
             self.update()
             result = super(Process, self).handle(self.message, self.context)
 
-            if result[0] in (self.OK, self.STOP, False):
+            if result[0] in self.BREAK_CRITERIA:
                 break
 
-            elif result[0] in (None, True):
+            elif result[0] in self.CONTINUE_CRITERIA:
                 continue  # No need to put it into the message
 
             self.set_message(result[0], True)
@@ -1018,11 +1028,6 @@ class StackingProcess(SharedProcess):
 
         self._context_stack = []
 
-    # Clearing stack if new
-    def on_new(self, message, context):
-        super(StackingProcess, self).on_new(message, context)
-        del self._context_stack[:]
-
     def run_tracking_operation(self, operation):
         if self._context_stack:
             self._context_stack[-1].add(operation)
@@ -1067,6 +1072,11 @@ class StackingProcess(SharedProcess):
         self.on(self.POP_CONTEXT, self.do_pop_context, self.TRACKING, Condition.STRING)
         self.on(self.FORGET_CONTEXT, self.do_forget_context, self.TRACKING, Condition.STRING)
 
+    # Clearing stack if new
+    def on_new(self, message, context):
+        super(StackingProcess, self).on_new(message, context)
+        del self._context_stack[:]
+
 
 class StatefulProcess(StackingProcess):
     """
@@ -1101,13 +1111,6 @@ class StatefulProcess(StackingProcess):
     def _clear_state(self, abstract):
         if abstract in self.states:
             self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.DELETE, abstract))
-
-    def on_new(self, message, context):
-        """
-        Clearing states if new
-        """
-        super(StatefulProcess, self).on_new(message, context)
-        self.states.clear()
 
     def do_query(self):
         self._add_current_state()
@@ -1145,6 +1148,13 @@ class StatefulProcess(StackingProcess):
         self.on(self.can_set_state, self.do_set_state, self.CURRENT, Condition.DICT)
         self.on(self.CLEAR_STATE, self.do_clear_state, self.CURRENT, self.HAS_STATES, Condition.STRING)
 
+    def on_new(self, message, context):
+        """
+        Clearing states if new
+        """
+        super(StatefulProcess, self).on_new(message, context)
+        self.states.clear()
+
 
 class ParsingProcess(StatefulProcess):
     """
@@ -1158,13 +1168,6 @@ class ParsingProcess(StatefulProcess):
     PARSED_LENGTH = 'parsed_length'
     TEXT = 'text'
     LAST_PARSED = 'last_parsed'
-
-    def on_new(self, message, context):
-        super(ParsingProcess, self).on_new(message, context)
-
-        self.query = Element.NEXT
-        self.context_set(self.PARSED_LENGTH, 0)
-        self.context_set(self.LAST_PARSED, '')
 
     def is_parsed(self):
         return self.query == Element.NEXT and not self.text
@@ -1207,6 +1210,13 @@ class ParsingProcess(StatefulProcess):
         self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, Condition.STRING)
         self.on(self.can_proceed, self.do_proceed, Condition.DICT)
 
+    def on_new(self, message, context):
+        super(ParsingProcess, self).on_new(message, context)
+
+        self.query = Element.NEXT
+        self.context_set(self.PARSED_LENGTH, 0)
+        self.context_set(self.LAST_PARSED, '')
+
     @property
     def text(self):
         return self.context.get(self.TEXT, '')
@@ -1221,7 +1231,7 @@ class ParsingProcess(StatefulProcess):
 
 
 # Adding new backward commands
-Element.BACKWARD += [ParsingProcess.ERROR, ParsingProcess.BREAK, ParsingProcess.CONTINUE]
+Element.BACKWARD = Element.BACKWARD | set([ParsingProcess.ERROR, ParsingProcess.BREAK, ParsingProcess.CONTINUE])
 
 
 class ParsingRelation(NextRelation):
@@ -1374,7 +1384,7 @@ class LoopRelation(NextRelation):
     Possible conditions are: numeric (n; m..n; m..; ..n), wildcards (*, ?, +), true (infinite loop), and iterator function
     """
     ITERATION = 'i'
-    WILDCARDS = ('*', '?', '+')
+    WILDCARDS = frozenset(['*', '?', '+'])
     INFINITY = float('inf')
 
     def __init__(self, subj, obj, condition=None, owner=None):

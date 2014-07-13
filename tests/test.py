@@ -500,6 +500,10 @@ class UtTests(unittest.TestCase):
         self.assertNotIn(r1, cn.relations)
         self.assertIn(r1, cn2.relations)
 
+        cn2.remove_all()
+        self.assertIsNone(r1.subject)
+        self.assertFalse(cn2.relations)
+
         # Next test
         nr = NextRelation(n1, n2)
         self.assertEqual(nr(Element.NEXT), n2)
@@ -1227,9 +1231,7 @@ class UtTests(unittest.TestCase):
         check_test_result(self, process, a1a, 0)
 
         # Error test: 1 good case, but turns out to be invalid
-        while root.relations:
-            root.relations[0].subject = None
-
+        root.remove_all()
         breaker = ActionNotion('breaker', process.ERROR)
         c1 = ParsingRelation(root, breaker, 'a')
         NextRelation(root, ActionNotion('adder', common_state_acc))
