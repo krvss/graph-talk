@@ -271,6 +271,27 @@ class BFConverter(FileProcessor):
 
         context.update(self.DEFAULT)
 
+    def self_test(self):
+        from cStringIO import StringIO
+        import tempfile
+
+        backup = sys.stdout
+
+        try:
+            sys.stdout = StringIO()
+
+            temp = tempfile.NamedTemporaryFile(delete=False)
+            temp.write(self(Process.NEW, {self.FILENAME: 'hello.bf'}))
+            temp.close()
+
+            execfile(temp.name)
+            out = sys.stdout.getvalue()
+
+        finally:
+            sys.stdout.close()
+            sys.stdout = backup
+
+        assert out.startswith('Hello World!')
 
 def main():
     import sys
@@ -288,6 +309,7 @@ def main():
 
     else:
         interpreter.self_test()
+        converter.self_test()
         print "Usage: " + sys.argv[0] + " filename [-c]"
 
 if __name__ == "__main__":
