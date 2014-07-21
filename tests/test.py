@@ -1773,13 +1773,17 @@ class UtTests(unittest.TestCase):
         self.assertTrue(b, b[a])
         self.assertEqual(b.current, a)
 
-        b[sub.root]
+        b.set_current(sub.root)
         self.assertEqual(b.graph, sub)
 
-        b[graph.root]
+        b.set_current(graph.root)
         self.assertEqual(b.graph, graph)
 
         self.assertEqual(b[s.name].current, s)
+
+        # Back
+        b.set_current(l_r)
+        self.assertEqual(b.back().current, s)
 
         # Errors
         with self.assertRaises(TypeError):
@@ -1790,6 +1794,10 @@ class UtTests(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             b.attach(b)
+
+        with self.assertRaises(TypeError):
+            b.set_current(n)
+            b.back()
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

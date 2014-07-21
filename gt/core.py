@@ -1822,10 +1822,7 @@ class GraphBuilder(object):
 
         return self
 
-    def __getitem__(self, element):
-        if is_string(element):
-            element = self.graph.notion(element)
-
+    def set_current(self, element):
         if element != self.current:
             self.current = element
 
@@ -1833,3 +1830,15 @@ class GraphBuilder(object):
                 self.graph = element.owner
 
         return self
+
+    def back(self):
+        if isinstance(self.current, Relation):
+            return self.set_current(self.current.subject)
+
+        raise TypeError('Not a relation - %s' % self.current)
+
+    def __getitem__(self, element):
+        if is_string(element):
+            element = self.graph.notion(element)
+
+        return self.set_current(element)
