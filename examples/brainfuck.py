@@ -157,6 +157,7 @@ class BFInterpreter(FileProcessor):
     def setup_events(self):
         super(BFInterpreter, self).setup_events()
 
+        # Test should go first
         self.on(lambda *message: 1 if self.TEST in message[0] else -1, self.on_test, Condition.DICT)
 
     def on_new(self, message, context):
@@ -311,6 +312,7 @@ def main():
         interpreter.self_test()
         converter.self_test()
         print "Usage: " + sys.argv[0] + " filename [-c]"
+
 
 if __name__ == "__main__":
     main()

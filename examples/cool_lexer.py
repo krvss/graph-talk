@@ -4,6 +4,7 @@
 import re
 
 from gt.core import *
+from gt.procs import FileProcessor
 
 # Shared variables
 LINE_NO = 'line_no'
@@ -111,34 +112,13 @@ def add_to_string(last_parsed, string_body, string_error):
 
     return {ParsingProcess.UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
 
-
-class CoolLexer(object):
+class CoolLexer(FileProcessor):
     """
     Main lexer class
     """
-    def __init__(self, content, filename=None):
-        self.content, self.filename = content, filename
+    def __init__(self):
+        super(CoolLexer, self).__init__('COOL lexer')
         self.result = ''
-
-        self.builder = GraphBuilder('COOL program')
-        self.build_graph()
-
-        self.parser = ParsingProcess()
-
-    def out_token(self, line_no, token, data=''):
-        """
-        Out token to result
-        """
-        if token in (ERROR_TOKEN, STRING_CONST):
-            data = data.replace("\\", "\\\\")
-            data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
-                replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
-                replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
-                replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
-
-            data = '"' + data + '"'
-
-        self.result += '#%s %s %s\n' % (line_no, token, data) if data else '#%s %s\n' % (line_no, token)
 
     def build_graph(self):
         """
@@ -191,6 +171,23 @@ class CoolLexer(object):
 
         # Stopping
         self.builder[statement].parse_rel(EOF, ParsingProcess.OK)
+
+        self.context[LINE_NO] = 1
+
+    def out_token(self, line_no, token, data=''):
+        """
+        Out token to result
+        """
+        if token in (ERROR_TOKEN, STRING_CONST):
+            data = data.replace("\\", "\\\\")
+            data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
+                replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+                replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
+                replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
+
+            data = '"' + data + '"'
+
+        self.result += '#%s %s %s\n' % (line_no, token, data) if data else '#%s %s\n' % (line_no, token)
 
     def add_multiline_comment(self, statement):
         """
@@ -277,31 +274,26 @@ class CoolLexer(object):
         # Just a good chars
         self.builder[string_chars].parse_rel(Eater.get_eater([ZERO_CHAR, R_EOL, '\\', '"']), add_to_string).default()
 
-    def lex(self):
-        """
-        Run lexing
-        """
-        self.result = ''
-        out = self.parser(Process.NEW, self.builder.graph, text=self.content, line_no=1)
+    def on_new(self, message, context):
+        super(CoolLexer, self).on_new(message, context)
 
-        if out != self.parser.OK:
-            raise SyntaxError('Could not lex %s: %s at %s' % (self.filename, out, self.parser.current))
+        self.result = ''
+        self.context[LINE_NO] = 1
+
+    def on_file(self, *message):
+        super(CoolLexer, self).on_file(*message)
+        message[0][self.parser.TEXT] += EOF
+
+    def get_reply(self, result):
+        if result != self.parser.OK:
+            raise SyntaxError('Could not lex %s: %s at %s' % (self.filename, result, self.parser.current))
 
         return self.result
 
 
 def lex_file(filename):
-    return lex(get_content(filename), filename)
-
-
-def lex(content, filename):
-    content += EOF
-    lexer = CoolLexer(content, filename)
-
-    #from debug import ProcessDebugger
-    #ProcessDebugger(parser).show_log()
-
-    return lexer.lex()
+    lexer = CoolLexer()
+    return lexer(lexer.NEW, {lexer.FILENAME: filename})
 
 
 def main():
