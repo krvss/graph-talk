@@ -1776,6 +1776,11 @@ class UtTests(unittest.TestCase):
         b[sub.root]
         self.assertEqual(b.graph, sub)
 
+        b[graph.root]
+        self.assertEqual(b.graph, graph)
+
+        self.assertEqual(b[s.name].current, s)
+
         # Errors
         with self.assertRaises(TypeError):
             b.default()

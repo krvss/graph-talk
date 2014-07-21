@@ -1823,6 +1823,9 @@ class GraphBuilder(object):
         return self
 
     def __getitem__(self, element):
+        if is_string(element):
+            element = self.graph.notion(element)
+
         if element != self.current:
             self.current = element
 
