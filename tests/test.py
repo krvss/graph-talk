@@ -1782,8 +1782,10 @@ class UtTests(unittest.TestCase):
         self.assertEqual(b[s.name].current, s)
 
         # Back
-        b.set_current(l_r)
-        self.assertEqual(b.back().current, s)
+        b.set_current(n)
+        self.assertEqual(b.back().current, n_r)
+
+        self.assertEqual(b.back().current, c)
 
         # Errors
         with self.assertRaises(TypeError):
@@ -1795,9 +1797,6 @@ class UtTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             b.attach(b)
 
-        with self.assertRaises(TypeError):
-            b.set_current(n)
-            b.back()
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

@@ -1832,10 +1832,12 @@ class GraphBuilder(object):
         return self
 
     def back(self):
-        if isinstance(self.current, Relation):
+        if isinstance(self.current, Notion):
+            rel = self.graph.relations({Relation.OBJECT: self.current})
+            if rel:
+                return self.set_current(rel[0])
+        else:
             return self.set_current(self.current.subject)
-
-        raise TypeError('Not a relation - %s' % self.current)
 
     def __getitem__(self, element):
         if is_string(element):
