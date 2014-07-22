@@ -169,6 +169,10 @@ class UtTests(unittest.TestCase):
         self.assertEquals(condition_s.check(['aaa'], {}), (2, 'aa'))
         self.assertEquals(condition_s.check(['b'], {}), cant_handle)
 
+        condition_s = Condition('x', search=True)
+        self.assertEquals(condition_s.check(['aax'], {}), (3, 'x'))
+        self.assertEquals(condition_s.check(['b'], {}), cant_handle)
+
         condition_l = Condition(('aa', 'bb'))
         self.assertEquals(condition_l.check(['bb'], {}), (2, 'bb'))
         self.assertEquals(condition_l.check(['c'], {}), cant_handle)
@@ -184,6 +188,9 @@ class UtTests(unittest.TestCase):
 
         condition_r = Condition((re.compile('a+'), re.compile('aa'), 'aa'))
         self.assertEquals(condition_r.check(['aa'], {}), (2, 'aa'))
+
+        condition_r = Condition(re.compile('b+'), search=True)
+        self.assertEquals(condition_r.check(['agabb'], {}), (5, 'bb'))
 
         condition_n = Condition(1)
         self.assertEquals(condition_n.check([1], {}), (0, 1))

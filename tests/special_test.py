@@ -78,7 +78,7 @@ class SpecialTestRunner(SpecialTest):
             self.profiler.enable_by_count()
 
             self.profiler.add_function(Handler.handle)
-            self.profiler.add_function(Condition.check_string)
+            self.profiler.add_function(Condition.check_string_match)
             self.profiler.add_function(Condition.check_function)
             self.profiler.add_function(Condition.check_list)
 

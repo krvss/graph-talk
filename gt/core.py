@@ -163,14 +163,14 @@ class Condition(Access):
             self._conditions = tuple([Condition(c, *list(self.tags), **self._options ) for c in self._value])
 
         elif is_string(self._value):
-            self._spec, self.check = self.STRING, self.check_string
+            self._spec, self.check = self.STRING, self.check_string_search if self._search else self.check_string_match
             self._value_len = len(self._value)
 
             if self._ignore_case:
                 self._value = self._value.upper()
 
         elif is_regex(self._value):
-            self._spec, self.check = self.REGEX, self.check_regex
+            self._spec, self.check = self.REGEX, self.check_regex_search if self._search else self.check_regex_match
 
         elif isinstance(self._value, dict):
             self._spec = self.DICT
@@ -189,7 +189,7 @@ class Condition(Access):
         else:
             return self.NO_CHECK
 
-    def check_regex(self, message, context):
+    def check_regex_match(self, message, context):
         check = self._value.match(message[0]) if message else None
 
         if check:
@@ -200,7 +200,18 @@ class Condition(Access):
 
         return rank, check
 
-    def check_string(self, message, context):
+    def check_regex_search(self, message, context):
+        check = self._value.search(message[0]) if message else None
+
+        if check:
+            rank = check.end()  # Whole length is the rank
+            check = check.group(0)
+        else:
+            rank = - 1
+
+        return rank, check
+
+    def check_string_match(self, message, context):
         try:
             message0 = message[0][:self._value_len]
 
@@ -209,6 +220,22 @@ class Condition(Access):
 
             if message0 == self._value:
                 return self._value_len, self._value
+
+        except (TypeError, IndexError):
+            pass
+
+        return self.NO_CHECK
+
+    def check_string_search(self, message, context):
+        try:
+            message0 = str(message[0])
+
+            if self._ignore_case:
+                message0 = message0.upper()
+
+            pos = message0.find(self._value)
+            if pos >= 0:
+                return self._value_len + pos, self._value
 
         except (TypeError, IndexError):
             pass
