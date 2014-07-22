@@ -197,7 +197,7 @@ class CoolLexer(FileProcessor):
         multiline_comment_body = self.builder.loop_rel(True).select('Multi-line comment body').current
 
         self.builder[multiline_comment_body].parse_rel(R_EOL, inc_line_no)
-        self.builder[multiline_comment_body].parse_rel(EOF).check_only().\
+        self.builder[multiline_comment_body].parse_rel(EOF, check_only=True).\
             act('EOF in comment', lambda line_no: [self.out_token(line_no, ERROR_TOKEN, 'EOF in comment'),
                                                    ParsingProcess.BREAK])
 
@@ -240,11 +240,11 @@ class CoolLexer(FileProcessor):
             act('Null character error', lambda: {ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'null_char'}})
 
         # If EOL matched stop the string with error or just break
-        self.builder[string_chars].parse_rel(R_EOL).check_only().\
+        self.builder[string_chars].parse_rel(R_EOL, check_only=True).\
             act('EOL', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'unescaped_eol'}}, ParsingProcess.BREAK])
 
         # Stop if EOF
-        self.builder[string_chars].parse_rel(EOF).check_only().\
+        self.builder[string_chars].parse_rel(EOF, check_only=True).\
             act('EOF error', lambda: [{ParsingProcess.ADD_CONTEXT: {STRING_ERROR: 'eof'}}, ParsingProcess.BREAK])
 
         # Escapes

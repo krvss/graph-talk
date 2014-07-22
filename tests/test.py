@@ -176,9 +176,11 @@ class UtTests(unittest.TestCase):
         self.assertEqual(condition_l.list[0].spec, Condition.STRING)
         self.assertEqual(condition_l.list[1].value, condition_l.value[1])
 
-        condition_l = Condition(('a', 'bb'), True)
+        condition_l = Condition(('a', 'bb'), 42, ignore_case=True)
         self.assertEquals(condition_l.check(['bB'], {}), (2, 'BB'))
         self.assertEquals(condition_l.check(['aa'], {}), (1, 'A'))
+        self.assertEqual(condition_l.tags, condition_l._conditions[0].tags)
+        self.assertEqual(condition_l._options, condition_l._conditions[0]._options)
 
         condition_r = Condition((re.compile('a+'), re.compile('aa'), 'aa'))
         self.assertEquals(condition_r.check(['aa'], {}), (2, 'aa'))
@@ -1554,7 +1556,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual((root, ), graph.notions())
 
         # Adding test 2
-        rel = NextRelation(root, rave, None, False, graph)
+        rel = NextRelation(root, rave, None, graph)
 
         self.assertEqual((rel,), graph.relations())
 
@@ -1601,12 +1603,12 @@ class UtTests(unittest.TestCase):
 
         # Search - Relations
         rel.owner = graph
-        rel2 = NextRelation(rave, lock, None, False, graph)
+        rel2 = NextRelation(rave, lock, None, graph)
 
         self.assertEqual(graph.relations(), (rel, rel2))
         self.assertEqual(graph.relation(), rel)
 
-        rel3 = NextRelation(root, None, None, False, graph)
+        rel3 = NextRelation(root, None, None, graph)
 
         self.assertListEqual(graph.relations({Relation.SUBJECT: root}), [rel, rel3])
         self.assertListEqual(graph.relations({Relation.OBJECT: rave}), [rel])
@@ -1672,14 +1674,14 @@ class UtTests(unittest.TestCase):
         self.assertEqual(b.current, c)
 
         # Next
-        self.assertEqual(b, b.next_rel(1, n, True))
+        self.assertEqual(b, b.next_rel(1, n, ignore_case=True))
         n_r = b.current
 
         self.assertEqual(n_r.owner, graph)
         self.assertEqual(n_r.subject, c)
         self.assertEqual(n_r.object, n)
         self.assertTrue(n_r.condition, 1)
-        self.assertTrue(n_r.ignore_case, True)
+        self.assertTrue(n_r.condition_access._ignore_case, True)
         self.assertEqual(graph.relation({Relation.SUBJECT: c}), n_r)
         self.assertTrue(isinstance(n_r, NextRelation))
 
@@ -1705,21 +1707,18 @@ class UtTests(unittest.TestCase):
         self.assertTrue(isinstance(a_r, ActionRelation))
 
         # Parsing relation
-        self.assertEqual(b, b.parse_rel(3, None, True, True))
+        self.assertEqual(b, b.parse_rel(3, None, ignore_case=True, optional=True, check_only=True))
         p_r = b.current
 
         self.assertEqual(p_r.owner, graph)
         self.assertEqual(p_r.subject, None)
         self.assertEqual(p_r.object, None)
         self.assertTrue(p_r.condition, 3)
-        self.assertTrue(p_r.ignore_case)
+        self.assertTrue(p_r.condition_access._ignore_case)
         self.assertTrue(p_r.optional)
+        self.assertTrue(p_r.check_only)
         self.assertIn(p_r, graph.relations())
         self.assertTrue(isinstance(p_r, ParsingRelation))
-
-        self.assertFalse(p_r.check_only)
-        b.check_only(True)
-        self.assertTrue(p_r.check_only)
 
         # Selective
         self.assertEqual(b, b.select('Select'))
@@ -1790,9 +1789,6 @@ class UtTests(unittest.TestCase):
         # Errors
         with self.assertRaises(TypeError):
             b.default()
-
-        with self.assertRaises(TypeError):
-            b.check_only()
 
         with self.assertRaises(TypeError):
             b.attach(b)

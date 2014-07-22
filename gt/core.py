@@ -136,8 +136,13 @@ class Condition(Access):
 
     NO_CHECK = -1, None
 
-    def __init__(self, value, ignore_case=False, *tags):
-        self._ignore_case, self.tags = ignore_case, frozenset(tags)
+    def __init__(self, value, *tags, **options):
+        self.tags = frozenset(tags)
+
+        self._options = options
+        self._ignore_case = options.get('ignore_case', False)
+        self._search = options.get('search', False)
+
         self.check, self._conditions = self.check_compare, tuple([self])
         super(Condition, self).__init__(value)
 
@@ -155,7 +160,7 @@ class Condition(Access):
 
         elif is_list(self._value):
             self._spec, self.check = self.LIST, self.check_list
-            self._conditions = tuple([Condition(c, self._ignore_case) for c in self._value])
+            self._conditions = tuple([Condition(c, *list(self.tags), **self._options ) for c in self._value])
 
         elif is_string(self._value):
             self._spec, self.check = self.STRING, self.check_string
@@ -325,7 +330,7 @@ class Handler(Abstract):
         """
         Adding the condition - event pair
         """
-        self.on_access(Condition(condition, False, *tags), Event(event))
+        self.on_access(Condition(condition, *tags), Event(event))
 
     def on_any(self, event):
         """
@@ -671,9 +676,9 @@ class NextRelation(Relation):
     """
     Next relation checks for additional condition when relation passed forward
     """
-    def __init__(self, subj, obj, condition=None, ignore_case=False, owner=None):
+    def __init__(self, subj, obj, condition=None, owner=None, **options):
         super(NextRelation, self).__init__(subj, obj, owner)
-        self.ignore_case = ignore_case
+        self.options = options
 
         if condition:
             self.set_condition(condition)
@@ -693,7 +698,7 @@ class NextRelation(Relation):
         return self.object
 
     def set_condition(self, value):
-        self.condition_access = Condition(value, self.ignore_case)
+        self.condition_access = Condition(value, **self.options)
 
     @property
     def condition(self):
@@ -1238,11 +1243,11 @@ class ParsingRelation(NextRelation):
     """
     Parsing relation: should be passable in forward direction (otherwise returns Error)
     """
-    def __init__(self, subj, obj, condition=None, ignore_case=False, owner=None):
-        super(ParsingRelation, self).__init__(subj, obj, condition, ignore_case, owner)
+    def __init__(self, subj, obj, condition=None, owner=None, **options):
+        super(ParsingRelation, self).__init__(subj, obj, condition, owner, **options)
 
-        self.optional = False
-        self.check_only = False
+        self.optional = options.get('optional', False)
+        self.check_only = options.get('check_only', False)
 
         self.unknown_event = Event(self.on_error)
 
@@ -1388,7 +1393,7 @@ class LoopRelation(NextRelation):
     INFINITY = float('inf')
 
     def __init__(self, subj, obj, condition=None, owner=None):
-        super(LoopRelation, self).__init__(subj, obj, condition, False, owner)
+        super(LoopRelation, self).__init__(subj, obj, condition, owner)
 
         # General loop
         self.on(self.can_start_general, self.do_start_general, Condition.VALUE)
@@ -1762,27 +1767,18 @@ class GraphBuilder(object):
     def act(self, name, action):
         return self.attach(ActionNotion(name, action, self.graph))
 
-    def next_rel(self, condition=None, obj=None, ignore_case=None):
-        rel = NextRelation(None, obj, condition, ignore_case, self.graph)
+    def next_rel(self, condition=None, obj=None, **options):
+        rel = NextRelation(None, obj, condition, self.graph, **options)
 
         return self.attach(rel)
 
     def act_rel(self, action, obj=None):
         return self.attach(ActionRelation(None, obj, action, self.graph))
 
-    def parse_rel(self, condition, obj=None, ignore_case=None, optional=None):
-        rel = ParsingRelation(None, obj, condition, ignore_case, self.graph)
-        rel.optional = optional
+    def parse_rel(self, condition, obj=None, **options):
+        rel = ParsingRelation(None, obj, condition, self.graph, **options)
 
         return self.attach(rel)
-
-    def check_only(self, value=True):
-        if isinstance(self.current, ParsingRelation):
-            self.current.check_only = value
-        else:
-            raise TypeError('Not a ParsingRelation - %s' % self.current)
-
-        return self
 
     def select(self, name):
         return self.attach(SelectiveNotion(name, self.graph))
