@@ -14,10 +14,10 @@ the process; and a handler-event approach to recognize the input messages.
 Features
 ========
 
-    * Easy to learn architecture
-    * Unlimited customization
-    * Only requires Python 2.7.5+
-    * Very small footprint
+* Easy to learn architecture
+* Highly customizable
+* Plain Python 2.7.5 or higher
+* Very small footprint
 
 Check the docs_ folder for the documentation and examples_ folder for examples of
 lexing, interpreting, and converting using Graph-talk.

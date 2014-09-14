@@ -5,12 +5,6 @@ from core import Handler, Event
 
 from collections import defaultdict
 
-try:
-    import pydevd
-    _DEBUGGER = 'pydev'
-except ImportError:
-    _DEBUGGER = 'pdb'
-
 
 class ProcessDebugger(Handler):
     """

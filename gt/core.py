@@ -1,5 +1,11 @@
-# Graph-talk base classes
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: gt.core
+   :platform: Unix, Windows
+   :synopsis: Graph-talk core classes
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 from inspect import getargspec
 from operator import attrgetter
@@ -9,15 +15,23 @@ from utils import *
 
 class Abstract(object):
     """
-    Base abstract class for all communicable objects
+    Base class for communicative objects.
     """
     def __call__(self, *message, **context):
+        """
+        Main method for sending messages to the object.
+
+        :param message:  list of arbitrary message parts to be processed one by one.
+        :param context:  key-value description of the message processing context.
+
+        :returns: None for no reaction, False if there is an error, any positive value otherwise.
+        """
         raise NotImplementedError('Method not implemented')
 
 
 class Access(Abstract):
     """
-    Access provides abstract-like access to any object
+    Access provides :class:`Abstract`-style wrapper to access non-Abstract objects.
     """
     CALL = 'call'
     ABSTRACT = 'abstract'
@@ -29,6 +43,11 @@ class Access(Abstract):
     CACHEABLE = frozenset([CALL, FUNCTION])
 
     def __init__(self, value):
+        """
+        Creates the new Access instance to wrap the value.
+
+        :param value: any object to wrap.
+        """
         self._value = value
         self._mode, self._spec = self.OTHER, self.OTHER
         self._call = self.call_direct
@@ -49,7 +68,12 @@ class Access(Abstract):
 
     def setup(self):
         """
-        Init type information
+        Inits type information, setting the call method, mode, and spec. Overwrite to support custom types.
+
+        Sets the read-only properties:
+            - **mode**: access mode - *call* for abstracts, *function* for functions and *value* for primitives;
+            - **spec**: access specification - *abstract* for abstracts, *ArgSpec* for functions, *other* for primitives;
+            - **value**: the value itself.
         """
         if isinstance(self._value, Abstract):
             self._mode, self._spec = self.CALL, self.ABSTRACT
@@ -80,6 +104,9 @@ class Access(Abstract):
             self._call = self.call_value
 
     def __call__(self, *message, **context):
+        """
+        Proxy method to emulate the 'call' to the object (execute the function, return the value, etc).
+        """
         return self._call(message, context)
 
     def call_direct(self, message, context):
@@ -112,6 +139,15 @@ class Access(Abstract):
 
     @staticmethod
     def get_access(obj, cache=False):
+        """
+        Gets the Access to the specified object, caches the access info if possible.
+
+        :param obj:     any object to wrap into the Access.
+        :param cache:   cache the access instance inside the object if True.
+        :type cache:    bool.
+        :returns:       new Access instance to access the object.
+        :rtype:         Access.
+        """
         if hasattr(obj, Access.CACHE_ATTR):
             access = getattr(obj, Access.CACHE_ATTR)
         else:
@@ -125,7 +161,10 @@ class Access(Abstract):
 
 class Condition(Access):
     """
-    Condition is an Access that checks the possibility of the access according to the message and context
+    Condition is used to check the possibility of message handling in the specified context. It's **'check'** method
+    returns the tuple of (rank, check_result) values, if the rank is less than 0 it means condition is not satisfied.
+    Check result is used mostly for regular expressions to analyze its actual matching result. Note that **check**
+    method is assigned dynamically basing on condition value type.
     """
     NUMBER = 'number'
     LIST = 'list'
@@ -137,6 +176,15 @@ class Condition(Access):
     NO_CHECK = -1, None
 
     def __init__(self, value, *tags, **options):
+        """
+        Creates the new Condition.
+
+        :param value:  value to be checked (object, function, regex, string, boolean, list).
+        :param tags:   list of tags for Condition to be active.
+        :param options:
+            - ignore_case (bool.): False by default, ignore case of strings or not.
+            - search (bool.): False by default, perform the search or just match regexes and strings when checking.
+        """
         self.tags = frozenset(tags)
 
         self._options = options
@@ -148,7 +196,8 @@ class Condition(Access):
 
     def setup(self):
         """
-        Setting additional mode info
+        Sets the additional **spec** info: *number, string, list, regex, dict, boolean*. Sets **check** property to
+        the appropriate checking function.
         """
         super(Condition, self).setup()
 
@@ -267,11 +316,16 @@ class Condition(Access):
 
     @property
     def list(self):
+        """
+        Returns the list of inner conditions.
+        """
         return self._conditions
 
 
-# Condition that is always satisfied
 class TrueCondition(Condition):
+    """
+    Condition that is always satisfied.
+    """
     def __init__(self):
         super(TrueCondition, self).__init__(id(self))
         self.check = lambda message, context: (0, True)
@@ -282,15 +336,33 @@ TRUE_CONDITION = TrueCondition()
 
 class Event(Access):
     """
-    Event is an Access that allows to attach Pre and Post custom functions before and after access
+    Event contains the user object (value or function) to be called if the :class:`Condition` was satisfied.
+    It provides 'pre' and 'post' properties to assign functions to be executed before and after the main object call.
     """
     RESULT = 'result'
 
     def __init__(self, value):
+        """
+        Wraps in Access the value to be called.
+        """
         super(Event, self).__init__(value)
         self.pre_event, self.post_event = None, None
 
     def run(self, message, context):
+        """
+        Accesses the event object with the message and context.
+        If pre-event is specified it will be called first, if its result is non-negative the object will not be called
+        at all. If post-event is specified it will be called after the object and the context will contain object
+        call result in *'result'* context parameter.
+
+        :param message: message to send to the event.
+        :type message: list.
+        :param context: running context.
+        :type context: dict.
+
+        :returns: tuple of (call result, value).
+        :rtype: tuple.
+        """
         if self.pre_event:
             pre_result = self.pre_event.run(message, context)
 
@@ -310,6 +382,9 @@ class Event(Access):
 
     @property
     def pre(self):
+        """
+        Sets/gets the pre-event object. Use pre_event attribute to assign Event instance.
+        """
         return self.pre_event.value if self.pre_event else None
 
     @pre.setter
@@ -318,6 +393,9 @@ class Event(Access):
 
     @property
     def post(self):
+        """
+        Sets/gets the post-event object. Use post_event attribute to assign Event instance.
+        """
         return self.post_event.value if self.post_event else None
 
     @post.setter
@@ -327,7 +405,12 @@ class Event(Access):
 
 class Handler(Abstract):
     """
-    Handler is a class for the routing of messages to processing functions (events) basing on specified conditions
+    Handler is used for routing of messages to the handling functions or events (:class:`Event`) basing on
+    specified conditions (:class:`Condition`). Each condition has a corresponding event. When handling the message,
+    Handler class searches for the condition that has a highest rank and calls **'unknown_event'** if nothing found.
+
+    Each condition could be limited to be active if its set of tags is a subset of Handler set of tags. List of
+    conditions and events which are active now is in **'active_events'** property.
     """
     ANSWER = 'answer'
     SENDER = 'sender'
@@ -346,7 +429,12 @@ class Handler(Abstract):
 
     def on_access(self, condition_access, event_access):
         """
-        Adding the accesses
+        Adds the Condition and Event instances pair.
+
+        :param condition_access: Condition to be checked.
+        :type condition_access: Condition.
+        :param event_access: Event to be executed if the Condition is satisfied.
+        :type event_access: Event.
         """
         if (condition_access, event_access) not in self._events:
             self._events.append((condition_access, event_access))
@@ -355,19 +443,28 @@ class Handler(Abstract):
 
     def on(self, condition, event, *tags):
         """
-        Adding the condition - event pair
+        Adds the condition - event pair.
+
+        :param condition:    condition for the event (function, abstract, value).
+        :param event:        function, abstract or value to be called if condition is satisfied.
+        :param tags:         list of tags to bind the condition to the object's state.
         """
         self.on_access(Condition(condition, *tags), Event(event))
 
     def on_any(self, event):
         """
-        Adding the event, without condition it will trigger on any message
+        Adds the event that will triggered on any message.
+
+        :param event: function, abstract or value to be called.
         """
         self.on_access(TRUE_CONDITION, Event(event))
 
     def off(self, condition, event):
         """
-        Removing the condition - event pair
+        Removes the condition - event pair.
+
+        :param condition:   condition to be removed.
+        :param event:       event to be removed.
         """
         if (condition, event) in self._events:
             self._events.remove((condition, event))
@@ -376,13 +473,17 @@ class Handler(Abstract):
 
     def off_any(self, event):
         """
-        Removing the event
+        Removes the event that will be triggered on any message.
+
+        :param event:   event to be removed.
         """
         self.off(TRUE_CONDITION, event)
 
     def off_condition(self, condition):
         """
-        Removing all the events for the condition
+        Removes all events for the condition.
+
+        :param condition:   condition to be removed.
         """
         self._events = filter(lambda e: not (e[0] == condition), self._events)
 
@@ -390,7 +491,9 @@ class Handler(Abstract):
 
     def off_event(self, event):
         """
-        Remove all occurrences of the event
+        Removes all occurrences of the event.
+
+        :param event:   event to be removed.
         """
         self._events = filter(lambda e: not (e[1] == event), self._events)
 
@@ -398,7 +501,12 @@ class Handler(Abstract):
 
     def get_events(self, condition=None):
         """
-        Getting the events for the specified condition
+        Gets the events for the specified condition. If condition is not specified returns the list of events that
+        trigger on any message.
+
+        :param condition:   condition to get the events.
+        :returns: list of events found.
+        :rtype: list.
         """
         if condition:
             return [e[1] for e in self._events if has_first(e, condition)]
@@ -406,24 +514,32 @@ class Handler(Abstract):
             return [e[1] for e in self._events if e[0] == TRUE_CONDITION]
 
     def clear_events(self):
+        """
+        Removes all conditions and events.
+        """
         del self._events[:]
         self.active_events = tuple()
 
     def update_tags(self):
         """
-        Called when update needed, returns new tags
+        Called by update to get the set of tags describing the current state.
+
+        :returns: set of tags describing the current state.
+        :rtype: set.
         """
         return self._tags
 
     def update_events(self):
         """
-        Called when event update needed (for example, after new event was added or tags was changed)
+        Called by update when the list of active events update is needed (for example, after the new event was added or
+        tags were changed).
         """
         self.active_events = tuple(filter(lambda e: e[0].tags.issubset(self._tags), self._events))
 
     def update(self):
         """
-        Update is called by the object itself when something is changed and it could change tags
+        Update is called manually or by handler itself when something is changed. If the new set of tags is different
+        from the current the list of active events will be re-populated.
         """
         new_tags = self.update_tags()
 
@@ -434,7 +550,15 @@ class Handler(Abstract):
 
     def handle(self, message, context):
         """
-        Calling events basing on condition
+        Checks the list of condition-event pairs to find the best condition for the message and context and executes
+        the corresponding event.
+
+        :param message: list of message parts.
+        :type message: list.
+        :param context: message handling context.
+        :type context: dict.
+        :returns: Tuple of (event_result, condition_rank, event_found). If no condition was found, rank is equal to -1.
+        :rtype: tuple.
         """
         check, rank, event_found = self.NO_HANDLE
 
@@ -466,7 +590,12 @@ class Handler(Abstract):
 
     def __call__(self, *message, **context):
         """
-        Answer depends on the context
+        Answers on the incoming message. Calls 'handle' method and returns the first element from its reply.
+        If the context parameter 'answer' is equal to 'rank' - returns the rank is well.
+
+        :param message: message parts.
+        :param context: message context.
+        :returns: handling result or tuple of (handling_result, condition_rank).
         """
         answer_mode = context.pop(self.ANSWER, None)  # Applicable only for a top level
         result = self.handle(message, context)
@@ -478,6 +607,9 @@ class Handler(Abstract):
 
     @property
     def tags(self):
+        """
+        Sets/gets the set of the current tags. Does not call 'update'.
+        """
         return self._tags
 
     @tags.setter
@@ -486,6 +618,9 @@ class Handler(Abstract):
 
     @property
     def events(self):
+        """
+        Gets the list of all conditions and events regardless of current tags.
+        """
         return self._events
 
 

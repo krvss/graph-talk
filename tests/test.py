@@ -381,28 +381,38 @@ class UtTests(unittest.TestCase):
         h.clear_events()
 
         h.unknown_event = Event(handler1)
-        self.assertEqual(h('strange'), 'handler1')
+        self.assertEqual(h('strange'), handler1)
 
         # Tags check
-        h.on('strange', Event(True), 'spec', 'case')
+        class UpdateTest(Handler):
+            def __init__(self):
+                super(UpdateTest, self).__init__()
+                self.fixed_tags = set()
 
-        self.assertEqual(h('strange'), 'handler1')
+            def update_tags(self):
+                return self.fixed_tags
 
-        h.tags = {'strange'}
-        h.update()
+        u = UpdateTest()
 
-        self.assertEqual(h('strange'), 'handler1')
-        self.assertEqual(h.tags, {'strange'})
+        u.on('go', Event(True), 'case1', 'case2')
 
-        h.tags = {'case', 'strange'}
-        h.update()
+        self.assertEqual(u('go'), False)
 
-        self.assertTrue(h('strange'))
+        u.fixed_tags = {'case1'}
+        u.update()
 
-        h.tags = set()
-        h.update()
+        self.assertEqual(u('go'), False)
+        self.assertEqual(u.tags, {'case1'})
 
-        self.assertEqual(h('strange'), 'handler1')
+        u.fixed_tags = {'case1', 'case2'}
+        u.update()
+
+        self.assertEqual(u('go'), True)
+
+        u.fixed_tags = set()
+        u.update()
+
+        self.assertEqual(u('go'), False)
 
 
     def test_4_element(self):
@@ -411,7 +421,6 @@ class UtTests(unittest.TestCase):
         e.owner = tc
 
         self.assertEqual(e.owner, tc)
-
 
         # Allowing the change to non-abstract
         self.assertTrue(e.change_property('owner', 1))
@@ -536,7 +545,7 @@ class UtTests(unittest.TestCase):
         self.assertIsNone(na.action)
 
         # Action relation test
-        ar = ActionRelation('subj', 'obj', lambda: True)
+        ar = ActionRelation('subj', 'obj', True)
 
         self.assertEqual(ar(Element.NEXT), (True, ar.object))
         ar.action = None
@@ -647,22 +656,6 @@ class UtTests(unittest.TestCase):
         self.assertEquals(process.current, a)
         self.assertEqual(len(process._queue), 1)
 
-        # Now let's test skipping the unknowns by the debugger
-        debugger.clear_points()
-
-        b = Notion('b')
-        b.on(process.QUERY, unk)
-        NextRelation(a, b)
-
-        c = ActionNotion('c', process.STOP)
-        NextRelation(a, c)
-
-        debugger.unknown_event = Event(process.skip)
-
-        r = process(process.NEW, root, test='test_skipping')
-        self.assertEqual(r, process.STOP)
-        self.assertEqual(process.current, c)
-        self.assertEqual(len(process._queue), 1)
 
     def test_8_queue(self):
         # Stack test: root -> (a, e); a -> (b, c, d)
@@ -1835,6 +1828,88 @@ class UtTests(unittest.TestCase):
 
         self.assertFalse(process._context_stack)
         self.assertEqual(process.current, l)
+
+        # Examples from the Dev's Guide
+        h = Handler()
+
+        def show_me(*m, **c):
+            print c
+
+            return
+
+        h.on(re.compile('a+'), show_me)
+
+        h('aaa')
+
+        h.clear_events()
+        c = Condition(re.compile('a+'))
+        e = Event(show_me)
+        h.on_access(c, e)
+
+        e.pre = 1
+
+        print (h('a'))
+
+        print (h.handle(['aa'], {}))
+
+        print (h.handle([], {}))
+
+        # Tags example
+        class TagsExample(Handler):
+            def __init__(self):
+                super(TagsExample, self).__init__()
+                self.fixed_tags = set()
+
+            def update_tags(self):
+                return self.fixed_tags
+
+        u = TagsExample()
+
+        u.on('move', Event(True), 'has_fuel', 'has_direction')
+
+        print u('move')
+
+        u.fixed_tags = {'has_fuel', 'maps_loading'}
+        u.update()
+
+        print u('move')
+
+        u.fixed_tags = {'has_fuel', 'has_direction'}
+        u.update()
+
+        print u('move')
+
+        # GraphBuilder
+
+        builder = GraphBuilder('New Graph')
+
+        builder.next_rel().complex('initiate').next_rel().notion('remove breaks').back().back().next_rel().act('ignite', 1)
+
+        print Process()(builder.graph)
+
+        print builder.graph.notions(re.compile('i*'))
+
+        # Process debugger
+        p = Process()
+        d = ProcessDebugger(p, True)
+
+        cn = ComplexNotion('CN')
+        n1 = Notion('N1')
+        n2 = Notion('N2')
+
+        NextRelation(cn, n1)
+        NextRelation(cn, n2)
+
+        p(cn)
+
+        root = ComplexNotion('root')
+        n = ComplexNotion('n')
+
+        NextRelation(root, n)
+
+        d.reply_at(n, process.STOP)
+
+        print p(p.NEW, root)
 
 
 def test():
