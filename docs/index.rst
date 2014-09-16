@@ -11,6 +11,10 @@ Contents:
 .. toctree::
    :maxdepth: 2
 
+   concepts
+   guide
+   api
+
 
 
 Indices and tables

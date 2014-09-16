@@ -590,7 +590,7 @@ class Handler(Abstract):
 
     def __call__(self, *message, **context):
         """
-        Answers on the incoming message. Calls 'handle' method and returns the first element from its reply.
+        Answers on the incoming message. Calls :meth:`Handler.handle` method and returns the first element from its reply.
         If the context parameter 'answer' is equal to 'rank' - returns the rank is well.
 
         :param message: message parts.
@@ -626,7 +626,8 @@ class Handler(Abstract):
 
 class Element(Handler):
     """
-    Element is a part of a complex system (e.g. graph)
+    Element is a part of the complex system (e.g. graph). It has the owner and could be passed in forward and backward
+    directions.
     """
     NEXT = 'next'
     PREVIOUS = 'previous'
@@ -643,38 +644,87 @@ class Element(Handler):
     BACKWARD = set([PREVIOUS])
 
     def __init__(self, owner=None):
+        """
+        Creates the Element, connecting it to the owner, if specified.
+
+        :param owner: graph to own this element.
+        :type owner: Graph.
+        """
         super(Element, self).__init__()
 
         self._owner, self.owner = None, owner
 
     def is_forward(self, message):
+        """
+        Checks is the message about passing the element in a forward direction.
+
+        :param message: message to be checked
+        :type message: list.
+        :returns: forward or not.
+        :rtype: bool.
+        """
         return message and message[0] in self.FORWARD
 
     def can_go_forward(self, *message, **context):
+        """
+        Passing forward condition.
+        """
         return self.is_forward(message)
 
     def on_forward(self, event):
+        """
+        Assigns the event to be called when this element is passed in a forward direction.
+
+        :param event: user function to be called.
+        """
         self.on(self.can_go_forward, event)
 
     def off_forward(self):
+        """
+        Disconnects the forward condition and event.
+        """
         self.off_condition(self.can_go_forward)
 
     def is_backward(self, message):
+        """
+        Checks is the message about passing the element in a backward direction.
+
+        :param message: message to be checked
+        :type message: list.
+        :returns: backward or not.
+        :rtype: bool.
+        """
         return message and message[0] in self.BACKWARD
 
     def can_go_backward(self, *message, **context):
+        """
+        Passing backward condition.
+        """
         return self.is_backward(message)
 
     def on_backward(self, event):
+        """
+        Assigns the event to be called when this element passed in a backward direction.
+
+        :param event: user function to be called.
+        """
         self.on(self.can_go_backward, event)
 
     def off_backward(self):
+        """
+        Disconnects the backward condition and event.
+        """
         self.off_condition(self.can_go_backward)
 
     @staticmethod
     def add_prefix(msg, prefix):
         """
-        Add prefix to the message
+        Adds the prefix to the message.
+
+        :param msg: message.
+        :type msg: str.
+        :param prefix: prefix.
+        :type prefix: str.
         """
         event_name = msg
 
@@ -685,7 +735,12 @@ class Element(Handler):
 
     def change_property(self, name, value):
         """
-        Set the property to the new value with notification, if needed
+        Sets the property to the new value with the notification, if needed. For example, when setting the owner, old
+        and new owners will be notified about the change with the message generated with :meth:`Element.add_prefix` method.
+
+        :param name: property name.
+        :type name: str.
+        :param value: property value.
         """
         old_value = getattr(self, name)
         if old_value == value:
@@ -706,6 +761,9 @@ class Element(Handler):
 
     @property
     def owner(self):
+        """
+        Sets/gets the owner using :meth:`Element.change_property` method.
+        """
         return self._owner
 
     @owner.setter
@@ -715,9 +773,17 @@ class Element(Handler):
 
 class Notion(Element):
     """
-    Notion is an element with name
+    Notion is an element with name. Represent the graph vertex.
     """
     def __init__(self, name, owner=None):
+        """
+        Creates the new Notion with the specified name.
+
+        :param name: Notion name.
+        :type name: str.
+        :param owner: Notion's owner.
+        :type owner: Graph.
+        """
         super(Notion, self).__init__(owner)
         self._name, self.name = None, name
 
@@ -734,6 +800,9 @@ class Notion(Element):
 
     @property
     def name(self):
+        """
+        Sets/gets the Notion name using :meth:`Element.change_property` method.
+        """
         return self._name
 
     @name.setter
@@ -743,14 +812,25 @@ class Notion(Element):
 
 class ActionNotion(Notion):
     """
-    Action notion is a notion with specified forward handler
+    Action notion is a notion that executes the user function when passed forward.
     """
     def __init__(self, name, action, owner=None):
+        """
+        Creates the new ActionNotion with the specified name and action.
+
+        :param name: Notion name.
+        :param action: action.
+        :param owner: Notion's owner.
+        :type owner: Graph.
+        """
         super(ActionNotion, self).__init__(name, owner)
         self.on_forward(action)
 
     @property
     def action(self):
+        """
+        Sets/gets the user function to be triggered using :meth:`Element.on_forward` method.
+        """
         value = self.get_events(self.can_go_forward)
         return value[0] if value else None
 
@@ -762,18 +842,31 @@ class ActionNotion(Notion):
 
 class Relation(Element):
     """
-    Relation is a connection between one or more elements: subject -> object
+    Relation is a connection between one or more notions, directed from subject to object(s).
     """
     SUBJECT = 'subject'
     OBJECT = 'object'
 
     def __init__(self, subj, obj, owner=None):
+        """
+        Creates the new Relation between subj and obj.
+
+        :param subj: Source Notion.
+        :type subj: ComplexNotion.
+        :param obj: Target Notion.
+        :type obj: Notion.
+        :param owner: Relation's owner.
+        :type owner: Graph.
+        """
         super(Relation, self).__init__(owner)
         self._object = self._subject = None
         self.subject, self.object = subj, obj
 
     @property
     def subject(self):
+        """
+        Sets/gets the subject using :meth:`Element.change_property` method.
+        """
         return self._subject
 
     @subject.setter
@@ -782,6 +875,9 @@ class Relation(Element):
 
     @property
     def object(self):
+        """
+        Sets/gets the object using :meth:`Element.change_property` method.
+        """
         return self._object
 
     @object.setter
@@ -797,7 +893,8 @@ class Relation(Element):
 
 class ComplexNotion(Notion):
     """
-    Complex notion is a notion that relates with other notions (objects)
+    Complex notion is a notion that contains other notions through relations. To add a relation just set its subject to
+    the corresponding ComplexNotion.
     """
     def __init__(self, name, owner=None):
         super(ComplexNotion, self).__init__(name, owner)
@@ -808,6 +905,12 @@ class ComplexNotion(Notion):
         self.on_forward(self.do_forward)
 
     def do_relation(self, *message, **context):
+        """
+        set_subject message event, updates references if the sub-notions was connected/disconnected.
+
+        :returns: True if owner change was successful.
+        :rtype: bool.
+        """
         relation = context.get(self.SENDER)
 
         if context[self.OLD_VALUE] == self and relation in self._relations:
@@ -819,26 +922,48 @@ class ComplexNotion(Notion):
             return True
 
     def do_forward(self, *message, **context):
+        """
+        Forward message event.
+
+        :returns: the list of relations or just relation if the list length = 1
+        """
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
     def remove_all(self):
         """
-        Disconnect all relations
+        Disconnect all relations.
         """
         while self._relations:
             self._relations[0].subject = None
 
     @property
     def relations(self):
+        """
+        Gets the list of relations, do not manually update it to maintain consistency.
+        """
         return self._relations
 
 
 class NextRelation(Relation):
     """
-    Next relation checks for additional condition when relation passed forward
+    Next relation returns its object to the forward message if the specified condition was satisfied. If the condition
+    is not set, :class:`TrueCondition` is used..
     """
     def __init__(self, subj, obj, condition=None, owner=None, **options):
+        """
+        Creates the new NextRelation with the specified condition.
+
+        :param subj: Subject.
+        :type subj: ComplexNotion.
+        :param obj: Object.
+        :type obj: Notion.
+        :param condition: condition value, will be wrapped in :class:`Condition`.
+        :param owner: Owner.
+        :type owner: Graph.
+        :param options: Condition options, like in :meth:`Condition.__init__`. When setting the new condition, options
+            will be re-applied.
+        """
         super(NextRelation, self).__init__(subj, obj, owner)
         self.options = options
 
@@ -849,21 +974,41 @@ class NextRelation(Relation):
 
         self.on(self.can_pass, self.do_next)
 
-    def check_condition(self, message, context):
-        return self.condition_access.check(message, context)
-
     def can_pass(self, *message, **context):
+        """
+        Forward message condition, will call :meth:`NextRelation.check_condition` if the message is a forward one.
+        """
         if self.is_forward(message):  # We use 0 rank to make condition prevail other forward command
             return self.check_condition(message, context)
 
+    def check_condition(self, message, context):
+        """
+        Returns the result of condition check method call.
+        """
+        return self.condition_access.check(message, context)
+
     def do_next(self, *message, **context):
+        """
+        Next event.
+
+        :returns: Object.
+        :rtype: Notion.
+        """
         return self.object
 
     def set_condition(self, value):
+        """
+        Sets the new condition, wrapping the value in the :class:`Condition`.
+
+        :param value: new condition value.
+        """
         self.condition_access = Condition(value, **self.options)
 
     @property
     def condition(self):
+        """
+        Sets/gets the value of the current condition. Note, that it does not returns a Condition instance.
+        """
         return self.condition_access.value
 
     @condition.setter
@@ -873,15 +1018,32 @@ class NextRelation(Relation):
 
 class ActionRelation(Relation):
     """
-    Action relation performs an action and moves forward
+    Action relation performs an action and when passed forward.
     """
     def __init__(self, subj, obj, action, owner=None):
+        """
+        Creates the new ActionRelation.
+
+        :param subj: Subject.
+        :type subj: ComplexNotion.
+        :param obj: Object.
+        :type obj: Notion.
+        :param action: action value, will be wrapped in :class:`Access`.
+        :param owner: Owner.
+        :type owner: Graph.
+        """
         super(ActionRelation, self).__init__(subj, obj, owner)
         self._action_access = Access(action)
 
         self.on_forward(self.do_act)
 
     def do_act(self, *message, **context):
+        """
+        Executes the action.
+
+        :returns: If the action result is not None, returns tuple (action_result, object). Otherwise returns only action
+            result if not None else Object.
+        """
         action_result = self._action_access(*message, **context)
 
         if action_result is not None and self.object is not None:
@@ -891,6 +1053,9 @@ class ActionRelation(Relation):
 
     @property
     def action(self):
+        """
+        Sets/gets value as an action, wrapping it in :class:`Access`. When called for reading, returns the value.
+        """
         return self._action_access.value
 
     @action.setter
@@ -1403,9 +1568,16 @@ Element.BACKWARD = Element.BACKWARD | set([ParsingProcess.ERROR, ParsingProcess.
 
 class ParsingRelation(NextRelation):
     """
-    Parsing relation: should be passable in forward direction (otherwise returns Error)
+    Parsing relation: should be passable in a forward direction (otherwise returns *'error'*). If passed, consumes the
+    amount of text equal to the rank.
     """
     def __init__(self, subj, obj, condition=None, owner=None, **options):
+        """
+        New options in addition to :meth:`NextRelation.__init__`:
+
+            - **'optional'**: do not return *'error'* if the condition was not satisfied, False by default.
+            - **'check_only'**: do not return *'proceed'* if the condition was satisfied, False by default.
+        """
         super(ParsingRelation, self).__init__(subj, obj, condition, owner, **options)
 
         self.optional = options.get('optional', False)
@@ -1415,13 +1587,15 @@ class ParsingRelation(NextRelation):
 
     def check_condition(self, message, context):
         """
-        Here we check condition against the parsing text, text goes first as a message
+        Checks the condition against the value of the *'text'* parameter from the context.
         """
         return self.condition_access.check(tupled(context.get(ParsingProcess.TEXT), message), context)
 
     def do_next(self, *message, **context):
         """
-        Consume the parsed part of the text
+        Consume the parsed part of the text equal to rank.
+
+        :returns: Tuple ({'proceed': condition_rank}, Object) if check_only is False, just Object otherwise.
         """
         next_result = super(ParsingRelation, self).do_next(*message, **context)
         rank = context.get(self.RANK)
@@ -1429,14 +1603,23 @@ class ParsingRelation(NextRelation):
         return ({ParsingProcess.PROCEED: rank}, next_result) if rank and not self.check_only else next_result
 
     def on_error(self, *message):
+        """
+        Unknown_message event.
+
+        :returns: 'error'
+        :rtype: str.
+        """
         if not self.optional and self.is_forward(message):
             return ParsingProcess.ERROR
 
 
 class SelectiveNotion(ComplexNotion):
     """
-    Selective notion: complex notion that can consist of one of its objects
-    It tries all relations and uses the one without errors
+    Selective notion is a :class:`ComplexNotion` that can consist of only one of its sub-notions. It resembles
+    *"switch"* statement from programming languages like Java or C++. SelectiveNotion tries all relations and uses the
+    one with the highest rank and processed without errors. After each try the context state will be restored to make
+    sure all relations use the same context data. Like in the original switch statement it is possible to specify the
+    *default* relation to be used if nothing worked.
     """
     CASES = 'cases'
 
@@ -1450,7 +1633,10 @@ class SelectiveNotion(ComplexNotion):
 
     def get_best_cases(self, message, context):
         """
-        Searching for the longest case, use default if none and it is specified
+        Searching for the relation with the highest rank.
+
+        :returns: the relation(s) with the highest rank or default relation, if specified.
+        :rtype: list.
         """
         context[self.ANSWER] = self.RANK
 
@@ -1475,7 +1661,7 @@ class SelectiveNotion(ComplexNotion):
 
     def do_relation(self, *message, **context):
         """
-        Default should be the part of relations
+        Additional check for *default* to have this notion as a subject.
         """
         super(SelectiveNotion, self).do_relation(*message, **context)
 
@@ -1484,10 +1670,20 @@ class SelectiveNotion(ComplexNotion):
 
     # Events #
     def can_go_forward(self, *message, **context):
+        """
+        Forward condition: additional check for the first visit (re-try will handle this otherwise).
+        """
         if not context.get(StatefulProcess.STATE):  # If we've been here before we need to try something different
             return super(SelectiveNotion, self).can_go_forward(*message, **context)
 
     def do_forward(self, *message, **context):
+        """
+        Forward event: if this notion has only one relation just returns it without any checks; otherwise calls
+        :meth:`SelectiveNotion.get_best_cases` to get the best relations and returns first one from the list.
+        Other relations with the same rank will be saved to the state *'cases'* variable for re-tries.
+        Note that it saves the context state to the process stack using **push_context** command of
+        :class:`StackingProcess` if there is more than one case to try.
+        """
         reply = super(SelectiveNotion, self).do_forward(*message, **context)
 
         if is_list(reply):
@@ -1509,9 +1705,16 @@ class SelectiveNotion(ComplexNotion):
         return reply
 
     def can_retry(self, *message, **context):
+        """
+        Re-try condition: if the previous case did not work (**"error"** in the message), let's try something else.
+        """
         return context.get(StatefulProcess.STATE) and has_first(message, ParsingProcess.ERROR)
 
     def do_retry(self, **context):
+        """
+        Re-try event: if there are other cases to try - let's do this, if not - clear the state and keep the error
+        propagating to the top.
+        """
         cases = context[StatefulProcess.STATE][self.CASES]
 
         if cases:
@@ -1528,13 +1731,23 @@ class SelectiveNotion(ComplexNotion):
             return self.do_finish()  # No more opportunities
 
     def can_finish(self, *message, **context):
+        """
+        Finish condition: there is a saved state and no error happened.
+        """
         return context.get(StatefulProcess.STATE) and self.is_forward(message)
 
     def do_finish(self):
+        """
+        Finish event: forget the saved context and clear the state.
+        """
         return [StackingProcess.FORGET_CONTEXT, StatefulProcess.CLEAR_STATE]
 
     @property
     def default(self):
+        """
+        Sets/gets the default relation. Only the relation with the subject equal to this element could be used as
+        default.
+        """
         return self._default
 
     @default.setter
@@ -1547,8 +1760,9 @@ class SelectiveNotion(ComplexNotion):
 
 class LoopRelation(NextRelation):
     """
-    Loop relation specifies counts of the related object.
-    Possible conditions are: numeric (n; m..n; m..; ..n), wildcards (*, ?, +), true (infinite loop), and iterator function
+    Loop relation specifies the number of times the Object should appear. Similar to 'for' loops in programming
+    languages. The number of times is specified as a condition, possible conditions are:
+    numeric (n; m..n; m..; ..n), wildcards (*, ?, +), True (infinite loop), and a user function.
     """
     ITERATION = 'i'
     WILDCARDS = frozenset(['*', '?', '+'])
@@ -1571,9 +1785,18 @@ class LoopRelation(NextRelation):
         self.on(self.can_continue, self.do_continue)
 
     def check_condition(self, message, context):
+        """
+        Forward condition, in this class works only in case of infinite loops.
+        """
         return self.condition_access == TRUE_CONDITION  # Here we check only the simplest case
 
     def set_condition(self, value):
+        """
+        In addition to :meth:`NextRelation.set_condition` updates the tags to keep only events which work for
+        the specified condition type.
+
+        :param value: new condition value.
+        """
         super(LoopRelation, self).set_condition(value)
 
         if self.is_general():
@@ -1585,13 +1808,13 @@ class LoopRelation(NextRelation):
 
     def is_wildcard(self):
         """
-        Is a wildcard loop
+        Is a wildcard loop.
         """
         return self.condition in self.WILDCARDS
 
     def is_numeric(self):
         """
-        Is a numeric loop
+        Is a numeric loop.
         """
         if self.condition_access.spec == Condition.NUMBER:
             return True
@@ -1601,37 +1824,41 @@ class LoopRelation(NextRelation):
 
     def is_infinite(self):
         """
-        Infinite loop
+        Is an infinite loop.
         """
         return self.condition is True
 
     def is_custom(self):
         """
-        Custom loop: not empty callable condition
+        Is a custom loop: non-empty callable condition.
         """
         return self.condition_access.mode == Access.FUNCTION
 
     def is_flexible(self):
         """
-        Flexible condition has no finite bound, lower or higher
+        Is a flexible loop: the condition has no finite limit of repetitions, either lower or higher.
         """
         return (self.is_numeric() and self.condition_access.spec == Condition.LIST) or self.is_wildcard()
 
     def is_general(self):
         """
-        Checking for the condition type
+        Is a general type: numeric, wildcard or infinite, but not a custom.
         """
         return self.is_numeric() or self.is_wildcard() or self.is_infinite()
 
     def is_looping(self, context):
         """
-        Checking is we are in loop now
+        Checks if this loop is active now.
         """
         return self.ITERATION in context.get(StatefulProcess.STATE)
 
     def get_bounds(self):
         """
-        Get the limits of the loop
+        Gets the limits of the loop.
+
+        :returns: Tuple of (lower_bound, upper_bound). For loops with no lower bound (like ..n) it equals to 0,
+        for loops with no upper bound it equals to infinity.
+        :rtype: tuple.
         """
         lower, upper = 0, self.INFINITY
 
@@ -1657,7 +1884,15 @@ class LoopRelation(NextRelation):
 
     def get_next_iteration_reply(self, i=1):
         """
-        Make the iteration reply
+        Gets the next iteration reply: sets the state to the iteration value using **set_state** command of
+        :class:`StatefulProcess` and saves the context if the loop is flexible. If the iteration is higher than 1,
+        discard the previous context state using **forget_context** command of :class:`StackingProcess`.
+
+        :param i: iteration number.
+        :type i: int.
+        :returns: list of commands: **set_state** with *'iteration'* equal to i, optional discarding and saving the
+            context commands.
+        :rtype: list.
         """
         reply = [{StatefulProcess.SET_STATE: {self.ITERATION: i}}]
 
@@ -1672,15 +1907,29 @@ class LoopRelation(NextRelation):
     # Events #
     # General loop
     def can_start_general(self, *message, **context):
+        """
+        Forward condition for starting general loops: checks for the first visit, loop event will be used otherwise.
+        """
         return self.is_forward(message) and not self.is_looping(context)
 
     def do_start_general(self):
+        """
+        Forward event for starting general loops, just returns the first iteration using
+        :meth:`LoopRelation.get_next_iteration_reply`.
+        """
         return self.get_next_iteration_reply()
 
     def can_loop_general(self, *message, **context):
+        """
+        Loop condition for the general loops: make sure there are no errors and iteration is more than 1.
+        """
         return self.is_forward(message) and self.is_looping(context)
 
     def do_loop_general(self, **context):
+        """
+        Loop event for the general loops: if the iteration is within bounds, increase it and repeat the loop.
+        Stops the loop otherwise, clearing the state and discarding the saved context, keeping it in the actual state.
+        """
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
 
         if i < self.get_bounds()[1]:
@@ -1694,9 +1943,17 @@ class LoopRelation(NextRelation):
             return reply + [StatefulProcess.CLEAR_STATE]
 
     def can_error_general(self, *message, **context):
+        """
+        Error condition for the general loops.
+        """
         return has_first(message, ParsingProcess.ERROR) and self.is_looping(context)
 
     def do_error_general(self, **context):
+        """
+        Error event for the general loops: if the loop condition is satisfied just clears the state, restores
+        the context to the last good state and clears the error. If the number of repetitions is less than needed -
+        discards the saved context, clears the state and keeps the error.
+        """
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
         lower, upper = self.get_bounds()
 
@@ -1713,9 +1970,17 @@ class LoopRelation(NextRelation):
     
     # Custom loop
     def can_loop_custom(self, *message):
+        """
+        Forward event for custom loops.
+        """
         return self.is_forward(message)
 
     def do_loop_custom(self, *message, **context):
+        """
+        Loop event for custom loops. Calls for the user function, sending the value of current iteration in the context.
+        The call result will be the new value of the iteration. If it is equal to 0, False, or None - stops the loop by
+        clearing the state.
+        """
         i = self.condition_access(*message, **context)
 
         if i:
@@ -1724,13 +1989,23 @@ class LoopRelation(NextRelation):
             return False if not self.is_looping(context) else StatefulProcess.CLEAR_STATE,
 
     def do_error_custom(self):
+        """
+        Error event for the custom loops: just clears the state.
+        """
         return StatefulProcess.CLEAR_STATE,
     
     # Common handling
     def can_break(self, *message, **context):
+        """
+        Break condition: checks for the message to be **'break'** and the loop to be in progress.
+        """
         return has_first(message, ParsingProcess.BREAK) and self.is_looping(context)
 
     def do_break(self):
+        """
+        Break event: changes the process direction to forward, clears the loop state and the context state if the loop
+        is flexible.
+        """
         reply = [self.NEXT]
 
         if self.is_flexible():
@@ -1739,10 +2014,17 @@ class LoopRelation(NextRelation):
         return reply + [StatefulProcess.CLEAR_STATE]
 
     def can_continue(self, *message, **context):
+        """
+        Continue condition: checks for the message to be **'continue'** and the loop to be in progress.
+        """
         return has_first(message, ParsingProcess.CONTINUE) and self.is_looping(context)
 
-    def do_continue(self, **context):
-        return [self.NEXT] + self.do_loop_general(**context)
+    def do_continue(self, *message, **context):
+        """
+        Continue event: changes the process direction to forward, starts the new iteration.
+        """
+        return [self.NEXT] + self.do_loop_general(**context) if self.is_general() else \
+            self.do_loop_custom(*message, **context)  # TODO test custom loops
 
 
 class Graph(Element):
