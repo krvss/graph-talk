@@ -1762,7 +1762,7 @@ class LoopRelation(NextRelation):
     """
     Loop relation specifies the number of times the Object should appear. Similar to 'for' loops in programming
     languages. The number of times is specified as a condition, possible conditions are:
-    numeric (n; m..n; m..; ..n), wildcards (*, ?, +), True (infinite loop), and a user function.
+    numeric (n; m..n; m..; ..n), wildcards ("*", "?", "+"), True (infinite loop), and a user function.
     """
     ITERATION = 'i'
     WILDCARDS = frozenset(['*', '?', '+'])
@@ -1857,7 +1857,7 @@ class LoopRelation(NextRelation):
         Gets the limits of the loop.
 
         :returns: Tuple of (lower_bound, upper_bound). For loops with no lower bound (like ..n) it equals to 0,
-        for loops with no upper bound it equals to infinity.
+         for loops with no upper bound it equals to infinity.
         :rtype: tuple.
         """
         lower, upper = 0, self.INFINITY
@@ -2029,9 +2029,19 @@ class LoopRelation(NextRelation):
 
 class Graph(Element):
     """
-    Graph is a container for Notions, Relations, and other Graphs it allows easy search and processing of them
+    Graph is a container for elements like Notions, Relations, and other Graphs. It allows easy search and processing
+    of the elements.
     """
+
     def __init__(self, root=None, owner=None):
+        """
+        Creates the new Graph with the specified root notion and owner.
+
+        :param root: if of String type, Graph will create the new :class:`ComplexNotion` element with the corresponding
+         name and owner to be used as a root. The root notion will be saved into **root** property of the graph.
+        :param owner: Owner of this graph.
+        :type owner: Graph.
+        """
         super(Graph, self).__init__(owner)
 
         self._root = None
@@ -2049,7 +2059,14 @@ class Graph(Element):
 
     def get_notion_search_rank(self, notion, criteria):
         """
-        Gets the rank of notion when searching by criteria
+        Gets the rank of the notion when searching by criteria. Used as a comparator for notions search.
+
+        :param notion: the notion to calculate the rank.
+        :type notion: Notion.
+        :param criteria: searching criteria - regex, string or user function.
+        :returns: similarity rank - match length for regex, length of the string if the string is equal to the notion's
+         name, the result of user function call.
+        :rtype: int.
         """
         if callable(criteria):
             return criteria(notion)
@@ -2065,6 +2082,16 @@ class Graph(Element):
         return -1
 
     def search_elements(self, collection, comparator, criteria):
+        """
+        Searches for the elements within the collection to find the ones with the highest rank.
+
+        :param collection: list of the elements of the same type.
+        :type collection: list.
+        :param comparator: comparison function.
+        :param criteria: search criteria.
+        :returns: element with the highest rank.
+        :rtype: list.
+        """
         rank = -1
         found = []
 
@@ -2081,17 +2108,42 @@ class Graph(Element):
         return found
 
     def notions(self, criteria=None):
+        """
+        Finds the notions by specified criteria. If more than 1 notion has the highest rank, the list will be returned.
+        Calls :meth:`Graph.search_elements` with :meth:`Graph.get_notion_search_rank` as a comparator function.
+
+        :param criteria: user function, regex, or string to compare with the notion name. If not specified, all notions
+         will be returned.
+        :returns: notions found.
+        :rtype: tuple.
+        """
         return self.search_elements(self._notions, self.get_notion_search_rank, criteria) if criteria else \
             tuple(self._notions)
 
     def notion(self, criteria):
+        """
+        Finds a single notion for the criteria. Calls `Graph.notions` to get the list of notions than returns the first
+        one.
+
+        :param criteria: search criteria.
+        :returns: notion found.
+        :rtype: Notion.
+        """
         found = self.notions(criteria)
 
         return found[0] if found else None
 
     def get_relation_search_rank(self, relation, criteria):
         """
-        Gets the rank of relation when searching by criteria
+        Gets the rank of the relation when searching by criteria. Used as a comparator for relations search.
+
+        :param relation: the relation to calculate the rank.
+        :type relation: Relation.
+        :param criteria: searching criteria - a dictionary or user function. The dictionary contains **'subject'** or
+         **'object'** keys to specify the notion which should be a subject or object for the relation.
+        :returns: similarity rank - the result of user function call or -1 (no subject/object equals to criteria),
+         0 (subject or object is equal to criteria), 1 (both subject and object are equal).
+        :rtype: int.
         """
         if callable(criteria):
             return criteria(relation)
@@ -2108,17 +2160,37 @@ class Graph(Element):
                 return rank
 
     def relations(self, criteria=None):
+        """
+        Finds the relations by specified criteria. If more than 1 relation has the highest rank, the list will be
+        returned. Calls :meth:`Graph.search_elements` with :meth:`Graph.get_relation_search_rank` as a
+        comparator function.
+
+        :param criteria: user function or dictionary with subject and object values. If not specified, all relations
+         will be returned.
+        :returns: relations found.
+        :rtype: tuple.
+        """
         return self.search_elements(self._relations, self.get_relation_search_rank, criteria) if criteria else \
             tuple(self._relations)
 
     def relation(self, criteria=None):
+        """
+        Finds a single relation for the criteria. Calls `Graph.relations` to get the list of relations than returns the
+        first one.
+
+        :param criteria: search criteria.
+        :returns: relation found.
+        :rtype: Relation.
+        """
         found = self.relations(criteria)
 
         return found[0] if found else None
 
     def do_element(self, **context):
         """
-        Add or remove element to graph
+        Owner change event. This event appears when the element changes the owner. When received, the grap will add or
+        remove the element from the corresponding list of notions or relations. The the root notion changes owner,
+        graph will set the root to None.
         """
         element = context.get(self.SENDER)
 
@@ -2142,10 +2214,19 @@ class Graph(Element):
             return True
 
     def do_forward(self):
+        """
+        Forward event. Returns the root notion.
+
+        :returns: root notion.
+        :rtype: Notion.
+        """
         return self.root
 
     @property
     def root(self):
+        """
+        Setter/getter of the root notion. The new root should belong to the graph.
+        """
         return self._root
 
     @root.setter
@@ -2168,6 +2249,9 @@ class Graph(Element):
 
     @property
     def name(self):
+        """
+        Setter/getter of the graph name. The name of the graph is equal to the name of the root notion.
+        """
         return self.root.name if self.root else None
 
     @name.setter
@@ -2177,9 +2261,16 @@ class Graph(Element):
 
 class GraphBuilder(object):
     """
-    Graph builder helps to create graph structures
+    Graph builder helps to create :class:`Graph`. Uses chained operations to assemble the graph, connecting elements to
+    each other, e.g. builder.complex('complex').next_rel().notion('simple'). The current element to attach the new
+    one is stored in **current** property.
     """
     def __init__(self, graph=None):
+        """
+        Create the new GraphBuilder using specified graph.
+
+        :param graph: is of string type will be used to create the new graph.
+        """
         if is_string(graph):
             graph = Graph(graph)
 
@@ -2187,6 +2278,17 @@ class GraphBuilder(object):
         self.current = graph.root if graph else None
 
     def attach(self, new):
+        """
+        Attaches the new element depending on its type. If the new element is a notion and the current element is a
+        relation, the new element becomes an object of the relation. If the new element is a relation, and the current
+        element is a ComplexNotion, the current element becomes a subject of the new relation. Set the current
+        element to None to avoid this behavior.
+
+        :param new: the new element to attach and set as a current.
+        :type new: Element.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         if isinstance(new, Notion):
             if isinstance(self.current, Relation) and not self.current.object:
                 self.current.object = new
@@ -2203,31 +2305,98 @@ class GraphBuilder(object):
         return self
 
     def complex(self, name):
+        """
+        Attaches the :class:`ComplexNotion` with the specified name.
+
+        :param name: new complex notion name.
+        :type name: str.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         return self.attach(ComplexNotion(name, self.graph))
 
     def notion(self, name):
+        """
+        Attaches the :class:`Notion` with the specified name.
+
+        :param name: the new notion name.
+        :type name: str.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         return self.attach(Notion(name, self.graph))
 
     def act(self, name, action):
+        """
+        Attaches the :class:`ActionNotion` with the specified name and action.
+
+        :param name: the new notion name.
+        :type name: str.
+        :param action: the action to be passed in :meth:`ActionNotion.__init__`.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         return self.attach(ActionNotion(name, action, self.graph))
 
     def next_rel(self, condition=None, obj=None, **options):
-        rel = NextRelation(None, obj, condition, self.graph, **options)
+        """
+        Attaches the :class:`NextRelation` with the specified condition and object.
 
-        return self.attach(rel)
+        :param condition: the passing condition.
+        :param obj: the object of the new relation.
+        :type obj: Notion.
+        :param options: options to be passed in :meth:`NextRelation.__init__`.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
+        return self.attach(NextRelation(None, obj, condition, self.graph, **options))
 
     def act_rel(self, action, obj=None):
+        """
+        Attaches the :class:`ActionRelation` with the specified action and object.
+
+        :param action: the action value (user function, etc).
+        :param obj: the object of the new relation.
+        :type obj: Notion.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         return self.attach(ActionRelation(None, obj, action, self.graph))
 
     def parse_rel(self, condition, obj=None, **options):
+        """
+        Attaches the :class:`ParsingRelation` with the specified condition and object.
+
+        :param condition: the passing condition.
+        :param obj: the object of the new relation.
+        :type obj: Notion.
+        :param options: options to be passed in :meth:`ParsingRelation.__init__`.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         rel = ParsingRelation(None, obj, condition, self.graph, **options)
 
         return self.attach(rel)
 
     def select(self, name):
+        """
+        Attaches the :class:`SelectiveNotion` with the specified name.
+
+        :param name: new selective notion name.
+        :type name: str.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         return self.attach(SelectiveNotion(name, self.graph))
 
     def default(self):
+        """
+        If the current element is a relation and its subject is a :class:`SelectiveNotion`, this relation will be set
+        as a :attr:`SelectiveNotion.default`.
+
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         if isinstance(self.current, Relation) and isinstance(self.current.subject, SelectiveNotion):
             self.current.subject.default = self.current
         else:
@@ -2236,9 +2405,25 @@ class GraphBuilder(object):
         return self
 
     def loop_rel(self, condition, obj=None):
+        """
+        Attaches the :class:`LoopRelation` with the specified condition and object.
+
+        :param condition: the iteration condition.
+        :param obj: the object of the new relation.
+        :type obj: Notion.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         return self.attach(LoopRelation(None, obj, condition, self.graph))
 
     def sub_graph(self, name):
+        """
+        Creates the new sub-graph with the specified name. If the current graph is None, new graph will be used as
+        a current. Otherwise the current element will be set to the root of the new graph.
+
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         new = Graph(name, self.graph if self.graph else None)
 
         if not self.graph:
@@ -2252,7 +2437,10 @@ class GraphBuilder(object):
 
     def pop(self):
         """
-        Go to the higher level of the current element
+        Goes to the root element of the owner of the current element's graph.
+
+        :returns: self.
+        :rtype: GraphBuilder.
         """
         if self.current and self.current.owner and self.current.owner.owner:
             self.graph = self.current.owner.owner
@@ -2263,6 +2451,13 @@ class GraphBuilder(object):
         return self
 
     def set_current(self, element):
+        """
+        Sets the element as a current, using its owner as a current graph.
+
+        :param element: new current element.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         if element != self.current:
             self.current = element
 
@@ -2272,6 +2467,13 @@ class GraphBuilder(object):
         return self
 
     def back(self):
+        """
+        If the current element is a Notion, searches for any Relation that has it as an Object and sets it as a current.
+        If the current element is a Relation, sets its Subject notion as a current.
+
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         if isinstance(self.current, Notion):
             rel = self.graph.relations({Relation.OBJECT: self.current})
             if rel:
@@ -2280,6 +2482,14 @@ class GraphBuilder(object):
             return self.set_current(self.current.subject)
 
     def __getitem__(self, element):
+        """
+        Current element helper.
+
+        :param element: if of String type, sets the current element to the notion with this name, otherwise sets the
+         specified element as a current.
+        :returns: self.
+        :rtype: GraphBuilder.
+        """
         if is_string(element):
             element = self.graph.notion(element)
 

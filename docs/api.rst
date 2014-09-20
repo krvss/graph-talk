@@ -81,3 +81,13 @@ Graph Classes
     :show-inheritance:
     :special-members: __init__
     :members:
+
+.. autoclass:: Graph
+    :show-inheritance:
+    :special-members: __init__
+    :members:
+
+.. autoclass:: GraphBuilder
+    :show-inheritance:
+    :special-members: __init__, __getitem__
+    :members:
