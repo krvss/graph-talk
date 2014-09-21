@@ -33,10 +33,15 @@ class Access(Abstract):
     """
     Access provides :class:`Abstract`-style wrapper to access non-Abstract objects.
     """
+    #: Callable value mode.
     CALL = 'call'
+    #: Abstract callable spec.
     ABSTRACT = 'abstract'
+    #: Function callable spec.
     FUNCTION = 'function'
+    #: Value mode and spec.
     VALUE = 'value'
+    #: Unknown mode and spec.
     OTHER = 'other'
 
     CACHE_ATTR = '__access__'
@@ -71,9 +76,11 @@ class Access(Abstract):
         Inits type information, setting the call method, mode, and spec. Overwrite to support custom types.
 
         Sets the read-only properties:
-            - **mode**: access mode - *call* for abstracts, *function* for functions and *value* for primitives;
-            - **spec**: access specification - *abstract* for abstracts, *ArgSpec* for functions, *other* for primitives;
-            - **value**: the value itself.
+            - :attr:`Access.mode`: access mode - :attr:`Access.CALL` for abstracts, :attr:`Access.FUNCTION` for
+              functions and :attr:`Access.VALUE` for primitives;
+            - :attr:`Access.spec`: access specification - :attr:`Access.ABSTRACT` for abstracts, :obj:`inspect.ArgSpec`
+              for functions, :attr:`Access.OTHER` for primitives;
+            - :attr:`Access.value`: the value itself.
         """
         if isinstance(self._value, Abstract):
             self._mode, self._spec = self.CALL, self.ABSTRACT
@@ -133,8 +140,13 @@ class Access(Abstract):
     def call_value(self, message, context):
         return self._value
 
+    #: Access value.
     value = property(attrgetter('_value'))
+
+    #: Access mode - general category of the value type (e.g. function).
     mode = property(attrgetter('_mode'))
+
+    #: Access spec - additional information about value type (e.g. function argument specification).
     spec = property(attrgetter('_spec'))
 
     @staticmethod
@@ -161,18 +173,27 @@ class Access(Abstract):
 
 class Condition(Access):
     """
-    Condition is used to check the possibility of message handling in the specified context. It's **'check'** method
-    returns the tuple of (rank, check_result) values, if the rank is less than 0 it means condition is not satisfied.
-    Check result is used mostly for regular expressions to analyze its actual matching result. Note that **check**
-    method is assigned dynamically basing on condition value type.
+    Condition is used to check the possibility of the message handling in the specified context. It's
+    :meth:`Condition.check` method returns the tuple of (rank, check_result) values. If the rank is less than 0
+    it means condition is not satisfied.
+
+    Check result is used mostly for regular expressions to analyze its actual matching result. Note that
+    :meth:`Condition.check` method is assigned dynamically basing on the condition value type.
     """
+    #: Number access spec.
     NUMBER = 'number'
+    #: List access spec.
     LIST = 'list'
+    #: Dictionary access spec.
     DICT = 'dict'
+    #: String access spec.
     STRING = 'string'
+    #: Regular expression access spec.
     REGEX = 'regex'
+    #: Boolean access spec.
     BOOLEAN = 'bool'
 
+    #: Returned if check was not passed.
     NO_CHECK = -1, None
 
     def __init__(self, value, *tags, **options):
@@ -196,8 +217,10 @@ class Condition(Access):
 
     def setup(self):
         """
-        Sets the additional **spec** info: *number, string, list, regex, dict, boolean*. Sets **check** property to
-        the appropriate checking function.
+        Sets the additional :attr:`Access.spec` info: :attr:`Condition.NUMBER`, :attr:`Condition.STRING`,
+        :attr:`Condition.LIST`, :attr:`Condition.REGEX`, :attr:`Condition.DICT`, :attr:`Condition.BOOLEAN`.
+
+        Sets :meth:`Condition.check` to the appropriate checking function.
         """
         super(Condition, self).setup()
 
@@ -226,6 +249,23 @@ class Condition(Access):
 
         elif type(self._value) == bool:
             self._spec, self.check = self.BOOLEAN, self.check_boolean
+
+    def check(self, message, context):
+        """
+        Checks the possibility to handle the message in specified context. Returns the tuple of (rank, check_result)
+        where rank shows the relevance of the condition. If less than 0 it means condition is not satisfied and
+        completely irrelevant. Zero rank is mostly used for logical conditions (true/false). Check result keeps the
+        result of functional (user-defined, regex) check.
+
+        .. note:: default implementation returns :attr:`Condition.NO_CHECK` and should be overwritten in
+         :meth:`Condition.setup` method.
+
+        :param message: message to check.
+        :type message: List.
+        :param context: checking context.
+        :type context: Dict.
+        """
+        return self.NO_CHECK
 
     def check_function(self, message, context):
         check = self._call(message, context)
@@ -337,8 +377,10 @@ TRUE_CONDITION = TrueCondition()
 class Event(Access):
     """
     Event contains the user object (value or function) to be called if the :class:`Condition` was satisfied.
-    It provides 'pre' and 'post' properties to assign functions to be executed before and after the main object call.
+    It provides :attr:`Event.pre` and :attr:`Event.post` properties to assign functions to be executed before
+    and after the main object call.
     """
+    #: Event result context parameter.
     RESULT = 'result'
 
     def __init__(self, value):
@@ -351,9 +393,10 @@ class Event(Access):
     def run(self, message, context):
         """
         Accesses the event object with the message and context.
-        If pre-event is specified it will be called first, if its result is non-negative the object will not be called
-        at all. If post-event is specified it will be called after the object and the context will contain object
-        call result in *'result'* context parameter.
+        If :attr:`Event.pre` event is specified it will be called first. If its result is non-negative the object
+        will not be called at all.
+        If :attr:`Event.pre` event is specified it will be called after the object and
+        the context will contain the object call result in :attr:`Event.RESULT` context parameter.
 
         :param message: message to send to the event.
         :type message: list.
@@ -407,24 +450,34 @@ class Handler(Abstract):
     """
     Handler is used for routing of messages to the handling functions or events (:class:`Event`) basing on
     specified conditions (:class:`Condition`). Each condition has a corresponding event. When handling the message,
-    Handler class searches for the condition that has a highest rank and calls **'unknown_event'** if nothing found.
+    Handler class searches for the condition that has a highest rank and calls :attr:`Handler.unknown_event`
+    if nothing found.
 
     Each condition could be limited to be active if its set of tags is a subset of Handler set of tags. List of
-    conditions and events which are active now is in **'active_events'** property.
+    conditions and events which are active now is in :attr:`Handler.active_events` property.
     """
+    #: Answer context parameter, if equals to :attr:`Handler.RANK`, the handle rank will be included in the answer.
     ANSWER = 'answer'
+    #: Sender context parameter. When the event is called, contains the reference to the top-level handler.
     SENDER = 'sender'
+    #: Condition context parameter. When the event is called, contains the check result.
     CONDITION = 'condition'
+    #: Event context parameter. When the pre/post/event is called, contains the reference to the event function.
     EVENT = 'event'
+    #: Rank context parameter. When the event is called, contains the check rank.
     RANK = 'rank'
 
+    #: Returned by :meth:`Handler.handle` if no handler found.
     NO_HANDLE = (False, -1, None)
 
     def __init__(self):
         Access.get_access(self, True)
 
         self._tags = set()
-        self._events, self.active_events = [], tuple()
+        self._events = []
+        #: Tuple of events which are eligible for the current tags (read-only).
+        self.active_events = tuple()
+        #: Event to be executed when no handler found for the message.
         self.unknown_event = None
 
     def on_access(self, condition_access, event_access):
@@ -590,8 +643,9 @@ class Handler(Abstract):
 
     def __call__(self, *message, **context):
         """
-        Answers on the incoming message. Calls :meth:`Handler.handle` method and returns the first element from its reply.
-        If the context parameter 'answer' is equal to 'rank' - returns the rank is well.
+        Answers on the incoming message. Calls :meth:`Handler.handle` method and returns the first element from
+        its reply. If the context parameter :attr:`Handler.ANSWER` is equal to :attr:`Handler.RANK` - returns the
+        rank is well.
 
         :param message: message parts.
         :param context: message context.
@@ -629,18 +683,28 @@ class Element(Handler):
     Element is a part of the complex system (e.g. graph). It has the owner and could be passed in forward and backward
     directions.
     """
+    #: Next element query.
     NEXT = 'next'
+    #: Previous element query.
     PREVIOUS = 'previous'
 
+    #: Owner context parameter
     OWNER = 'owner'
+    #: Default prefix for property change notifications.
     SET_PREFIX = 'set'
+    #: Name context parameter for notifications.
     NAME = 'name'
+    #: Old value context parameter for notifications, for example keeps the old owner or old relation subject.
     OLD_VALUE = 'old-value'
+    #: New value context parameter for notifications.
     NEW_VALUE = 'new-value'
 
+    #: Notifications separator
     SEP = '_'
 
+    #: Set of forward queries to identify the direction.
     FORWARD = set([NEXT])
+    #: Set of backward queries to identify the direction.
     BACKWARD = set([PREVIOUS])
 
     def __init__(self, owner=None):
@@ -736,7 +800,8 @@ class Element(Handler):
     def change_property(self, name, value):
         """
         Sets the property to the new value with the notification, if needed. For example, when setting the owner, old
-        and new owners will be notified about the change with the message generated with :meth:`Element.add_prefix` method.
+        and new owners will be notified about the change with the message generated with :meth:`Element.add_prefix`
+        method.
 
         :param name: property name.
         :type name: str.
@@ -842,9 +907,11 @@ class ActionNotion(Notion):
 
 class Relation(Element):
     """
-    Relation is a connection between one or more notions, directed from subject to object(s).
+    Relation is a connection between one or more notions, directed from subject to object(s). Represents the graph arc.
     """
+    #: Subject context parameter, used in change subject notifications.
     SUBJECT = 'subject'
+    #: Object context parameter, used in change object notifications.
     OBJECT = 'object'
 
     def __init__(self, subj, obj, owner=None):
@@ -1065,12 +1132,23 @@ class ActionRelation(Relation):
 
 class Process(Handler):
     """
-    Process is a walker from an abstract to abstract, asking them for the next one with a query
-    It has the current abstract and the message to process; when new abstract appears,
-    the new queue item with current and message is created
+    Process goes from an element to element, asking them what to do next with a :attr:`Process.query`.
+    The answer from the **current** element will be processing using :class:`Handler` methods. If the answer
+    is a list, its items will be put to the queue and processed one by one.
+
+    Processes are usually started with the start element and some context to be used in the dialog with the elements::
+
+        p = Process()
+        print p(start_element, destination="Orion")
+
     """
+    #: New command, clears the process internal references when starting the process.
     NEW = 'new'
+
+    #: Ok command, stops the process with "ok" result.
     OK = 'ok'
+
+    #: Stop command, stops the process with "stop" result.
     STOP = 'stop'
 
     CURRENT = 'current'
@@ -1083,6 +1161,9 @@ class Process(Handler):
     CONTINUE_CRITERIA = (None, True)
 
     def __init__(self):
+        """
+        Creates the new Process, sets the current query to 'next', initializes queue, events, and state.
+        """
         super(Process, self).__init__()
 
         self._queue, self.context = NotifyList(self.update_fields), {}
@@ -1094,7 +1175,7 @@ class Process(Handler):
 
     def new_queue_item(self, values):
         """
-        Generate the new queue item and add it to the queue updated with values
+        Generates the new queue item and adds it to the queue updated with values.
         """
         item = NotifyDict(self.update_fields,
                           ((self.CURRENT, values.get(self.CURRENT)),
@@ -1106,7 +1187,7 @@ class Process(Handler):
 
     def to_queue(self, values):
         """
-        Put the new item in the queue, updating the empty one, if presents
+        Puts the new item in the queue, updating the empty one, if presents
         """
         if not self.message:
             self._queue[-1].update(values)  # No need to keep the empty one in the queue
@@ -1621,6 +1702,7 @@ class SelectiveNotion(ComplexNotion):
     sure all relations use the same context data. Like in the original switch statement it is possible to specify the
     *default* relation to be used if nothing worked.
     """
+    #: Cases state parameter, keeps the list of remaining cases for re-tries.
     CASES = 'cases'
 
     def __init__(self, name, owner=None):
@@ -1680,9 +1762,9 @@ class SelectiveNotion(ComplexNotion):
         """
         Forward event: if this notion has only one relation just returns it without any checks; otherwise calls
         :meth:`SelectiveNotion.get_best_cases` to get the best relations and returns first one from the list.
-        Other relations with the same rank will be saved to the state *'cases'* variable for re-tries.
-        Note that it saves the context state to the process stack using **push_context** command of
-        :class:`StackingProcess` if there is more than one case to try.
+        Other relations with the same rank will be saved to the state :attr:`SelectiveNotion.CASES`
+        variable for re-tries. Note that it saves the context state to the process stack using **push_context**
+        command of :class:`StackingProcess` if there is more than one case to try.
         """
         reply = super(SelectiveNotion, self).do_forward(*message, **context)
 

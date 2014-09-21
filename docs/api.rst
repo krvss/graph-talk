@@ -11,15 +11,17 @@ Base Classes
 
 .. autoclass:: Access
     :show-inheritance:
-    :members: __init__, __call__, setup,  get_access
+    :members: __init__, __call__, setup,  get_access, CALL, ABSTRACT, FUNCTION, VALUE, OTHER, value, mode, spec
 
 .. autoclass:: Condition
     :show-inheritance:
-    :members: __init__, setup, list
+    :members:
+    :special-members: __init__, NUMBER, LIST, DICT, STRING, REGEX, BOOLEAN, NO_CHECK
 
 .. autoclass:: Event
     :show-inheritance:
-    :members: __init__, run, pre, post
+    :members:
+    :special-members: __init__, RESULT
 
 .. autoclass:: TrueCondition
     :show-inheritance:
@@ -27,15 +29,15 @@ Base Classes
 .. autoclass:: Handler
     :show-inheritance:
     :members:
-    :special-members: __call__
+    :special-members: __init__, unknown_event, active_events, __call__, ANSWER, SENDER, CONDITION, EVENT, RANK, NO_HANDLE
 
 Graph Classes
 =============
 
 .. autoclass:: Element
     :show-inheritance:
-    :special-members: __init__
     :members:
+    :special-members: __init__, NEXT, PREVIOUS, OWNER, SET_PREFIX, NAME, OLD_VALUE, NEW_VALUE, SEP, FORWARD, BACKWARD
 
 .. autoclass:: Notion
     :show-inheritance:
@@ -54,8 +56,8 @@ Graph Classes
 
 .. autoclass:: Relation
     :show-inheritance:
-    :special-members: __init__
     :members:
+    :special-members: __init__, SUBJECT, OBJECT
 
 .. autoclass:: NextRelation
     :show-inheritance:
@@ -74,7 +76,7 @@ Graph Classes
 
 .. autoclass:: SelectiveNotion
     :show-inheritance:
-    :special-members: __init__
+    :special-members: __init__, CASES
     :members:
 
 .. autoclass:: LoopRelation
@@ -90,4 +92,11 @@ Graph Classes
 .. autoclass:: GraphBuilder
     :show-inheritance:
     :special-members: __init__, __getitem__
+    :members:
+
+Process Classes
+===============
+.. autoclass:: Process
+    :show-inheritance:
+    :special-members: __init__
     :members:
