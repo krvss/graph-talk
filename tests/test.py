@@ -1,5 +1,11 @@
-# Unit tests for Graph-talk
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: tests.test
+   :platform: Unix, Windows
+   :synopsis: Graph-talk unit tests
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 import unittest
 from inspect import ArgSpec

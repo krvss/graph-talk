@@ -1,5 +1,11 @@
-# Graph-talk debug classes
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: gt.debug
+   :platform: Unix, Windows
+   :synopsis: Graph-talk debug classes
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 from core import Handler, Event
 
@@ -8,13 +14,21 @@ from collections import defaultdict
 
 class ProcessDebugger(Handler):
     """
-    Process analyzer/debugger, sample usage: ProcessDebugger(process, True) to show the log
+    Process analyzer/debugger, use to see the process logs or to emulate the reply from the certain element.
     """
     AT = 'at'
     REPLY = 'reply'
     LOG = 'log'
 
     def __init__(self, process=None, log=False):
+        """
+        Creates the new debugger.
+
+        :param process: attach to the specified process.
+        :type process: Process.
+        :param log: start logging the process queries.
+        :type log: bool.
+        """
         super(ProcessDebugger, self).__init__()
         self._points = defaultdict(dict)
         self._process = None
@@ -25,6 +39,12 @@ class ProcessDebugger(Handler):
             self.show_log()
 
     def attach(self, process):
+        """
+        Attaches the debugger to the specified process events.
+
+        :param process: the process to attach.
+        :type process: Process.
+        """
         if self._process == process:
             return
 
@@ -42,24 +62,46 @@ class ProcessDebugger(Handler):
                 event.post = self.is_log
 
     def detach(self):
+        """
+        Detaches the debugger from the attached process.
+        """
         if self._process:
             self._process.off_event(self)
             self._process = None
         
     def clear_points(self):
+        """
+        Clears the reply and log hooks.
+        """
         self._points.clear()
 
     def reply_at(self, abstract, reply):
+        """
+        Emulates the reply.
+
+        :param abstract: the element to emulate the reply.
+        :type abstract: Abstract.
+        :param reply: the reply to return on the process query.
+        """
         self._points[abstract] = {ProcessDebugger.REPLY: reply}
 
     def show_log(self):
+        """
+        Adds the show log hook to the query event.
+        """
         self._points[self._process] = {ProcessDebugger.LOG: True}
 
     def hide_log(self):
+        """
+        Removes the show log hook.
+        """
         if self._process in self._points:
             del self._points[self._process]
 
     def do_reply_at(self, **context):
+        """
+        Reply event: returns the specified reply to the process.
+        """
         process = context[self.SENDER]
         point = self._points.get(process.current)
 
@@ -70,6 +112,9 @@ class ProcessDebugger(Handler):
             return self._points[process.current].get(self.REPLY)
 
     def is_log(self, **context):
+        """
+        Log event: prints the process' query and the element's reply on it.
+        """
         process = context[self.SENDER]
         point = self._points.get(process)
 

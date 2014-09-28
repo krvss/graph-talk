@@ -13,7 +13,8 @@ Contents:
 
    concepts
    guide
-   api
+   core
+   debug
 
 
 

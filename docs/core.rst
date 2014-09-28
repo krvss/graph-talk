@@ -1,5 +1,5 @@
-Graph-talk API
-**************
+Graph-talk Core API
+*******************
 
 .. automodule:: gt.core
 

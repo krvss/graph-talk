@@ -1,5 +1,11 @@
-# Special tests (profiling and stress) for Graph-talk
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: tests.special_test
+   :platform: Unix, Windows
+   :synopsis: Graph-talk profiling and stress tests
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 import datetime
 import glob

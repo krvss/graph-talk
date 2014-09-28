@@ -1,5 +1,11 @@
-# Graph-talk utility classes
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: gt.util
+   :platform: Unix, Windows
+   :synopsis: Graph-talk utility classes
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 
 class DictChangeOperation(object):
