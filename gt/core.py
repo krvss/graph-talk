@@ -1133,7 +1133,7 @@ class ActionRelation(Relation):
 class Process(Handler):
     """
     Process goes from an element to element, asking them what to do next with a :attr:`Process.query`.
-    The answer from the **current** element will be processing using :class:`Handler` methods. If the answer
+    The answer from the :attr:`Process.current` element will be processing using :class:`Handler` methods. If the answer
     is a list, its items will be put to the queue and processed one by one.
 
     Processes are usually started with the start element and some context to be used in the dialog with the elements::
@@ -1144,17 +1144,18 @@ class Process(Handler):
     """
     #: New command, clears the process internal references when starting the process.
     NEW = 'new'
-
     #: Ok command, stops the process with "ok" result.
     OK = 'ok'
-
     #: Stop command, stops the process with "stop" result.
     STOP = 'stop'
 
+    #: Non-empty current element tag.
     CURRENT = 'current'
+    #: Non-empty message tag.
     MESSAGE = 'message'
+    #: Query command (needs dict), sets the process query to the specified value.
     QUERY = 'query'
-
+    #: Empty message tag, shows that the current message is empty.
     EMPTY_MESSAGE = 'empty_' + MESSAGE
 
     BREAK_CRITERIA = (OK, STOP, False)
@@ -1162,15 +1163,25 @@ class Process(Handler):
 
     def __init__(self):
         """
-        Creates the new Process, sets the current query to 'next', initializes queue, events, and state.
+        Creates the new Process, sets the current query to :attr:`Element.NEXT`, initializes queue, events, and state.
         """
         super(Process, self).__init__()
 
-        self._queue, self.context = NotifyList(self.update_fields), {}
-        self.new_queue_item({})
+        self._queue = NotifyList(self.update_fields)
 
+        #: Process context
+        self.context = {}
+
+        #: Current query, an initial value is :attr:`Element.NEXT`.
         self.query = Element.NEXT
 
+        #: Current message (read-only).
+        self.message = None
+
+        #: Current element (read-only).
+        self.current = None
+
+        self.new_queue_item({})
         self.setup_events()
 
     def new_queue_item(self, values):
@@ -1199,7 +1210,7 @@ class Process(Handler):
 
     def set_message(self, message, insert=False):
         """
-        Set the current message or inserts in the front of current message if insert = True
+        Sets the current message or inserts in the front of current message if insert = True
         """
         message = NotifyList(self.update_message, [message] if not is_list(message) else message)
 
@@ -1209,16 +1220,22 @@ class Process(Handler):
         self._queue[-1][self.MESSAGE] = message
 
     def update_message(self):
+        """
+        Updates the message property.
+        """
         self.message = self._queue[-1].get(self.MESSAGE)
 
     def update_fields(self):
+        """
+        Updates message and current properties.
+        """
         top = self._queue[-1]
         self.message = top.get(self.MESSAGE)
         self.current = top.get(self.CURRENT)
 
     def skip(self):
         """
-        Skip: remove current and the next item from the queue
+        Skip: removes the first item of the current message, useful when it is unknown and cannot be processed.
         """
         while not self.message and self._queue:  # Looking for the item to skip
             self.do_queue_pop()
@@ -1230,24 +1247,36 @@ class Process(Handler):
     # Events #
     def can_push_queue(self):
         """
-        Queue push: if the head of the message is an Abstract - we make the new queue item and get ready to query it
+        Queue push condition: if the head of the message is an Abstract - we make the new queue item and get ready
+         to query it.
         """
         return Access.get_access(self.message[0], True).mode in Access.CACHEABLE
 
     def do_queue_push(self):
+        """
+        Queue push event: adds to the queue current element and current :attr:`Process.query` to query it.
+        """
         self.to_queue({self.CURRENT: self.message.pop(0),
                        self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
 
     def can_pop_queue(self):
         """
-        Queue pop: when current queue item is empty we can remove it
+        Queue pop condition: when the current queue item is empty we can remove it.
         """
         return len(self._queue) > 1
 
     def do_queue_pop(self):
+        """
+        Queue pop event: pops the first element of the queue.
+        """
         self._queue.pop()
 
     def do_query(self):
+        """
+        Query event: asks the current element the :attr:`Process.query`.
+
+        :return: the answer of the element or True.
+        """
         self.message.pop(0)
 
         # If abstract returns False/None, we just continue to the next one
@@ -1255,19 +1284,28 @@ class Process(Handler):
 
     def can_clear_message(self, *message):
         """
-        Cleanup: remove empty message item
+        Cleanup condition: can we remove an empty message item.
         """
         return not message[0]
 
     def do_clear_message(self):
+        """
+        Cleanup event.
+        """
         self.message.pop(0)
 
     def do_finish(self):
+        """
+        Finish event.
+
+        :returns: :attr:`Process.STOP` or :attr:`Process.OK`.
+        """
         return self.message.pop(0)
 
     def update_tags(self):
         """
-        Check and return the new tags
+        Checks the current values of the message, queue, current element and returns the new tags.
+        Override to add new tags.
         """
         tags = set()
 
@@ -1297,7 +1335,14 @@ class Process(Handler):
 
     def setup_events(self):
         """
-        Init events
+        Sets up the events and states. Tags are:
+            - :attr:`Condition.STRING`: current message starts from the string.
+            - :attr:`Condition.BOOLEAN`: current message starts from the boolean.
+            - :attr:`Condition.DICT`: current message starts from the dictionary.
+            - :attr:`Access.OTHER`: current message starts from some other type.
+            - :attr:`Process.CURRENT`: the current element is not empty.
+            - :attr:`Process.EMPTY_MESSAGE`: the current message is empty.
+            - :attr:`Process.MESSAGE`: the current message is not empty (has items).
         """
         self.on((self.STOP, self.OK), self.do_finish, Condition.STRING)
         self.on((True, False), self.do_finish, Condition.BOOLEAN)
@@ -1311,7 +1356,7 @@ class Process(Handler):
 
     def on_new(self, message, context):
         """
-        Starting the handle loop
+        New event: called when starting the handle loop and :attr:`Process.NEW` command is specified.
         """
         message.pop(0)
 
@@ -1322,14 +1367,15 @@ class Process(Handler):
 
     def on_continue(self, message, context):
         """
-        Continue the stopped process
+        Continue event: called when resuming the stopped process.
         """
         self.to_queue({self.MESSAGE: message})
         self.context.update(context)
 
     def handle(self, message, context):
         """
-        Process' handle works in step-by-step manner, processing message and then popping the queue
+        In contrast with :meth:`Handler.handle`, Process does not stop when the message is handled, but continues
+        to call handle for the result of the previous handle.
         """
         message = list(message)
         if has_first(message, self.NEW):  # Very special case
@@ -1356,10 +1402,16 @@ class Process(Handler):
 
 class SharedProcess(Process):
     """
-    Shared process supports context modification commands
+    Shared process supports context modification commands to share data between elements.::
+
+        p = Process()
+        p({'add_context': {SharedProcess.ADD_CONTEXT: 'skeleton'}})
     """
+    #: Add context command (requires dict), adds the specified parameter and value to the context, skips existing ones.
     ADD_CONTEXT = 'add_context'
+    #: Update context command (requires dict), updates the specified key by value in the context.
     UPDATE_CONTEXT = 'update_context'
+    #: Delete context command (requires key or key list), deletes the specified keys(s) from the context.
     DELETE_CONTEXT = 'delete_context'
 
     def context_add(self, key, value):
@@ -1374,13 +1426,13 @@ class SharedProcess(Process):
     # Events #
     def can_add_context(self, *message):
         """
-        Do we have add context command
+        Add context condition: do we have add context command and data in dictionary.
         """
         return isinstance(message[0].get(self.ADD_CONTEXT), dict)
 
     def do_add_context(self):
         """
-        Adding items to context, do not replacing existing ones
+        Add context event: adds parameters to the context, skipping existing ones.
         """
         add = self.message[0].pop(self.ADD_CONTEXT)
 
@@ -1390,11 +1442,14 @@ class SharedProcess(Process):
 
     def can_update_context(self, *message):
         """
-        Updating the context
+        Update context condition: do we have the update context command and data in dictionary.
         """
         return isinstance(message[0].get(self.UPDATE_CONTEXT), dict)
 
     def do_update_context(self):
+        """
+        Update context event: adds or replaces context parameters
+        """
         update = self.message[0].pop(self.UPDATE_CONTEXT)
 
         for k, v in update.items():
@@ -1402,11 +1457,14 @@ class SharedProcess(Process):
 
     def can_delete_context(self, *message):
         """
-        Deleting items from the context
+        Delete context condition: do we have the delete context command and data in dictionary.
         """
         return self.DELETE_CONTEXT in message[0]
 
     def do_delete_context(self):
+        """
+        Delete context event: deletes the single key or all the keys from the list.
+        """
         delete = self.message[0].pop(self.DELETE_CONTEXT)
 
         if is_list(delete):
@@ -1418,6 +1476,9 @@ class SharedProcess(Process):
             self.context_delete(delete)
 
     def setup_events(self):
+        """
+        Sets up the events and states. All commands require :attr:`Condition.DICT`.
+        """
         super(SharedProcess, self).setup_events()
 
         self.on(self.can_add_context, self.do_add_context, Condition.DICT)
@@ -1427,13 +1488,20 @@ class SharedProcess(Process):
 
 class StackingProcess(SharedProcess):
     """
-    Process that can save and restore context
-    Useful for cases when process needs to try various paths in the graph
-    """
-    PUSH_CONTEXT = 'push_context'
-    POP_CONTEXT = 'pop_context'
-    FORGET_CONTEXT = 'forget_context'
+    Process that can save and restore the context. Useful for cases when process needs to try various paths in the graph
+    and then rollback to the state it had at the crossroads.
 
+    To perform the rollback the process logs all the change actions done via :attr:`SharedProcess.ADD_CONTEXT` and
+    and other commands and than plays them back in undo command style. If no undo is needed, the saved state can be
+    discarded.
+    """
+    #: Push the current context state to the undo stack.
+    PUSH_CONTEXT = 'push_context'
+    #: Restore the state from the top of the undo stack.
+    POP_CONTEXT = 'pop_context'
+    #: Discard the state at the top of the stack, keeping the changed context.
+    FORGET_CONTEXT = 'forget_context'
+    #: Non-empty undo stack tag.
     TRACKING = 'tracking'
 
     def __init__(self):
@@ -1459,14 +1527,23 @@ class StackingProcess(SharedProcess):
 
     # Events #
     def do_push_context(self):
+        """
+        Push context event: start recording changes.
+        """
         self.message.pop(0)
         self._context_stack.append(DictChangeGroup())
 
     def do_pop_context(self):
+        """
+        Pop context event: undo changes from the top of the stack and remove the saved state.
+        """
         self.message.pop(0)
         self._context_stack.pop().undo()
 
     def do_forget_context(self):
+        """
+        Forget context event: discard the top state.
+        """
         self.message.pop(0)
         self._context_stack.pop()
 
@@ -1479,6 +1556,10 @@ class StackingProcess(SharedProcess):
         return tags
 
     def setup_events(self):
+        """
+        Sets up the events and states. All commands require :attr:`Condition.STRING`, pop and forget commands
+        require non-empty undo stack (:attr:`StackingProcess.TRACKING`).
+        """
         super(StackingProcess, self).setup_events()
 
         self.on(self.PUSH_CONTEXT, self.do_push_context, Condition.STRING)
@@ -1493,13 +1574,19 @@ class StackingProcess(SharedProcess):
 
 class StatefulProcess(StackingProcess):
     """
-    Process with support of abstract states and notifications between them
-    Useful to preserve private a state of an abstract
-    """
-    STATE = 'state'
-    SET_STATE = 'set_state'
-    CLEAR_STATE = 'clear_state'
+    Allows saving of private element data to keep the context-dependent state. Only works for the
+    :attr:`Process.current`.::
 
+        ActionNotion('Changed my mind', {StatefulProcess.SET_STATE: {'mind': 'New York'}})
+
+    """
+    #: The name of the context parameter.
+    STATE = 'state'
+    #: Set the state command (requires dict value), applies for the current process element.
+    SET_STATE = 'set_state'
+    #: Clear the state command, removes saved state from the context.
+    CLEAR_STATE = 'clear_state'
+    #: Has previously saved states tag.
     HAS_STATES = 'has_states'
 
     def __init__(self):
@@ -1526,6 +1613,10 @@ class StatefulProcess(StackingProcess):
             self.run_tracking_operation(DictChangeOperation(self.states, DictChangeOperation.DELETE, abstract))
 
     def do_query(self):
+        """
+        Query event: for this class adds the current element's state as the :attr:`StatefulProcess.STATE`
+        context parameter. At the end of this method removes the state from the context to keep it private.
+        """
         self._add_current_state()
 
         # Now the state contains the right state
@@ -1537,13 +1628,22 @@ class StatefulProcess(StackingProcess):
 
     # Events #
     def can_set_state(self, *message):
+        """
+        Set state condition: checks for :attr:`StatefulProcess.SET_STATE` command in the message.
+        """
         return self.SET_STATE in message[0]
 
     def do_set_state(self):
+        """
+        Set state event: saves the value of the command to internal dictionary of states.
+        """
         value = self.message[0].pop(self.SET_STATE)
         self._set_state(self.current, value)
 
     def do_clear_state(self):
+        """
+        Clear state condition: checks for :attr:`StatefulProcess.CLEAR_STATE`
+        """
         self.message.pop(0)
         self._clear_state(self.current)
 
@@ -1556,6 +1656,11 @@ class StatefulProcess(StackingProcess):
         return tags
 
     def setup_events(self):
+        """
+        Sets up the events and states. Set command requires :attr:`Condition.DICT` and :attr:`Process.CURRENT`,
+        clear command requires :attr:`Process.CURRENT`, :attr:`Condition.DICT` and previously saved states
+        (:attr:`StatefulProcess.HAS_STATES` tag).
+        """
         super(StatefulProcess, self).setup_events()
 
         self.on(self.can_set_state, self.do_set_state, self.CURRENT, Condition.DICT)
@@ -1563,7 +1668,7 @@ class StatefulProcess(StackingProcess):
 
     def on_new(self, message, context):
         """
-        Clearing states if new
+        New event: clears the states.
         """
         super(StatefulProcess, self).on_new(message, context)
         self.states.clear()
@@ -1571,21 +1676,44 @@ class StatefulProcess(StackingProcess):
 
 class ParsingProcess(StatefulProcess):
     """
-    Parsing process supports error and move commands for text processing
+    Takes the text as an input; sends it to the graph elements as a context parameter. If an element responds with
+    :attr:`ParsingProcess.PROCEED`, cuts off the piece of the specified length from the beginning of the text.
+
+    Supports :attr:`ParsingProcess.ERROR` command to indicate the problem and possible stop of lookahead.
+    Supports looping commands :attr:`ParsingProcess.BREAK` and :attr:`ParsingProcess.CONTINUE`; to change the direction
+    back to forward uses :attr:`Element.NEXT` value as a command.
     """
+    #: Error command, stops the forward processing and changes the :attr:`Process.query` to this value.
     ERROR = 'error'
+    #: Proceed command (requires a dict with numeric positive value), shows the length of the parsed text piece.
     PROCEED = 'proceed'
+    #: Break command, stops the forward processing and changes the :attr:`Process.query` to this value.
     BREAK = 'break'
+    #: Break command, stops the forward processing and changes the :attr:`Process.query` to this value.
     CONTINUE = 'continue'
 
+    #: Context parameter with the total length of the parsed text.
     PARSED_LENGTH = 'parsed_length'
+    #: Context parameter with the current text.
     TEXT = 'text'
+    #: Context parameter with the last parsed text piece.
     LAST_PARSED = 'last_parsed'
 
     def is_parsed(self):
+        """
+        Checks whether the text was completely and successfully parsed.
+
+        :return: True if the process has a forward direction and there is no more text to parse.
+        """
         return self.query == Element.NEXT and not self.text
 
     def handle(self, message, context):
+        """
+        Calls the :meth:`Process.handle`.
+
+        :returns: If the text was not fully parsed (see :meth:`ParsingProcess.is_parsed`) returns False,
+         otherwise returns the result of the superclass handle call.
+        """
         result = super(ParsingProcess, self).handle(message, context)
 
         return False if not self.is_parsed() and not result[0] == self.STOP else result[0], self.parsed_length, result[2]
@@ -1593,12 +1721,16 @@ class ParsingProcess(StatefulProcess):
     # Events #
     def can_proceed(self, *message):
         """
-        Proceed: part of the Text was parsed, consume it
+        Proceed condition: checks for :attr:`ParsingProcess.PROCEED` and the positive distance.
         """
         distance = message[0].get(self.PROCEED)
         return is_number(distance) and len(self.context.get(self.TEXT)) >= distance
 
     def do_proceed(self):
+        """
+        Proceed event: cuts off the beginning of the text, updates :attr:`ParsingProcess.TEXT`,
+        :attr:`ParsingProcess.PARSED_LENGTH` and :attr:`ParsingProcess.LAST_PARSED` context parameters.
+        """
         proceed = self.message[0].pop(self.PROCEED)
         last_parsed = self.context[self.TEXT][0:proceed]
 
@@ -1608,7 +1740,9 @@ class ParsingProcess(StatefulProcess):
 
     def do_turn(self):
         """
-        Next, Break, Error or Continue
+        Turn event: sets :attr:`Process.query` to the value of :attr:`ParsingProcess.BREAK`,
+        :attr:`ParsingProcess.CONTINUE`, :attr:`ParsingProcess.ERROR` or :attr:`Element.NEXT`. Clears the current
+        message.
         """
         new_query = self.message.pop(0)
 
@@ -1618,12 +1752,20 @@ class ParsingProcess(StatefulProcess):
         self.query = new_query
 
     def setup_events(self):
+        """
+        Sets up the events and states. Direction-changing commands require :attr:`Condition.STRING` tag,
+        :attr:`ParsingProcess.PROCEED` command requires :attr:`Condition.DICT` tag.
+        """
         super(ParsingProcess, self).setup_events()
 
         self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, Condition.STRING)
         self.on(self.can_proceed, self.do_proceed, Condition.DICT)
 
     def on_new(self, message, context):
+        """
+        New event: sets the direction to :attr:`Element.NEXT`, :attr:`ParsingProcess.PARSED_LENGTH`  to 0
+        and :attr:`ParsingProcess.LAST_PARSED` to the empty string.
+        """
         super(ParsingProcess, self).on_new(message, context)
 
         self.query = Element.NEXT
@@ -1632,14 +1774,23 @@ class ParsingProcess(StatefulProcess):
 
     @property
     def text(self):
+        """
+        Gets the current text.
+        """
         return self.context.get(self.TEXT, '')
 
     @property
     def parsed_length(self):
+        """
+        Gets the total parsed text length.
+        """
         return self.context.get(self.PARSED_LENGTH, 0)
 
     @property
     def last_parsed(self):
+        """
+        Gets the last parsed text piece.
+        """
         return self.context.get(self.LAST_PARSED, '')
 
 

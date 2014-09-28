@@ -98,5 +98,26 @@ Process Classes
 ===============
 .. autoclass:: Process
     :show-inheritance:
-    :special-members: __init__
+    :members: context, message, query, current, skip, can_push_queue, do_queue_push, can_pop_queue, do_queue_pop,
+     do_query, setup_events, can_clear_message, do_clear_message, do_finish, update_tags, on_new, on_continue, handle,
+     NEW, OK, STOP, QUERY, EMPTY_MESSAGE, CURRENT, MESSAGE
+
+.. autoclass:: SharedProcess
+    :show-inheritance:
     :members:
+    :special-members: ADD_CONTEXT, UPDATE_CONTEXT, DELETE_CONTEXT
+
+.. autoclass:: StackingProcess
+    :show-inheritance:
+    :members:
+    :special-members: PUSH_CONTEXT, POP_CONTEXT, FORGET_CONTEXT, TRACKING
+
+.. autoclass:: StatefulProcess
+    :show-inheritance:
+    :members:
+    :special-members: STATE, SET_STATE, CLEAR_STATE, HAS_STATES
+
+.. autoclass:: ParsingProcess
+    :show-inheritance:
+    :members:
+    :special-members: ERROR, PROCEED, BREAK, CONTINUE
