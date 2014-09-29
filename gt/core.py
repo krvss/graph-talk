@@ -21,7 +21,7 @@ class Abstract(object):
         """
         Main method for sending messages to the object.
 
-        :param message:  list of arbitrary message parts to be processed one by one.
+        :param message:  list of arbitrary items to be processed one by one.
         :param context:  key-value description of the message processing context.
 
         :returns: None for no reaction, False if there is an error, any positive value otherwise.
@@ -31,15 +31,20 @@ class Abstract(object):
 
 class Access(Abstract):
     """
-    Access provides :class:`Abstract`-style wrapper to access non-Abstract objects.
+    Access provides :class:`Abstract`-style wrapper to access non-Abstract objects. Each instance has
+    :attr:`Access.mode` to describe the access mode (execute or just return object as is) and
+    :attr:`Access.spec` to keep the additional information like function arguments specification etc.
+
+    .. note:: When comparing Access instance with other objects, from Access side the wrapped value will be used.
+        It means Access(1) will be equal with 1.
     """
-    #: Callable value mode.
+    #: Callable object mode.
     CALL = 'call'
-    #: Abstract callable spec.
+    #: The callable object is :class:`Abstract`.
     ABSTRACT = 'abstract'
-    #: Function callable spec.
+    #: The callable object is function.
     FUNCTION = 'function'
-    #: Value mode and spec.
+    #: The object is a non-callable (e.g. primitive) value (both mode and spec).
     VALUE = 'value'
     #: Unknown mode and spec.
     OTHER = 'other'
@@ -73,14 +78,14 @@ class Access(Abstract):
 
     def setup(self):
         """
-        Inits type information, setting the call method, mode, and spec. Overwrite to support custom types.
+        Inits type information, setting the call proxy method, mode, and spec. Overwrite to support custom types.
 
         Sets the read-only properties:
-            - :attr:`Access.mode`: access mode - :attr:`Access.CALL` for abstracts, :attr:`Access.FUNCTION` for
+            - :attr:`Access.mode`: :attr:`Access.CALL` for abstracts, :attr:`Access.FUNCTION` for
               functions and :attr:`Access.VALUE` for primitives;
-            - :attr:`Access.spec`: access specification - :attr:`Access.ABSTRACT` for abstracts, :obj:`inspect.ArgSpec`
+            - :attr:`Access.spec`:  :attr:`Access.ABSTRACT` for abstracts, :obj:`inspect.ArgSpec`
               for functions, :attr:`Access.OTHER` for primitives;
-            - :attr:`Access.value`: the value itself.
+            - :attr:`Access.value`: the object itself.
         """
         if isinstance(self._value, Abstract):
             self._mode, self._spec = self.CALL, self.ABSTRACT
@@ -140,24 +145,24 @@ class Access(Abstract):
     def call_value(self, message, context):
         return self._value
 
-    #: Access value.
+    #: Wrapped object.
     value = property(attrgetter('_value'))
 
-    #: Access mode - general category of the value type (e.g. function).
+    #: Access mode (the object is callable or not).
     mode = property(attrgetter('_mode'))
 
-    #: Access spec - additional information about value type (e.g. function argument specification).
+    #: Access spec (call specification, e.g. function argument specification).
     spec = property(attrgetter('_spec'))
 
     @staticmethod
     def get_access(obj, cache=False):
         """
-        Gets the Access to the specified object, caches the access info if possible.
+        Gets the Access to the specified object, caches the access instance within the object, if possible.
 
-        :param obj:     any object to wrap into the Access.
+        :param obj:     object to wrap into the Access.
         :param cache:   cache the access instance inside the object if True.
         :type cache:    bool.
-        :returns:       new Access instance to access the object.
+        :returns:       new Access instance to access the object like an Abstract.
         :rtype:         Access.
         """
         if hasattr(obj, Access.CACHE_ATTR):
@@ -174,11 +179,11 @@ class Access(Abstract):
 class Condition(Access):
     """
     Condition is used to check the possibility of the message handling in the specified context. It's
-    :meth:`Condition.check` method returns the tuple of (rank, check_result) values. If the rank is less than 0
-    it means condition is not satisfied.
+    :meth:`Condition.check` method returns the tuple of (rank, check_result). If the rank is less than 0
+    it means the condition is not satisfied. The rank shows how relevant this condition is.
 
-    Check result is used mostly for regular expressions to analyze its actual matching result. Note that
-    :meth:`Condition.check` method is assigned dynamically basing on the condition value type.
+    The check result is used mostly for regular expressions to analyze its actual match result. Note that
+    :meth:`Condition.check` method is assigned dynamically basing on the condition object type.
     """
     #: Number access spec.
     NUMBER = 'number'
@@ -201,11 +206,12 @@ class Condition(Access):
         Creates the new Condition.
 
         :param value:  value to be checked (object, function, regex, string, boolean, list).
-        :param tags:   list of tags for Condition to be active.
+        :param tags:   list of tags for this Condition to be active.
         :param options:
-            - ignore_case (bool.): False by default, ignore case of strings or not.
-            - search (bool.): False by default, perform the search or just match regexes and strings when checking.
+            - ignore_case (bool.): False by default, ignore case of string conditions or not.
+            - search (bool.): False by default, perform the search or match regexes and strings when checking.
         """
+        #: Set of tags to be considered active (read-only)
         self.tags = frozenset(tags)
 
         self._options = options
@@ -220,7 +226,7 @@ class Condition(Access):
         Sets the additional :attr:`Access.spec` info: :attr:`Condition.NUMBER`, :attr:`Condition.STRING`,
         :attr:`Condition.LIST`, :attr:`Condition.REGEX`, :attr:`Condition.DICT`, :attr:`Condition.BOOLEAN`.
 
-        Sets :meth:`Condition.check` to the appropriate checking function.
+        Sets :meth:`Condition.check` to the appropriate checking function depending on the value type.
         """
         super(Condition, self).setup()
 
@@ -252,18 +258,20 @@ class Condition(Access):
 
     def check(self, message, context):
         """
-        Checks the possibility to handle the message in specified context. Returns the tuple of (rank, check_result)
-        where rank shows the relevance of the condition. If less than 0 it means condition is not satisfied and
-        completely irrelevant. Zero rank is mostly used for logical conditions (true/false). Check result keeps the
-        result of functional (user-defined, regex) check.
+        Checks the possibility to handle the message in the specified context.
+        Returns the tuple of (rank, check_result) where rank shows the relevance of the condition.
+        If less than 0 it means condition is not satisfied and completely irrelevant. Zero rank is mostly used for
+        logical conditions (True/False) which cannot be measured numerically.
+        Check result keeps the result of functional (user-defined, regular expression) check.
 
-        .. note:: default implementation returns :attr:`Condition.NO_CHECK` and should be overwritten in
+        .. note:: the default implementation returns :attr:`Condition.NO_CHECK` and should be overwritten in
          :meth:`Condition.setup` method.
 
-        :param message: message to check.
-        :type message: List.
-        :param context: checking context.
-        :type context: Dict.
+        :param message:     message to check.
+        :type message:      List.
+        :param context:     checking context.
+        :type context:      Dict.
+        :returns:           Tuple of (rank, check_result) or just rank value.
         """
         return self.NO_CHECK
 
@@ -378,33 +386,34 @@ class Event(Access):
     """
     Event contains the user object (value or function) to be called if the :class:`Condition` was satisfied.
     It provides :attr:`Event.pre` and :attr:`Event.post` properties to assign functions to be executed before
-    and after the main object call.
+    and after the user object call.
     """
-    #: Event result context parameter.
+    #: Object call result context parameter.
     RESULT = 'result'
 
     def __init__(self, value):
         """
-        Wraps in Access the value to be called.
+        Wraps in :class:`Access` the value to be called.
         """
         super(Event, self).__init__(value)
         self.pre_event, self.post_event = None, None
 
     def run(self, message, context):
         """
-        Accesses the event object with the message and context.
+        Does the Access call to the event object with the message and context.
         If :attr:`Event.pre` event is specified it will be called first. If its result is non-negative the object
         will not be called at all.
-        If :attr:`Event.pre` event is specified it will be called after the object and
-        the context will contain the object call result in :attr:`Event.RESULT` context parameter.
+        If :attr:`Event.post` event is specified it will be called after the object and
+        the context will contain the object call result in :attr:`Event.RESULT` context parameter. If its result
+        is non-negative, it will be returned instead of object call result.
 
-        :param message: message to send to the event.
-        :type message: list.
-        :param context: running context.
-        :type context: dict.
+        :param message:     message to send to the event.
+        :type message:      list.
+        :param context:     running context.
+        :type context:      dict.
 
-        :returns: tuple of (call result, value).
-        :rtype: tuple.
+        :returns:           tuple of (call result, :attr:`Access.value`).
+        :rtype:             tuple.
         """
         if self.pre_event:
             pre_result = self.pre_event.run(message, context)
@@ -426,7 +435,7 @@ class Event(Access):
     @property
     def pre(self):
         """
-        Sets/gets the pre-event object. Use pre_event attribute to assign Event instance.
+        Sets/gets the pre-event object. Use pre_event attribute to assign an Event instance directly.
         """
         return self.pre_event.value if self.pre_event else None
 
@@ -437,7 +446,7 @@ class Event(Access):
     @property
     def post(self):
         """
-        Sets/gets the post-event object. Use post_event attribute to assign Event instance.
+        Sets/gets the post-event object. Use post_event attribute to assign an Event instance directly.
         """
         return self.post_event.value if self.post_event else None
 
@@ -448,19 +457,19 @@ class Event(Access):
 
 class Handler(Abstract):
     """
-    Handler is used for routing of messages to the handling functions or events (:class:`Event`) basing on
-    specified conditions (:class:`Condition`). Each condition has a corresponding event. When handling the message,
+    Handler is used for routing of messages to the handling functions called events (:class:`Event`) basing on the
+    specified condition (:class:`Condition`). Each condition has a corresponding event. When handling a message,
     Handler class searches for the condition that has a highest rank and calls :attr:`Handler.unknown_event`
     if nothing found.
 
-    Each condition could be limited to be active if its set of tags is a subset of Handler set of tags. List of
-    conditions and events which are active now is in :attr:`Handler.active_events` property.
+    The condition could be limited to be active only if its set of tags (:attr:`Condition.tags`) is a subset
+    of Handler set of tags. List of active conditions and events is in :attr:`Handler.active_events` property.
     """
-    #: Answer context parameter, if equals to :attr:`Handler.RANK`, the handle rank will be included in the answer.
+    #: Answer context parameter, if equals to :attr:`Handler.RANK` the condition rank will be included in the answer.
     ANSWER = 'answer'
-    #: Sender context parameter. When the event is called, contains the reference to the top-level handler.
+    #: Sender context parameter. When the event is called contains the reference to the top-level handler.
     SENDER = 'sender'
-    #: Condition context parameter. When the event is called, contains the check result.
+    #: Condition context parameter. When the event is called contains the check result.
     CONDITION = 'condition'
     #: Event context parameter. When the pre/post/event is called, contains the reference to the event function.
     EVENT = 'event'
@@ -484,10 +493,10 @@ class Handler(Abstract):
         """
         Adds the Condition and Event instances pair.
 
-        :param condition_access: Condition to be checked.
-        :type condition_access: Condition.
-        :param event_access: Event to be executed if the Condition is satisfied.
-        :type event_access: Event.
+        :param condition_access:    condition to be checked.
+        :type condition_access:     Condition.
+        :param event_access:        event to be executed if the condition is satisfied.
+        :type event_access:         Event.
         """
         if (condition_access, event_access) not in self._events:
             self._events.append((condition_access, event_access))
@@ -499,16 +508,16 @@ class Handler(Abstract):
         Adds the condition - event pair.
 
         :param condition:    condition for the event (function, abstract, value).
-        :param event:        function, abstract or value to be called if condition is satisfied.
-        :param tags:         list of tags to bind the condition to the object's state.
+        :param event:        function, abstract, or value to be called if condition is satisfied.
+        :param tags:         list of tags to bind the condition to the handler's state.
         """
         self.on_access(Condition(condition, *tags), Event(event))
 
     def on_any(self, event):
         """
-        Adds the event that will triggered on any message.
+        Adds the event that will be triggered on any message.
 
-        :param event: function, abstract or value to be called.
+        :param event:   function, abstract or value to be called.
         """
         self.on_access(TRUE_CONDITION, Event(event))
 
@@ -516,8 +525,8 @@ class Handler(Abstract):
         """
         Removes the condition - event pair.
 
-        :param condition:   condition to be removed.
-        :param event:       event to be removed.
+        :param condition:   condition to be removed (no matter Condition type or not)
+        :param event:       event to be removed (no matter Event type or not).
         """
         if (condition, event) in self._events:
             self._events.remove((condition, event))
@@ -554,12 +563,12 @@ class Handler(Abstract):
 
     def get_events(self, condition=None):
         """
-        Gets the events for the specified condition. If condition is not specified returns the list of events that
-        trigger on any message.
+        Gets the events for the specified condition. If the condition is not specified returns the list of events
+        that trigger on any message.
 
         :param condition:   condition to get the events.
-        :returns: list of events found.
-        :rtype: list.
+        :returns:           list of events found.
+        :rtype:             list.
         """
         if condition:
             return [e[1] for e in self._events if has_first(e, condition)]
@@ -575,24 +584,25 @@ class Handler(Abstract):
 
     def update_tags(self):
         """
-        Called by update to get the set of tags describing the current state.
+        Called by :meth:`Handler.update_events` to get the set of tags describing the current state.
 
-        :returns: set of tags describing the current state.
-        :rtype: set.
+        :returns:   set of tags describing the current state.
+        :rtype:     set.
         """
         return self._tags
 
     def update_events(self):
         """
-        Called by update when the list of active events update is needed (for example, after the new event was added or
-        tags were changed).
+        Called by :meth:`Handler.update` when the list of active events needs to be updated
+        (for example, after the new event was added or tags were changed).
         """
         self.active_events = tuple(filter(lambda e: e[0].tags.issubset(self._tags), self._events))
 
     def update(self):
         """
-        Update is called manually or by handler itself when something is changed. If the new set of tags is different
-        from the current the list of active events will be re-populated.
+        Update is called manually or by handler itself when something is changed. If the tag set returned by
+        :meth:`Handler.update_tags` is different from :attr:`Handler.tags`, :meth:`Handler.update_events`
+        will be called to re-populate the list of active events.
         """
         new_tags = self.update_tags()
 
@@ -603,15 +613,16 @@ class Handler(Abstract):
 
     def handle(self, message, context):
         """
-        Checks the list of condition-event pairs to find the best condition for the message and context and executes
-        the corresponding event.
+        Checks the list of condition-event pairs to find the condition with the highest rank for the message and
+        context and then executes the corresponding event.
 
-        :param message: list of message parts.
-        :type message: list.
-        :param context: message handling context.
-        :type context: dict.
-        :returns: Tuple of (event_result, condition_rank, event_found). If no condition was found, rank is equal to -1.
-        :rtype: tuple.
+        :param message:     list of message parts.
+        :type message:      list.
+        :param context:     message handling context.
+        :type context:      dict.
+        :returns:           Tuple of (event_result, condition_rank, event_found). If no condition was found, rank
+         is equal to -1 (:attr:`Handler.NO_HANDLE` will be returned if not overridden by :attr:`Handler.unknown_event`).
+        :rtype:             tuple.
         """
         check, rank, event_found = self.NO_HANDLE
 
@@ -647,9 +658,9 @@ class Handler(Abstract):
         its reply. If the context parameter :attr:`Handler.ANSWER` is equal to :attr:`Handler.RANK` - returns the
         rank is well.
 
-        :param message: message parts.
-        :param context: message context.
-        :returns: handling result or tuple of (handling_result, condition_rank).
+        :param message:     message items.
+        :param context:     message context.
+        :returns:           handling result or tuple of (handling_result, condition_rank).
         """
         answer_mode = context.pop(self.ANSWER, None)  # Applicable only for a top level
         result = self.handle(message, context)
@@ -662,7 +673,7 @@ class Handler(Abstract):
     @property
     def tags(self):
         """
-        Sets/gets the set of the current tags. Does not call 'update'.
+        Sets/gets the set of the current tags. Does not call :meth:`Handler.update`.
         """
         return self._tags
 
@@ -673,7 +684,7 @@ class Handler(Abstract):
     @property
     def events(self):
         """
-        Gets the list of all conditions and events regardless of current tags.
+        Gets the list of all conditions and events regardless of the current tags.
         """
         return self._events
 

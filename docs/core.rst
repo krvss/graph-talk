@@ -18,13 +18,13 @@ Base Classes
     :members:
     :special-members: __init__, NUMBER, LIST, DICT, STRING, REGEX, BOOLEAN, NO_CHECK
 
+.. autoclass:: TrueCondition
+    :show-inheritance:
+
 .. autoclass:: Event
     :show-inheritance:
     :members:
     :special-members: __init__, RESULT
-
-.. autoclass:: TrueCondition
-    :show-inheritance:
 
 .. autoclass:: Handler
     :show-inheritance:
