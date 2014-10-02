@@ -81,7 +81,7 @@ Graph Classes
 
 .. autoclass:: LoopRelation
     :show-inheritance:
-    :special-members: __init__
+    :special-members: __init__, ITERATION
     :members:
 
 .. autoclass:: Graph

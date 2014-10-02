@@ -691,27 +691,27 @@ class Handler(Abstract):
 
 class Element(Handler):
     """
-    Element is a part of the complex system (e.g. graph). It has the owner and could be passed in forward and backward
-    directions.
+    Element is a part of the complex system (e.g. graph). It has an owner and could be passed in forward and backward
+    directions by some process.
     """
     #: Next element query.
     NEXT = 'next'
     #: Previous element query.
     PREVIOUS = 'previous'
 
-    #: Owner context parameter
-    OWNER = 'owner'
     #: Default prefix for property change notifications.
     SET_PREFIX = 'set'
+    #: Notifications separator
+    SEP = '_'
+
+    #: Owner context parameter
+    OWNER = 'owner'
     #: Name context parameter for notifications.
     NAME = 'name'
-    #: Old value context parameter for notifications, for example keeps the old owner or old relation subject.
+    #: Old value context parameter for notifications (e.g. keeps the old owner when changing it).
     OLD_VALUE = 'old-value'
     #: New value context parameter for notifications.
     NEW_VALUE = 'new-value'
-
-    #: Notifications separator
-    SEP = '_'
 
     #: Set of forward queries to identify the direction.
     FORWARD = set([NEXT])
@@ -720,23 +720,25 @@ class Element(Handler):
 
     def __init__(self, owner=None):
         """
-        Creates the Element, connecting it to the owner, if specified.
+        Creates the Element, attaching it to the owner, if specified.
 
-        :param owner: graph to own this element.
-        :type owner: Graph.
+        :param owner:   graph to own this element.
+        :type owner:    Graph.
         """
         super(Element, self).__init__()
 
-        self._owner, self.owner = None, owner
+        self._owner = None
+        #: The graph this element belongs to.
+        self.owner = None, owner
 
     def is_forward(self, message):
         """
         Checks is the message about passing the element in a forward direction.
 
-        :param message: message to be checked
-        :type message: list.
-        :returns: forward or not.
-        :rtype: bool.
+        :param message:     message to be checked
+        :type message:      list.
+        :returns:           forward or not.
+        :rtype:             bool.
         """
         return message and message[0] in self.FORWARD
 
@@ -748,15 +750,15 @@ class Element(Handler):
 
     def on_forward(self, event):
         """
-        Assigns the event to be called when this element is passed in a forward direction.
+        Adds the event to be called when this element is passed in a forward direction.
 
-        :param event: user function to be called.
+        :param event:   user function to be called, will be wrapped in :class:`Event`.
         """
         self.on(self.can_go_forward, event)
 
     def off_forward(self):
         """
-        Disconnects the forward condition and event.
+        Removes the forward condition and event.
         """
         self.off_condition(self.can_go_forward)
 
@@ -764,10 +766,10 @@ class Element(Handler):
         """
         Checks is the message about passing the element in a backward direction.
 
-        :param message: message to be checked
-        :type message: list.
-        :returns: backward or not.
-        :rtype: bool.
+        :param message:     message to be checked
+        :type message:      list.
+        :returns:           backward or not.
+        :rtype:             bool.
         """
         return message and message[0] in self.BACKWARD
 
@@ -779,7 +781,7 @@ class Element(Handler):
 
     def on_backward(self, event):
         """
-        Assigns the event to be called when this element passed in a backward direction.
+        Adds the event to be called when this element is passed in a backward direction.
 
         :param event: user function to be called.
         """
@@ -787,19 +789,20 @@ class Element(Handler):
 
     def off_backward(self):
         """
-        Disconnects the backward condition and event.
+        Removes the backward condition and event.
         """
         self.off_condition(self.can_go_backward)
 
     @staticmethod
     def add_prefix(msg, prefix):
         """
-        Adds the prefix to the message.
+        Adds the prefix to the message, used when generating a notification about property change (e.g. owner).
+        If the prefix is already in place does nothing.
 
-        :param msg: message.
-        :type msg: str.
-        :param prefix: prefix.
-        :type prefix: str.
+        :param msg:     message with the property name.
+        :type msg:      str.
+        :param prefix:  prefix to add.
+        :type prefix:   str.
         """
         event_name = msg
 
@@ -814,9 +817,9 @@ class Element(Handler):
         and new owners will be notified about the change with the message generated with :meth:`Element.add_prefix`
         method.
 
-        :param name: property name.
-        :type name: str.
-        :param value: property value.
+        :param name:    property name.
+        :type name:     str.
+        :param value:   property value.
         """
         old_value = getattr(self, name)
         if old_value == value:
@@ -855,10 +858,10 @@ class Notion(Element):
         """
         Creates the new Notion with the specified name.
 
-        :param name: Notion name.
-        :type name: str.
-        :param owner: Notion's owner.
-        :type owner: Graph.
+        :param name:    notion name.
+        :type name:     str.
+        :param owner:   notion's owner.
+        :type owner:    Graph.
         """
         super(Notion, self).__init__(owner)
         self._name, self.name = None, name
@@ -877,7 +880,7 @@ class Notion(Element):
     @property
     def name(self):
         """
-        Sets/gets the Notion name using :meth:`Element.change_property` method.
+        Sets/gets the notion name using :meth:`Element.change_property` method.
         """
         return self._name
 
@@ -894,10 +897,10 @@ class ActionNotion(Notion):
         """
         Creates the new ActionNotion with the specified name and action.
 
-        :param name: Notion name.
-        :param action: action.
-        :param owner: Notion's owner.
-        :type owner: Graph.
+        :param name:    notion name.
+        :param action:  action, any object to be wrapped in :class:`Event`.
+        :param owner:   notion's owner.
+        :type owner:    Graph.
         """
         super(ActionNotion, self).__init__(name, owner)
         self.on_forward(action)
@@ -918,7 +921,7 @@ class ActionNotion(Notion):
 
 class Relation(Element):
     """
-    Relation is a connection between one or more notions, directed from subject to object(s). Represents the graph arc.
+    Relation is a connection between two notions, directed from the subject to object. Represents the graph arc.
     """
     #: Subject context parameter, used in change subject notifications.
     SUBJECT = 'subject'
@@ -929,12 +932,12 @@ class Relation(Element):
         """
         Creates the new Relation between subj and obj.
 
-        :param subj: Source Notion.
-        :type subj: ComplexNotion.
-        :param obj: Target Notion.
-        :type obj: Notion.
-        :param owner: Relation's owner.
-        :type owner: Graph.
+        :param subj:    source notion.
+        :type subj:     ComplexNotion.
+        :param obj:     target notion.
+        :type obj:      Notion.
+        :param owner:   relation's owner.
+        :type owner:    Graph.
         """
         super(Relation, self).__init__(owner)
         self._object = self._subject = None
@@ -971,7 +974,7 @@ class Relation(Element):
 
 class ComplexNotion(Notion):
     """
-    Complex notion is a notion that contains other notions through relations. To add a relation just set its subject to
+    Complex notion is a notion that contains other notions via relations. To add a relation just set its subject to
     the corresponding ComplexNotion.
     """
     def __init__(self, name, owner=None):
@@ -984,9 +987,9 @@ class ComplexNotion(Notion):
 
     def do_relation(self, *message, **context):
         """
-        set_subject message event, updates references if the sub-notions was connected/disconnected.
+        Subject change event, updates references if a sub-notion was connected/disconnected.
 
-        :returns: True if owner change was successful.
+        :returns: True if subject's change was successful.
         :rtype: bool.
         """
         relation = context.get(self.SENDER)
@@ -1003,14 +1006,14 @@ class ComplexNotion(Notion):
         """
         Forward message event.
 
-        :returns: the list of relations or just relation if the list length = 1
+        :returns: the list of relations or just single relation if the relations list length == 1
         """
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
 
     def remove_all(self):
         """
-        Disconnect all relations.
+        Disconnects all relations.
         """
         while self._relations:
             self._relations[0].subject = None
@@ -1018,29 +1021,29 @@ class ComplexNotion(Notion):
     @property
     def relations(self):
         """
-        Gets the list of relations, do not manually update it to maintain consistency.
+        Gets the list of relations (read-only).
         """
         return self._relations
 
 
 class NextRelation(Relation):
     """
-    Next relation returns its object to the forward message if the specified condition was satisfied. If the condition
-    is not set, :class:`TrueCondition` is used..
+    Next relation returns its :attr:`Relation.object` to the forward message if the specified condition was satisfied.
+    If the condition is not set, :class:`TrueCondition` is used.
     """
     def __init__(self, subj, obj, condition=None, owner=None, **options):
         """
         Creates the new NextRelation with the specified condition.
 
-        :param subj: Subject.
-        :type subj: ComplexNotion.
-        :param obj: Object.
-        :type obj: Notion.
-        :param condition: condition value, will be wrapped in :class:`Condition`.
-        :param owner: Owner.
-        :type owner: Graph.
-        :param options: Condition options, like in :meth:`Condition.__init__`. When setting the new condition, options
-            will be re-applied.
+        :param subj:        subject.
+        :type subj:         ComplexNotion.
+        :param obj:         object.
+        :type obj:          Notion.
+        :param condition:   condition value, will be wrapped in :class:`Condition`.
+        :param owner:       owner.
+        :type owner:        Graph.
+        :param options:     Condition options, like in :meth:`Condition.__init__`. When setting the new condition,
+          options will be re-applied.
         """
         super(NextRelation, self).__init__(subj, obj, owner)
         self.options = options
@@ -1048,6 +1051,7 @@ class NextRelation(Relation):
         if condition:
             self.set_condition(condition)
         else:
+            #: Passing condition, a :class:`Condition` class instance. Default value is :class:`TrueCondition`.
             self.condition_access = TRUE_CONDITION
 
         self.on(self.can_pass, self.do_next)
@@ -1061,7 +1065,7 @@ class NextRelation(Relation):
 
     def check_condition(self, message, context):
         """
-        Returns the result of condition check method call.
+        Returns the result of condition's :meth:`Condition.check` call.
         """
         return self.condition_access.check(message, context)
 
@@ -1069,7 +1073,7 @@ class NextRelation(Relation):
         """
         Next event.
 
-        :returns: Object.
+        :returns: :attr:`Relation.object`.
         :rtype: Notion.
         """
         return self.object
@@ -1085,7 +1089,8 @@ class NextRelation(Relation):
     @property
     def condition(self):
         """
-        Sets/gets the value of the current condition. Note, that it does not returns a Condition instance.
+        Sets/gets the value of the current condition. Note that it does NOT returns a
+        :class:`Condition` instance, use :attr:`NextRelation.condition_access` for direct access instead.
         """
         return self.condition_access.value
 
@@ -1096,22 +1101,23 @@ class NextRelation(Relation):
 
 class ActionRelation(Relation):
     """
-    Action relation performs an action and when passed forward.
+    Action relation executes the user function when passed forward.
     """
     def __init__(self, subj, obj, action, owner=None):
         """
         Creates the new ActionRelation.
 
-        :param subj: Subject.
-        :type subj: ComplexNotion.
-        :param obj: Object.
-        :type obj: Notion.
-        :param action: action value, will be wrapped in :class:`Access`.
-        :param owner: Owner.
-        :type owner: Graph.
+        :param subj:    subject.
+        :type subj:     ComplexNotion.
+        :param obj:     object.
+        :type obj:      Notion.
+        :param action:  action value, will be wrapped in :class:`Access`.
+        :param owner:   owner.
+        :type owner:    Graph.
         """
         super(ActionRelation, self).__init__(subj, obj, owner)
-        self._action_access = Access(action)
+        #: Passing action, a :class:`Access` class instance.
+        self.action_access = Access(action)
 
         self.on_forward(self.do_act)
 
@@ -1119,10 +1125,10 @@ class ActionRelation(Relation):
         """
         Executes the action.
 
-        :returns: If the action result is not None, returns tuple (action_result, object). Otherwise returns only action
-            result if not None else Object.
+        :returns: If :attr:`ActionRelation.action` call result is not None and the object is not None too returns
+          tuple (action_result, :attr:`Relation.object`). Otherwise returns action result OR :attr:`Relation.object`.
         """
-        action_result = self._action_access(*message, **context)
+        action_result = self.action_access(*message, **context)
 
         if action_result is not None and self.object is not None:
             return action_result, self.object
@@ -1132,13 +1138,14 @@ class ActionRelation(Relation):
     @property
     def action(self):
         """
-        Sets/gets value as an action, wrapping it in :class:`Access`. When called for reading, returns the value.
+        Sets/gets the action value, wrapping it in :class:`Access`. When called for reading, returns the
+        :attr:`Access.value`. Use :attr:`ActionRelation.action_access` to access :class:`Access` class instance.
         """
-        return self._action_access.value
+        return self.action_access.value
 
     @action.setter
     def action(self, value):
-        self._action_access = Access(value)
+        self.action_access = Access(value)
 
 
 class Process(Handler):
@@ -1811,26 +1818,30 @@ Element.BACKWARD = Element.BACKWARD | set([ParsingProcess.ERROR, ParsingProcess.
 
 class ParsingRelation(NextRelation):
     """
-    Parsing relation: should be passable in a forward direction (otherwise returns *'error'*). If passed, consumes the
-    amount of text equal to the rank.
+    Parsing relation: should be passable in a forward direction (otherwise returns :attr:`ParsingProcess.ERROR`).
+    If passed, consumes the amount of text equal to the rank using :attr:`ParsingProcess.PROCEED` command.
     """
     def __init__(self, subj, obj, condition=None, owner=None, **options):
         """
         New options in addition to :meth:`NextRelation.__init__`:
 
-            - **'optional'**: do not return *'error'* if the condition was not satisfied, False by default.
-            - **'check_only'**: do not return *'proceed'* if the condition was satisfied, False by default.
+            - optional (bool.): do not return :attr:`ParsingProcess.ERROR` if the condition was not satisfied,
+              False by default.
+            - check_only (bool.): do not return :attr:`ParsingProcess.PROCEED` if the condition was satisfied,
+              False by default.
         """
         super(ParsingRelation, self).__init__(subj, obj, condition, owner, **options)
 
+        #: Do not return error if cannot be passed
         self.optional = options.get('optional', False)
+        #: Do not consume text when passed.
         self.check_only = options.get('check_only', False)
 
         self.unknown_event = Event(self.on_error)
 
     def check_condition(self, message, context):
         """
-        Checks the condition against the value of the *'text'* parameter from the context.
+        Checks the :attr:`NextRelation.condition` against the value of :attr:`ParsingProcess.TEXT` context parameter.
         """
         return self.condition_access.check(tupled(context.get(ParsingProcess.TEXT), message), context)
 
@@ -1838,7 +1849,8 @@ class ParsingRelation(NextRelation):
         """
         Consume the parsed part of the text equal to rank.
 
-        :returns: Tuple ({'proceed': condition_rank}, Object) if check_only is False, just Object otherwise.
+        :returns:   Tuple ({:attr:`ParsingProcess.PROCEED`: condition_rank}, :attr:`Relation.object`) if
+          :attr:`ParsingRelation.check_only` is False, just :attr:`Relation.object` otherwise.
         """
         next_result = super(ParsingRelation, self).do_next(*message, **context)
         rank = context.get(self.RANK)
@@ -1849,8 +1861,8 @@ class ParsingRelation(NextRelation):
         """
         Unknown_message event.
 
-        :returns: 'error'
-        :rtype: str.
+        :returns:   :attr:`ParsingProcess.ERROR`
+        :rtype:     str.
         """
         if not self.optional and self.is_forward(message):
             return ParsingProcess.ERROR
@@ -1858,11 +1870,11 @@ class ParsingRelation(NextRelation):
 
 class SelectiveNotion(ComplexNotion):
     """
-    Selective notion is a :class:`ComplexNotion` that can consist of only one of its sub-notions. It resembles
-    *"switch"* statement from programming languages like Java or C++. SelectiveNotion tries all relations and uses the
+    Selective notion is a :class:`ComplexNotion` that consits of only one sub-notion. It resembles *"switch"*
+    statement from programming languages like Java or C++. SelectiveNotion tries all its relations and uses the
     one with the highest rank and processed without errors. After each try the context state will be restored to make
     sure all relations use the same context data. Like in the original switch statement it is possible to specify the
-    *default* relation to be used if nothing worked.
+    :attr:`SelectiveNotion.default` relation to be used if nothing worked.
     """
     #: Cases state parameter, keeps the list of remaining cases for re-tries.
     CASES = 'cases'
@@ -1877,9 +1889,14 @@ class SelectiveNotion(ComplexNotion):
 
     def get_best_cases(self, message, context):
         """
-        Searching for the relation with the highest rank.
+        Searches for the relation with the highest rank for the specified message and context.
 
-        :returns: the relation(s) with the highest rank or default relation, if specified.
+        :param message:     message items.
+        :type message:      list.
+        :param context:     message handling context.
+        :type context:      dict.
+        :returns:           the relation(s) with the highest rank or :attr:`SelectiveNotion.default` relation,
+          if specified.
         :rtype: list.
         """
         context[self.ANSWER] = self.RANK
@@ -1905,7 +1922,7 @@ class SelectiveNotion(ComplexNotion):
 
     def do_relation(self, *message, **context):
         """
-        Additional check for *default* to have this notion as a subject.
+        Subject change event: additional check for the default relation to have this notion as a subject.
         """
         super(SelectiveNotion, self).do_relation(*message, **context)
 
@@ -1915,7 +1932,8 @@ class SelectiveNotion(ComplexNotion):
     # Events #
     def can_go_forward(self, *message, **context):
         """
-        Forward condition: additional check for the first visit (re-try will handle this otherwise).
+        Forward condition: makes sure this is a first visit of this element (no state is stored in the context),
+        re-try event will be used otherwise.
         """
         if not context.get(StatefulProcess.STATE):  # If we've been here before we need to try something different
             return super(SelectiveNotion, self).can_go_forward(*message, **context)
@@ -1923,10 +1941,11 @@ class SelectiveNotion(ComplexNotion):
     def do_forward(self, *message, **context):
         """
         Forward event: if this notion has only one relation just returns it without any checks; otherwise calls
-        :meth:`SelectiveNotion.get_best_cases` to get the best relations and returns first one from the list.
+        :meth:`SelectiveNotion.get_best_cases` to get the best relation(s) and returns first one from the list.
+
         Other relations with the same rank will be saved to the state :attr:`SelectiveNotion.CASES`
-        variable for re-tries. Note that it saves the context state to the process stack using **push_context**
-        command of :class:`StackingProcess` if there is more than one case to try.
+        parameter for re-tries. Note that elements saves the context state to the process stack using
+        :attr:`StackingProcess.PUSH_CONTEXT` command if there is more than one case to try.
         """
         reply = super(SelectiveNotion, self).do_forward(*message, **context)
 
@@ -1950,7 +1969,8 @@ class SelectiveNotion(ComplexNotion):
 
     def can_retry(self, *message, **context):
         """
-        Re-try condition: if the previous case did not work (**"error"** in the message), let's try something else.
+        Re-try condition: if the previous case did not work (:attr:`ParsingProcess.ERROR` in the message),
+        let's try something else.
         """
         return context.get(StatefulProcess.STATE) and has_first(message, ParsingProcess.ERROR)
 
@@ -1982,14 +2002,15 @@ class SelectiveNotion(ComplexNotion):
 
     def do_finish(self):
         """
-        Finish event: forget the saved context and clear the state.
+        Finish event: forget the saved context using :class:`StackingProcess.FORGET_CONTEXT` command and
+        clear the state using :attr:`StatefulProcess.CLEAR_STATE` command.
         """
         return [StackingProcess.FORGET_CONTEXT, StatefulProcess.CLEAR_STATE]
 
     @property
     def default(self):
         """
-        Sets/gets the default relation. Only the relation with the subject equal to this element could be used as
+        Sets/gets the default relation. Only the relation with the subject equal to this element can be used as
         default.
         """
         return self._default
@@ -2004,10 +2025,11 @@ class SelectiveNotion(ComplexNotion):
 
 class LoopRelation(NextRelation):
     """
-    Loop relation specifies the number of times the Object should appear. Similar to 'for' loops in programming
-    languages. The number of times is specified as a condition, possible conditions are:
-    numeric (n; m..n; m..; ..n), wildcards ("*", "?", "+"), True (infinite loop), and a user function.
+    Loop relation specifies the number of times the :attr:`Relation.object` notion should appear.
+    Similar to "for" loops in programming languages. The number of times is specified as a condition, possible
+    conditions are: numeric (n; m..n; m..; ..n), wildcards ("*", "?", "+"), True (infinite loop), and a user function.
     """
+    #: Number of iteration context parameter.
     ITERATION = 'i'
     WILDCARDS = frozenset(['*', '?', '+'])
     INFINITY = float('inf')
@@ -2030,16 +2052,16 @@ class LoopRelation(NextRelation):
 
     def check_condition(self, message, context):
         """
-        Forward condition, in this class works only in case of infinite loops.
+        Forward condition, in this class this condition works only for infinite loops.
         """
         return self.condition_access == TRUE_CONDITION  # Here we check only the simplest case
 
     def set_condition(self, value):
         """
-        In addition to :meth:`NextRelation.set_condition` updates the tags to keep only events which work for
-        the specified condition type.
+        Sets the new condition, in addition to :meth:`NextRelation.set_condition` updates the events using
+        :meth:`Handler.update_events` to keep only events which work for the specified loop condition type.
 
-        :param value: new condition value.
+        :param value:   new condition value.
         """
         super(LoopRelation, self).set_condition(value)
 
@@ -2092,7 +2114,10 @@ class LoopRelation(NextRelation):
 
     def is_looping(self, context):
         """
-        Checks if this loop is active now.
+        Checks if this loop is active now by presence of :attr:`LoopRelation.ITERATION` key in the element's state.
+
+        :param context:     message handling context
+        :type context:      dict.
         """
         return self.ITERATION in context.get(StatefulProcess.STATE)
 
@@ -2100,9 +2125,9 @@ class LoopRelation(NextRelation):
         """
         Gets the limits of the loop.
 
-        :returns: Tuple of (lower_bound, upper_bound). For loops with no lower bound (like ..n) it equals to 0,
+        :returns:   Tuple of (lower_bound, upper_bound). For loops with no lower bound (like ..n) it equals to 0,
          for loops with no upper bound it equals to infinity.
-        :rtype: tuple.
+        :rtype:     tuple.
         """
         lower, upper = 0, self.INFINITY
 
@@ -2128,15 +2153,16 @@ class LoopRelation(NextRelation):
 
     def get_next_iteration_reply(self, i=1):
         """
-        Gets the next iteration reply: sets the state to the iteration value using **set_state** command of
-        :class:`StatefulProcess` and saves the context if the loop is flexible. If the iteration is higher than 1,
-        discard the previous context state using **forget_context** command of :class:`StackingProcess`.
+        Gets the next iteration reply: sets the state to the iteration number using :attr:`StatefulProcess.SET_STATE`
+        command and saves the context if the loop is flexible using :attr:`StackingProcess.PUSH_CONTEXT` command.
+        If the iteration number is higher than 1, discards the previous context state using
+        :attr:`StackingProcess.FORGET_CONTEXT` command.
 
-        :param i: iteration number.
-        :type i: int.
-        :returns: list of commands: **set_state** with *'iteration'* equal to i, optional discarding and saving the
-            context commands.
-        :rtype: list.
+        :param i:   iteration number.
+        :type i:    int.
+        :returns:   list of commands: :attr:`StatefulProcess.SET_STATE` with :attr:`LoopRelation.ITERATION`
+          equal to i, discarding and saving context commands if the loop :meth:`LoopRelation.is_flexible`.
+        :rtype:     list.
         """
         reply = [{StatefulProcess.SET_STATE: {self.ITERATION: i}}]
 
@@ -2152,27 +2178,29 @@ class LoopRelation(NextRelation):
     # General loop
     def can_start_general(self, *message, **context):
         """
-        Forward condition for starting general loops: checks for the first visit, loop event will be used otherwise.
+        Forward condition for starting of general loops: checks for the first visit, loop event will be used otherwise.
         """
         return self.is_forward(message) and not self.is_looping(context)
 
     def do_start_general(self):
         """
-        Forward event for starting general loops, just returns the first iteration using
+        Forward event for starting of general loops, returns the first iteration using
         :meth:`LoopRelation.get_next_iteration_reply`.
         """
         return self.get_next_iteration_reply()
 
     def can_loop_general(self, *message, **context):
         """
-        Loop condition for the general loops: make sure there are no errors and iteration is more than 1.
+        Loop condition for the general loops: makes sure there are no errors and iteration is more than 1.
         """
         return self.is_forward(message) and self.is_looping(context)
 
     def do_loop_general(self, **context):
         """
-        Loop event for the general loops: if the iteration is within bounds, increase it and repeat the loop.
-        Stops the loop otherwise, clearing the state and discarding the saved context, keeping it in the actual state.
+        Loop event for general loops: if the iteration number is within :meth:`LoopRelation.get_bounds`,
+        increases it and repeats the loop. Stops the loop otherwise, clearing the state using
+        :attr:`StatefulProcess.CLEAR_STATE` command and discards the saved context using
+        :attr:`StackingProcess.FORGET_CONTEXT`, keeping it in the actual state.
         """
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
 
@@ -2188,15 +2216,17 @@ class LoopRelation(NextRelation):
 
     def can_error_general(self, *message, **context):
         """
-        Error condition for the general loops.
+        Error condition for the general loops (:attr:`ParsingProcess.ERROR` in the message).
         """
         return has_first(message, ParsingProcess.ERROR) and self.is_looping(context)
 
     def do_error_general(self, **context):
         """
-        Error event for the general loops: if the loop condition is satisfied just clears the state, restores
-        the context to the last good state and clears the error. If the number of repetitions is less than needed -
-        discards the saved context, clears the state and keeps the error.
+        Error event for the general loops: if the loop condition is satisfied just clears the state using
+        :attr:`StatefulProcess.CLEAR_STATE` command, restores the context to the last good state using
+        :attr:`StackingProcess.POP_CONTEXT` command and clears the error using :attr:`Element.NEXT`.
+        If the number of repetitions is less than needed - discards the saved context using
+        :attr:`StackingProcess.FORGET_CONTEXT` command, clears the state and keeps the error.
         """
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
         lower, upper = self.get_bounds()
@@ -2211,7 +2241,7 @@ class LoopRelation(NextRelation):
                 reply += [StackingProcess.FORGET_CONTEXT]
 
         return reply + [StatefulProcess.CLEAR_STATE]
-    
+
     # Custom loop
     def can_loop_custom(self, *message):
         """
@@ -2221,9 +2251,11 @@ class LoopRelation(NextRelation):
 
     def do_loop_custom(self, *message, **context):
         """
-        Loop event for custom loops. Calls for the user function, sending the value of current iteration in the context.
-        The call result will be the new value of the iteration. If it is equal to 0, False, or None - stops the loop by
-        clearing the state.
+        Loop event for custom loops. Calls the user function from :attr:`NextRelation.condition`,
+        sending the value of current iteration in the context parameter :attr:`LoopRelation.ITERATION`.
+        The call result will be the new number of the iteration.
+        If it is equal to 0, False, or None - stops the loop by clearing the state using
+        :attr:`StatefulProcess.CLEAR_STATE` command.
         """
         i = self.condition_access(*message, **context)
 
@@ -2234,21 +2266,23 @@ class LoopRelation(NextRelation):
 
     def do_error_custom(self):
         """
-        Error event for the custom loops: just clears the state.
+        Error event for the custom loops: just clears the state using :attr:`StatefulProcess.CLEAR_STATE` command.
         """
         return StatefulProcess.CLEAR_STATE,
-    
+
     # Common handling
     def can_break(self, *message, **context):
         """
-        Break condition: checks for the message to be **'break'** and the loop to be in progress.
+        Break condition: checks for the message to be :attr:`ParsingProcess.BREAK` and the loop to be in progress
+        using :meth:`LoopRelation.is_looping`.
         """
         return has_first(message, ParsingProcess.BREAK) and self.is_looping(context)
 
     def do_break(self):
         """
-        Break event: changes the process direction to forward, clears the loop state and the context state if the loop
-        is flexible.
+        Break event: changes the process direction to forward using :attr:`Element.NEXT` command,
+        clears the loop state using :attr:`StatefulProcess.CLEAR_STATE` and the context state
+        using :attr:`StackingProcess.FORGET_CONTEXT` if the loop :meth:`LoopRelation.is_flexible`.
         """
         reply = [self.NEXT]
 
@@ -2259,13 +2293,16 @@ class LoopRelation(NextRelation):
 
     def can_continue(self, *message, **context):
         """
-        Continue condition: checks for the message to be **'continue'** and the loop to be in progress.
+        Continue condition: checks for the message to be :attr:`ParsingProcess.CONTINUE` and the loop
+        to be in progress using :meth:`LoopRelation.is_looping`.
         """
         return has_first(message, ParsingProcess.CONTINUE) and self.is_looping(context)
 
     def do_continue(self, *message, **context):
         """
-        Continue event: changes the process direction to forward, starts the new iteration.
+        Continue event: changes the process direction to forward using :attr:`Element.NEXT`,
+        starts the new iteration using :meth:`LoopRelation.do_loop_general` or :meth:`LoopRelation.do_loop_custom`
+        depending on the loop type.
         """
         return [self.NEXT] + self.do_loop_general(**context) if self.is_general() else \
             self.do_loop_custom(*message, **context)  # TODO test custom loops
@@ -2279,12 +2316,14 @@ class Graph(Element):
 
     def __init__(self, root=None, owner=None):
         """
-        Creates the new Graph with the specified root notion and owner.
+        Creates the new Graph with the specified root notion and owner. The name of the graph is equal to the name of
+        its root notion.
 
-        :param root: if of String type, Graph will create the new :class:`ComplexNotion` element with the corresponding
-         name and owner to be used as a root. The root notion will be saved into **root** property of the graph.
-        :param owner: Owner of this graph.
-        :type owner: Graph.
+        :param root:    if of String type, Graph will create the new :class:`ComplexNotion` element with the
+          corresponding name and owner to be used as a root. The root notion will be saved into :attr:`Graph.root`
+          property of the graph.
+        :param owner:   owner of this graph.
+        :type owner:    Graph.
         """
         super(Graph, self).__init__(owner)
 
@@ -2305,12 +2344,12 @@ class Graph(Element):
         """
         Gets the rank of the notion when searching by criteria. Used as a comparator for notions search.
 
-        :param notion: the notion to calculate the rank.
-        :type notion: Notion.
-        :param criteria: searching criteria - regex, string or user function.
-        :returns: similarity rank - match length for regex, length of the string if the string is equal to the notion's
-         name, the result of user function call.
-        :rtype: int.
+        :param notion:      the notion to calculate the rank.
+        :type notion:       Notion.
+        :param criteria:    searching criteria: regex, string or user function.
+        :returns:           similarity rank: match length for regex, length of the string if the string is equal
+         to the notion's name, the result of user function call.
+        :rtype:             int.
         """
         if callable(criteria):
             return criteria(notion)
@@ -2327,14 +2366,15 @@ class Graph(Element):
 
     def search_elements(self, collection, comparator, criteria):
         """
-        Searches for the elements within the collection to find the ones with the highest rank.
+        Searches for the elements within the collection to find the ones with the highest rank according to
+        the specified criteria.
 
-        :param collection: list of the elements of the same type.
-        :type collection: list.
-        :param comparator: comparison function.
-        :param criteria: search criteria.
-        :returns: element with the highest rank.
-        :rtype: list.
+        :param collection:  list of the elements of the same type (:class:`Notion` or :class:`Relation`).
+        :type collection:   list.
+        :param comparator:  comparison function.
+        :param criteria:    search criteria.
+        :returns:           elements with the highest rank.
+        :rtype:             list.
         """
         rank = -1
         found = []
@@ -2353,11 +2393,12 @@ class Graph(Element):
 
     def notions(self, criteria=None):
         """
-        Finds the notions by specified criteria. If more than 1 notion has the highest rank, the list will be returned.
-        Calls :meth:`Graph.search_elements` with :meth:`Graph.get_notion_search_rank` as a comparator function.
+        Finds the notions by the specified criteria. If more than 1 notion has the highest rank, the list will
+        be returned. Calls :meth:`Graph.search_elements` with :meth:`Graph.get_notion_search_rank` as a comparator
+        function.
 
-        :param criteria: user function, regex, or string to compare with the notion name. If not specified, all notions
-         will be returned.
+        :param criteria:    user function, regex, or string to compare with the notion name. If not specified,
+         all notions will be returned.
         :returns: notions found.
         :rtype: tuple.
         """
@@ -2366,12 +2407,12 @@ class Graph(Element):
 
     def notion(self, criteria):
         """
-        Finds a single notion for the criteria. Calls `Graph.notions` to get the list of notions than returns the first
-        one.
+        Finds a single notion by the criteria. Calls :meth:`Graph.notions` to get the list of notions than
+        returns a first one.
 
-        :param criteria: search criteria.
-        :returns: notion found.
-        :rtype: Notion.
+        :param criteria:    search criteria.
+        :returns:           notion found.
+        :rtype:             Notion.
         """
         found = self.notions(criteria)
 
@@ -2381,13 +2422,14 @@ class Graph(Element):
         """
         Gets the rank of the relation when searching by criteria. Used as a comparator for relations search.
 
-        :param relation: the relation to calculate the rank.
-        :type relation: Relation.
-        :param criteria: searching criteria - a dictionary or user function. The dictionary contains **'subject'** or
-         **'object'** keys to specify the notion which should be a subject or object for the relation.
-        :returns: similarity rank - the result of user function call or -1 (no subject/object equals to criteria),
-         0 (subject or object is equal to criteria), 1 (both subject and object are equal).
-        :rtype: int.
+        :param relation:    the relation to calculate the rank.
+        :type relation:     Relation.
+        :param criteria:    searching criteria: a dictionary or user function. The dictionary contains
+         :attr:`Relation.SUBJECT` or :attr:`Relation.OBJECT` keys to specify the notion which should be a subject
+         or object for the relation.
+        :returns:           similarity rank: the result of the user function call or -1 (no subject/object equals
+         to criteria), 0 (subject or object is equal to criteria), 1 (both subject and object are equal).
+        :rtype:             int.
         """
         if callable(criteria):
             return criteria(relation)
@@ -2405,26 +2447,26 @@ class Graph(Element):
 
     def relations(self, criteria=None):
         """
-        Finds the relations by specified criteria. If more than 1 relation has the highest rank, the list will be
+        Finds the relations by the specified criteria. If more than 1 relation has the highest rank, the list will be
         returned. Calls :meth:`Graph.search_elements` with :meth:`Graph.get_relation_search_rank` as a
         comparator function.
 
-        :param criteria: user function or dictionary with subject and object values. If not specified, all relations
-         will be returned.
-        :returns: relations found.
-        :rtype: tuple.
+        :param criteria:    user function or dictionary with target :attr:`Relation.SUBJECT` or :attr:`Relation.OBJECT`
+         values. If not specified, all relations will be returned.
+        :returns:           relations found.
+        :rtype:             tuple.
         """
         return self.search_elements(self._relations, self.get_relation_search_rank, criteria) if criteria else \
             tuple(self._relations)
 
     def relation(self, criteria=None):
         """
-        Finds a single relation for the criteria. Calls `Graph.relations` to get the list of relations than returns the
+        Finds a single relation by the criteria. Calls `Graph.relations` to get the list of relations than returns a
         first one.
 
-        :param criteria: search criteria.
-        :returns: relation found.
-        :rtype: Relation.
+        :param criteria:    search criteria.
+        :returns:           relation found.
+        :rtype:             Relation.
         """
         found = self.relations(criteria)
 
@@ -2432,9 +2474,9 @@ class Graph(Element):
 
     def do_element(self, **context):
         """
-        Owner change event. This event appears when the element changes the owner. When received, the grap will add or
-        remove the element from the corresponding list of notions or relations. The the root notion changes owner,
-        graph will set the root to None.
+        Owner change event. This event appears when the element changes the owner. When received, the graph will add or
+        remove the element from the corresponding list of notions or relations. If the root notion changes owner,
+        the graph will set the :attr:`Graph.root` to None.
         """
         element = context.get(self.SENDER)
 
@@ -2459,10 +2501,10 @@ class Graph(Element):
 
     def do_forward(self):
         """
-        Forward event. Returns the root notion.
+        Forward event. Returns :attr:`Graph.root` value.
 
-        :returns: root notion.
-        :rtype: Notion.
+        :returns:   root notion.
+        :rtype:     Notion.
         """
         return self.root
 
@@ -2494,7 +2536,7 @@ class Graph(Element):
     @property
     def name(self):
         """
-        Setter/getter of the graph name. The name of the graph is equal to the name of the root notion.
+        Setter/getter of the graph name. The name of the graph is equal to the name of the :attr:`Graph.root` notion.
         """
         return self.root.name if self.root else None
 
@@ -2505,33 +2547,39 @@ class Graph(Element):
 
 class GraphBuilder(object):
     """
-    Graph builder helps to create :class:`Graph`. Uses chained operations to assemble the graph, connecting elements to
-    each other, e.g. builder.complex('complex').next_rel().notion('simple'). The current element to attach the new
-    one is stored in **current** property.
+    Graph builder helps to create :class:`Graph`. It uses chained operations to assemble the graph, connecting elements
+    to each other, for example::
+
+     builder.complex('complex').next_rel().notion('simple')
+
+    The current element to attach the new one is stored in :attr:`GraphBuilder.current` property.
     """
     def __init__(self, graph=None):
         """
         Create the new GraphBuilder using specified graph.
 
-        :param graph: is of string type will be used to create the new graph.
+        :param graph:   is of string type will be used to create the new graph.
         """
         if is_string(graph):
             graph = Graph(graph)
 
+        #: Current graph
         self.graph = graph
+        #: Current graph element to attach the new ones.
         self.current = graph.root if graph else None
 
     def attach(self, new):
         """
-        Attaches the new element depending on its type. If the new element is a notion and the current element is a
-        relation, the new element becomes an object of the relation. If the new element is a relation, and the current
-        element is a ComplexNotion, the current element becomes a subject of the new relation. Set the current
-        element to None to avoid this behavior.
+        Attaches the new element to the :attr:`GraphBuilder.current` depending on its type. If the new element is a
+        :class:`Notion` and the current element is a :class:`Relation`, the new element becomes :attr:`Relation.object`
+        of the relation. If the new element is a relation, and the current
+        element is a :class:`ComplexNotion`, the current element becomes a :attr:`Relation.subject` of the new relation.
+        Set the current element to None to avoid this behavior.
 
-        :param new: the new element to attach and set as a current.
-        :type new: Element.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param new:     the new element to attach and set as a current.
+        :type new:      Element.
+        :returns:       self.
+        :rtype:         GraphBuilder.
         """
         if isinstance(new, Notion):
             if isinstance(self.current, Relation) and not self.current.object:
@@ -2550,73 +2598,73 @@ class GraphBuilder(object):
 
     def complex(self, name):
         """
-        Attaches the :class:`ComplexNotion` with the specified name.
+        Attaches new :class:`ComplexNotion` with the specified name.
 
-        :param name: new complex notion name.
-        :type name: str.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param name:    new complex notion name.
+        :type name:     str.
+        :returns:       self.
+        :rtype:         GraphBuilder.
         """
         return self.attach(ComplexNotion(name, self.graph))
 
     def notion(self, name):
         """
-        Attaches the :class:`Notion` with the specified name.
+        Attaches new :class:`Notion` with the specified name.
 
-        :param name: the new notion name.
-        :type name: str.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param name:    the new notion name.
+        :type name:     str.
+        :returns:       self.
+        :rtype:         GraphBuilder.
         """
         return self.attach(Notion(name, self.graph))
 
     def act(self, name, action):
         """
-        Attaches the :class:`ActionNotion` with the specified name and action.
+        Attaches new :class:`ActionNotion` with the specified name and action.
 
-        :param name: the new notion name.
-        :type name: str.
-        :param action: the action to be passed in :meth:`ActionNotion.__init__`.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param name:    the new notion name.
+        :type name:     str.
+        :param action:  the action to be passed to :meth:`ActionNotion.__init__`.
+        :returns:       self.
+        :rtype:         GraphBuilder.
         """
         return self.attach(ActionNotion(name, action, self.graph))
 
     def next_rel(self, condition=None, obj=None, **options):
         """
-        Attaches the :class:`NextRelation` with the specified condition and object.
+        Attaches new :class:`NextRelation` with the specified condition and object.
 
-        :param condition: the passing condition.
-        :param obj: the object of the new relation.
-        :type obj: Notion.
-        :param options: options to be passed in :meth:`NextRelation.__init__`.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param condition:   the passing condition.
+        :param obj:         the object of the new relation.
+        :type obj:          Notion.
+        :param options:     options to be passed to :meth:`NextRelation.__init__`.
+        :returns:           self.
+        :rtype:             GraphBuilder.
         """
         return self.attach(NextRelation(None, obj, condition, self.graph, **options))
 
     def act_rel(self, action, obj=None):
         """
-        Attaches the :class:`ActionRelation` with the specified action and object.
+        Attaches new :class:`ActionRelation` with the specified action and object.
 
-        :param action: the action value (user function, etc).
-        :param obj: the object of the new relation.
-        :type obj: Notion.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param action:      the action value (user function, etc).
+        :param obj:         the object of the new relation.
+        :type obj:          Notion.
+        :returns:           self.
+        :rtype:             GraphBuilder.
         """
         return self.attach(ActionRelation(None, obj, action, self.graph))
 
     def parse_rel(self, condition, obj=None, **options):
         """
-        Attaches the :class:`ParsingRelation` with the specified condition and object.
+        Attaches new :class:`ParsingRelation` with the specified condition and object.
 
-        :param condition: the passing condition.
-        :param obj: the object of the new relation.
-        :type obj: Notion.
-        :param options: options to be passed in :meth:`ParsingRelation.__init__`.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param condition:   the passing condition.
+        :param obj:         the object of the new relation.
+        :type obj:          Notion.
+        :param options:     options to be passed to :meth:`ParsingRelation.__init__`.
+        :returns:           self.
+        :rtype:             GraphBuilder.
         """
         rel = ParsingRelation(None, obj, condition, self.graph, **options)
 
@@ -2624,22 +2672,22 @@ class GraphBuilder(object):
 
     def select(self, name):
         """
-        Attaches the :class:`SelectiveNotion` with the specified name.
+        Attaches new :class:`SelectiveNotion` with the specified name.
 
-        :param name: new selective notion name.
-        :type name: str.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param name:        new selective notion name.
+        :type name:         str.
+        :returns:           self.
+        :rtype:             GraphBuilder.
         """
         return self.attach(SelectiveNotion(name, self.graph))
 
     def default(self):
         """
-        If the current element is a relation and its subject is a :class:`SelectiveNotion`, this relation will be set
-        as a :attr:`SelectiveNotion.default`.
+        If the :attr:`GraphBuilder.current` element is a :class:`Relation` and its subject is a
+        :class:`SelectiveNotion` instance, this relation will be set as a :attr:`SelectiveNotion.default`.
 
-        :returns: self.
-        :rtype: GraphBuilder.
+        :returns:   self.
+        :rtype:     GraphBuilder.
         """
         if isinstance(self.current, Relation) and isinstance(self.current.subject, SelectiveNotion):
             self.current.subject.default = self.current
@@ -2650,23 +2698,24 @@ class GraphBuilder(object):
 
     def loop_rel(self, condition, obj=None):
         """
-        Attaches the :class:`LoopRelation` with the specified condition and object.
+        Attaches new :class:`LoopRelation` with the specified condition and object.
 
-        :param condition: the iteration condition.
-        :param obj: the object of the new relation.
-        :type obj: Notion.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param condition:   the iteration condition.
+        :param obj:         the object of the new relation.
+        :type obj:          Notion.
+        :returns:           self.
+        :rtype:             GraphBuilder.
         """
         return self.attach(LoopRelation(None, obj, condition, self.graph))
 
     def sub_graph(self, name):
         """
-        Creates the new sub-graph with the specified name. If the current graph is None, new graph will be used as
-        a current. Otherwise the current element will be set to the root of the new graph.
+        Creates the new sub-graph with the specified name. If the current :attr:`GraphBuilder.graph` is None,
+        the new graph will be used as a current. Otherwise the :attr:`GraphBuilder.current` element will be set to
+        the :attr:`Graph.root` of the new graph.
 
-        :returns: self.
-        :rtype: GraphBuilder.
+        :returns:   self.
+        :rtype:     GraphBuilder.
         """
         new = Graph(name, self.graph if self.graph else None)
 
@@ -2681,10 +2730,11 @@ class GraphBuilder(object):
 
     def pop(self):
         """
-        Goes to the root element of the owner of the current element's graph.
+        Goes to the :attr:`Graph.root` element of the :attr:`Element.owner` of the :attr:`GraphBuilder.current`
+        element's graph.
 
-        :returns: self.
-        :rtype: GraphBuilder.
+        :returns:   self.
+        :rtype:     GraphBuilder.
         """
         if self.current and self.current.owner and self.current.owner.owner:
             self.graph = self.current.owner.owner
@@ -2696,11 +2746,12 @@ class GraphBuilder(object):
 
     def set_current(self, element):
         """
-        Sets the element as a current, using its owner as a current graph.
+        Sets the element as a :attr:`GraphBuilder.current`, using its owner as a current :attr:`GraphBuilder.graph`.
 
-        :param element: new current element.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param element:     new current element.
+        :type element:      Element.
+        :returns:           self.
+        :rtype:             GraphBuilder.
         """
         if element != self.current:
             self.current = element
@@ -2712,11 +2763,12 @@ class GraphBuilder(object):
 
     def back(self):
         """
-        If the current element is a Notion, searches for any Relation that has it as an Object and sets it as a current.
-        If the current element is a Relation, sets its Subject notion as a current.
+        If the :attr:`GraphBuilder.current` is a :class:`Notion`, searches for any :class:`Relation` that has it
+        as a :attr:`Relation.object` and sets it as a current.
+        If the current element is a Relation, sets its :attr:`Relation.subject` notion as a current.
 
-        :returns: self.
-        :rtype: GraphBuilder.
+        :returns:   self.
+        :rtype:     GraphBuilder.
         """
         if isinstance(self.current, Notion):
             rel = self.graph.relations({Relation.OBJECT: self.current})
@@ -2727,12 +2779,12 @@ class GraphBuilder(object):
 
     def __getitem__(self, element):
         """
-        Current element helper.
+        :attr:`GraphBuilder.current` element helper.
 
-        :param element: if of String type, sets the current element to the notion with this name, otherwise sets the
-         specified element as a current.
-        :returns: self.
-        :rtype: GraphBuilder.
+        :param element: if of String type, sets the :attr:`GraphBuilder.current` element to the notion with this name,
+         otherwise sets the specified element as a current.
+        :returns:       self.
+        :rtype:         GraphBuilder.
         """
         if is_string(element):
             element = self.graph.notion(element)
