@@ -1174,8 +1174,8 @@ class Process(Handler):
     #: Empty message tag, shows that the current message is empty.
     EMPTY_MESSAGE = 'empty_' + MESSAGE
 
-    BREAK_CRITERIA = (OK, STOP, False)
-    CONTINUE_CRITERIA = (None, True)
+    STOP_CRITERIA = (OK, STOP, False)
+    GO_CRITERIA = (None, True)
 
     def __init__(self):
         """
@@ -1401,9 +1401,9 @@ class Process(Handler):
 
         self.context = context
 
-    def on_continue(self, message, context):
+    def on_resume(self, message, context):
         """
-        Continue 'special' event: called when resuming the stopped process.
+        Resume 'special' event: called when resuming the stopped process.
         This event has no conditions and called by :meth:`Process.handle` directly.
         """
         self.to_queue({self.MESSAGE: message})
@@ -1418,7 +1418,7 @@ class Process(Handler):
         if has_first(message, self.NEW):  # Very special case
             self.on_new(message, context)
         else:
-            self.on_continue(message, context)
+            self.on_resume(message, context)
 
         result = self.NO_HANDLE
 
@@ -1426,10 +1426,10 @@ class Process(Handler):
             self.update()
             result = super(Process, self).handle(self.message, self.context)
 
-            if result[0] in self.BREAK_CRITERIA:
+            if result[0] in self.STOP_CRITERIA:
                 break
 
-            elif result[0] in self.CONTINUE_CRITERIA:
+            elif result[0] in self.GO_CRITERIA:
                 continue  # No need to put it into the message
 
             self.set_message(result[0], True)

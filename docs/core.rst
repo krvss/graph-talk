@@ -99,7 +99,7 @@ Process Classes
 .. autoclass:: Process
     :show-inheritance:
     :members: context, message, query, current, skip, can_push_queue, do_queue_push, can_pop_queue, do_queue_pop,
-     do_query, setup_events, can_clear_message, do_clear_message, do_finish, update_tags, on_new, on_continue, handle,
+     do_query, setup_events, can_clear_message, do_clear_message, do_finish, update_tags, on_new, on_resume, handle,
      NEW, OK, STOP, QUERY, EMPTY_MESSAGE, CURRENT, MESSAGE
 
 .. autoclass:: SharedProcess
