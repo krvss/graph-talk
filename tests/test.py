@@ -148,7 +148,6 @@ class UtTests(unittest.TestCase):
 
         tc = TestCalls()
 
-        cant_handle = (-1, None)
         condition1 = Condition(lambda *m: m[0] == 1)
         condition2 = Condition(lambda *m, **c: (m[0], len(c)))
         condition3 = Condition(lambda: 4)
@@ -156,32 +155,36 @@ class UtTests(unittest.TestCase):
         condition5 = Condition(tc.return_false)
 
         self.assertEquals(condition1.check([1], {}), (0, True))
-        self.assertEquals(condition1.check([2], {}), cant_handle)
+        self.assertEquals(condition1.check([2], {}), Condition.NO_CHECK)
 
         self.assertEquals(condition2.check([3], {'1': 1}), (3, 1))
         self.assertEquals(condition3.check([], {}), (4, 4))
 
         self.assertEquals(condition4.check([], {}), (0, True))
-        self.assertEquals(condition5.check([], {}), cant_handle)
+        self.assertEquals(condition5.check([], {}), Condition.NO_CHECK)
 
         condition_r = Condition(re.compile('a+'))
 
         self.assertEquals(condition_r.check(['a'], {})[0], 1)
         self.assertEquals(condition_r.check(['ab'], {})[0], 1)
-        self.assertEquals(condition_r.check(['b'], {}), cant_handle)
+        self.assertEquals(condition_r.check(['b'], {}), Condition.NO_CHECK)
 
         condition_s = Condition('aa')
         self.assertEquals(condition_s.check(['aa'], {}), (2, 'aa'))
         self.assertEquals(condition_s.check(['aaa'], {}), (2, 'aa'))
-        self.assertEquals(condition_s.check(['b'], {}), cant_handle)
+        self.assertEquals(condition_s.check(['b'], {}), Condition.NO_CHECK)
 
         condition_s = Condition('x', search=True)
         self.assertEquals(condition_s.check(['aax'], {}), (3, 'x'))
-        self.assertEquals(condition_s.check(['b'], {}), cant_handle)
+        self.assertEquals(condition_s.check(['b'], {}), Condition.NO_CHECK)
+
+        condition_s = Condition('y', search=True, ignore_case=True)
+        self.assertEquals(condition_s.check(['YY'], {}), (1, 'Y'))
+        self.assertEquals(condition_s.check([(None, 3)], {}), Condition.NO_CHECK)
 
         condition_l = Condition(('aa', 'bb'))
         self.assertEquals(condition_l.check(['bb'], {}), (2, 'bb'))
-        self.assertEquals(condition_l.check(['c'], {}), cant_handle)
+        self.assertEquals(condition_l.check(['c'], {}), Condition.NO_CHECK)
         self.assertEqual(condition_l.value, ('aa', 'bb'))
         self.assertEqual(condition_l.list[0].spec, Condition.STRING)
         self.assertEqual(condition_l.list[1].value, condition_l.value[1])
@@ -198,9 +201,11 @@ class UtTests(unittest.TestCase):
         condition_r = Condition(re.compile('b+'), search=True)
         self.assertEquals(condition_r.check(['agabb'], {}), (5, 'bb'))
 
+        self.assertEquals(condition_r.check(['nope'], {}), Condition.NO_CHECK)
+
         condition_n = Condition(1)
         self.assertEquals(condition_n.check([1], {}), (0, 1))
-        self.assertEquals(condition_n.check([0], {}), cant_handle)
+        self.assertEquals(condition_n.check([0], {}), Condition.NO_CHECK)
 
         condition = Condition(lambda: (1, 2, 3))
         self.assertEquals(condition.check([], {}), ((1, 2, 3), (1, 2, 3)))
@@ -1543,6 +1548,16 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.query, Element.NEXT)
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, l, 2)
+
+        l.condition = lambda state: 2 if not 'i' in state else state['i'] - 1
+
+        r = process(process.NEW, root, **{process.TEXT: 'aa', 'test': 'test_loop_continue_custom'})
+
+        self.assertTrue(r is None)
+        self.assertEqual(process.query, Element.NEXT)
+        self.assertNotIn(b, process.states)
+        check_loop_result(self, process, l, 2)
+
 
     def test_g_graph(self):
         graph = Graph()

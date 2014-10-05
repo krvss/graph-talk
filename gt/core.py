@@ -324,18 +324,14 @@ class Condition(Access):
         return self.NO_CHECK
 
     def check_string_search(self, message, context):
-        try:
-            message0 = str(message[0])
+        message0 = str(message[0])
 
-            if self._ignore_case:
-                message0 = message0.upper()
+        if self._ignore_case:
+            message0 = message0.upper()
 
-            pos = message0.find(self._value)
-            if pos >= 0:
-                return self._value_len + pos, self._value
-
-        except (TypeError, IndexError):
-            pass
+        pos = message0.find(self._value)
+        if pos >= 0:
+            return self._value_len + pos, self._value
 
         return self.NO_CHECK
 
@@ -729,7 +725,7 @@ class Element(Handler):
 
         self._owner = None
         #: The graph this element belongs to.
-        self.owner = None, owner
+        self.owner = owner
 
     def is_forward(self, message):
         """
@@ -2290,9 +2286,9 @@ class LoopRelation(NextRelation):
         i = self.condition_access(*message, **context)
 
         if i:
-            return {StatefulProcess.SET_STATE: {self.ITERATION: i}}, self.object, self
+            return [{StatefulProcess.SET_STATE: {self.ITERATION: i}}, self.object, self]
         else:
-            return False if not self.is_looping(context) else StatefulProcess.CLEAR_STATE,
+            return False if not self.is_looping(context) else [StatefulProcess.CLEAR_STATE]
 
     def do_error_custom(self):
         """
@@ -2334,8 +2330,10 @@ class LoopRelation(NextRelation):
         starts the new iteration using :meth:`LoopRelation.do_loop_general` or :meth:`LoopRelation.do_loop_custom`
         depending on the loop type.
         """
-        return [self.NEXT] + self.do_loop_general(**context) if self.is_general() else \
-            self.do_loop_custom(*message, **context)  # TODO test custom loops
+        if self.is_general():
+            return [self.NEXT] + self.do_loop_general(**context)
+        else:
+            return [self.NEXT] + self.do_loop_custom(*message, **context)
 
 
 class Graph(Element):
