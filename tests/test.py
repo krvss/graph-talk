@@ -441,32 +441,32 @@ class UtTests(unittest.TestCase):
 
         # Move test
         # Forward
-        event1 = lambda *m: m[0] if m[0] in Element.FORWARD else None
+        event1 = lambda *m: m[0] if m[0] in Process.FORWARD else None
 
         e.on_forward(event1)
 
-        self.assertEqual(e(Element.NEXT), Element.NEXT)
+        self.assertEqual(e(Process.NEXT), Process.NEXT)
 
         e.off_forward()
 
-        self.assertTrue(e(Element.NEXT) is False)
+        self.assertTrue(e(Process.NEXT) is False)
 
         self.assertFalse(e.is_forward(None))
-        self.assertTrue(e.is_forward([Element.NEXT]))
+        self.assertTrue(e.is_forward([Process.NEXT]))
         self.assertFalse(e.is_forward([]))
 
         # Backward
-        event2 = lambda *m: m[0] if m[0] in Element.BACKWARD else None
+        event2 = lambda *m: m[0] if m[0] in Process.BACKWARD else None
         e.on_backward(event2)
 
-        self.assertEqual(e(Element.PREVIOUS), Element.PREVIOUS)
+        self.assertEqual(e(Process.PREVIOUS), Process.PREVIOUS)
 
         e.off_backward()
 
-        self.assertTrue(e(Element.PREVIOUS) is False)
+        self.assertTrue(e(Process.PREVIOUS) is False)
 
         self.assertFalse(e.is_backward(None))
-        self.assertTrue(e.is_backward([Element.PREVIOUS]))
+        self.assertTrue(e.is_backward([Process.PREVIOUS]))
         self.assertFalse(e.is_backward([]))
 
     def test_5_objects(self):
@@ -501,13 +501,13 @@ class UtTests(unittest.TestCase):
         r1.subject = cn
 
         # If relation is only one ComplexNotion should return it, not a list
-        self.assertEqual(cn(Element.NEXT), r1)
+        self.assertEqual(cn(Process.NEXT), r1)
 
         r2 = Relation(n2, n1)
         r2.subject = cn
 
         # If there is more than 1 relation ComplexNotion should return the list
-        self.assertEqual(cn(Element.NEXT), (r1, r2))
+        self.assertEqual(cn(Process.NEXT), (r1, r2))
 
         r2.subject = n2
         self.assertEqual(len(cn.relations), 1)
@@ -535,22 +535,22 @@ class UtTests(unittest.TestCase):
 
         # Next test
         nr = NextRelation(n1, n2)
-        self.assertEqual(nr(Element.NEXT), n2)
+        self.assertEqual(nr(Process.NEXT), n2)
 
         nr.condition = lambda **c: 'event' in c
         nr.object = [1]
-        self.assertListEqual(nr(Element.NEXT, event=1), nr.object)
+        self.assertListEqual(nr(Process.NEXT, event=1), nr.object)
 
         self.assertTrue(nr(event=1) is False)
-        self.assertTrue(nr(Element.NEXT) is False)
+        self.assertTrue(nr(Process.NEXT) is False)
 
         # Action notion test
         na = ActionNotion('action', 'action')
-        self.assertEquals(na(Element.NEXT), na.name)
+        self.assertEquals(na(Process.NEXT), na.name)
         self.assertEqual(na.action, na.name)
 
         na.action = 2
-        self.assertEquals(na(Element.NEXT), 2)
+        self.assertEquals(na(Process.NEXT), 2)
 
         na.off_forward()
         self.assertIsNone(na.action)
@@ -558,18 +558,18 @@ class UtTests(unittest.TestCase):
         # Action relation test
         ar = ActionRelation('subj', 'obj', True)
 
-        self.assertEqual(ar(Element.NEXT), (True, ar.object))
+        self.assertEqual(ar(Process.NEXT), (True, ar.object))
         ar.action = None
 
-        self.assertEqual(ar(Element.NEXT), ar.object)
+        self.assertEqual(ar(Process.NEXT), ar.object)
 
         ar.action = 3
 
-        self.assertEqual(ar(Element.NEXT), (3, ar.object))
+        self.assertEqual(ar(Process.NEXT), (3, ar.object))
 
         ar.object = None
 
-        self.assertEqual(ar(Element.NEXT), 3)
+        self.assertEqual(ar(Process.NEXT), 3)
 
     def test_6_process(self):
         process = Process()
@@ -961,7 +961,7 @@ class UtTests(unittest.TestCase):
         self.assertFalse(process.last_parsed)
 
         # Changing of query
-        r = process(process.NEW, Element.NEXT, process.BREAK, process.STOP)
+        r = process(process.NEW, Process.NEXT, process.BREAK, process.STOP)
 
         self.assertFalse(r)
         self.assertEqual(process.query, process.BREAK)
@@ -988,12 +988,12 @@ class UtTests(unittest.TestCase):
 
         parsing = ParsingRelation(root, action, 'a')
 
-        r = parsing(Element.NEXT, **{process.TEXT: 'a', 'test': 'conditions_1'})
+        r = parsing(Process.NEXT, **{process.TEXT: 'a', 'test': 'conditions_1'})
 
         self.assertEqual(r[0].get(process.PROCEED), 1)
         self.assertEqual(r[1], action)
 
-        self.assertEqual(parsing(Element.NEXT), process.ERROR)
+        self.assertEqual(parsing(Process.NEXT), process.ERROR)
         self.assertTrue(parsing(process.BREAK) is None)
 
         # Using in process
@@ -1055,7 +1055,7 @@ class UtTests(unittest.TestCase):
         # Zero checker test
         parsing.condition = None
         parsing.object = True
-        self.assertEqual(parsing(Element.NEXT), True)
+        self.assertEqual(parsing(Process.NEXT), True)
 
         # Check only test
         parsing.condition = 'x'
@@ -1150,7 +1150,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(process.last_parsed, 'b')
         self.assertTrue(r is None)
-        self.assertEqual(process.query, Element.NEXT)
+        self.assertEqual(process.query, Process.NEXT)
         check_test_result(self, process, b, 1)
 
         # Alternative negative test: same tree, message 'xx'
@@ -1164,7 +1164,7 @@ class UtTests(unittest.TestCase):
         default = ParsingRelation(root, None, re.compile('.'))
         root.default = default
 
-        r = root(Element.NEXT, **{process.TEXT: 'x'})
+        r = root(Process.NEXT, **{process.TEXT: 'x'})
 
         self.assertEqual(r, default)
 
@@ -1176,13 +1176,13 @@ class UtTests(unittest.TestCase):
 
         self.assertIsNone(root.default)
 
-        r = root(Element.NEXT, **{process.TEXT: 'x'})
+        r = root(Process.NEXT, **{process.TEXT: 'x'})
 
         self.assertEqual(r, process.ERROR)
 
         default.subject = root
 
-        r = root(Element.NEXT, **{process.TEXT: 'a'})
+        r = root(Process.NEXT, **{process.TEXT: 'a'})
         self.assertEqual(r[0], process.PUSH_CONTEXT)
 
         default.subject = None
@@ -1524,7 +1524,7 @@ class UtTests(unittest.TestCase):
         r = process(process.NEW, root, **{process.TEXT: 'ac', 'test': 'test_loop_break'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.query, Element.NEXT)
+        self.assertEqual(process.query, Process.NEXT)
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, c, 2)
 
@@ -1537,7 +1537,7 @@ class UtTests(unittest.TestCase):
 
         self.assertTrue(r is None)
         self.assertEqual(process.states[b]['v'], 2)
-        self.assertEqual(process.query, Element.NEXT)
+        self.assertEqual(process.query, Process.NEXT)
         check_loop_result(self, process, l, 2)
 
         a.action = lambda **c: [common_state_acc(**c), process.CONTINUE]
@@ -1545,7 +1545,7 @@ class UtTests(unittest.TestCase):
         r = process(process.NEW, root, **{process.TEXT: 'aa', 'test': 'test_loop_continue'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.query, Element.NEXT)
+        self.assertEqual(process.query, Process.NEXT)
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, l, 2)
 
@@ -1554,7 +1554,7 @@ class UtTests(unittest.TestCase):
         r = process(process.NEW, root, **{process.TEXT: 'aa', 'test': 'test_loop_continue_custom'})
 
         self.assertTrue(r is None)
-        self.assertEqual(process.query, Element.NEXT)
+        self.assertEqual(process.query, Process.NEXT)
         self.assertNotIn(b, process.states)
         check_loop_result(self, process, l, 2)
 
@@ -1640,7 +1640,7 @@ class UtTests(unittest.TestCase):
         self.assertEqual(graph.__str__(), '{""}')
 
         graph.root = root
-        self.assertEqual(graph(Element.NEXT), root)
+        self.assertEqual(graph(Process.NEXT), root)
 
         graph.name = 'graph'
         self.assertEqual(root.name, graph.name)
@@ -1814,7 +1814,6 @@ class UtTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             b.attach(b)
 
-
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
         root = ComplexNotion('root')
@@ -1906,6 +1905,7 @@ class UtTests(unittest.TestCase):
 
         builder.next_rel().complex('initiate').next_rel().notion('remove breaks').back().back().next_rel().act('ignite', 1)
 
+        print builder.complex('complex').next_rel().notion('simple')
         print Process()(builder.graph)
 
         print builder.graph.notions(re.compile('i*'))
@@ -1931,6 +1931,10 @@ class UtTests(unittest.TestCase):
         d.reply_at(n, process.STOP)
 
         print p(p.NEW, root)
+
+        p = StatefulProcess()
+        a = ActionNotion('Changed my mind', {StatefulProcess.SET_STATE: {'mind': 'New York'}})
+        print p(a, {SharedProcess.ADD_CONTEXT: {'key': 'skeleton'}})
 
 
 def test():

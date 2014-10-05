@@ -14,7 +14,7 @@ from collections import defaultdict
 
 class ProcessDebugger(Handler):
     """
-    Process analyzer/debugger, use to see the process logs or to emulate the reply from the certain element.
+    Process analyzer/debugger, use to see the process logs or to emulate the reply from a certain element.
     """
     AT = 'at'
     REPLY = 'reply'
@@ -63,7 +63,7 @@ class ProcessDebugger(Handler):
 
     def detach(self):
         """
-        Detaches the debugger from the attached process.
+        Detaches the debugger from the process.
         """
         if self._process:
             self._process.off_event(self)
@@ -79,9 +79,9 @@ class ProcessDebugger(Handler):
         """
         Emulates the reply.
 
-        :param abstract: the element to emulate the reply.
+        :param abstract: element to emulate the reply.
         :type abstract: Abstract.
-        :param reply: the reply to return on the process query.
+        :param reply: reply to return on the process' query.
         """
         self._points[abstract] = {ProcessDebugger.REPLY: reply}
 

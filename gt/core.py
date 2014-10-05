@@ -690,11 +690,6 @@ class Element(Handler):
     Element is a part of the complex system (e.g. graph). It has an owner and could be passed in forward and backward
     directions by some process.
     """
-    #: Next element command.
-    NEXT = 'next'
-    #: Previous element command.
-    PREVIOUS = 'previous'
-
     #: Default prefix for property change notifications.
     SET_PREFIX = 'set'
     #: Notifications separator
@@ -708,11 +703,6 @@ class Element(Handler):
     OLD_VALUE = 'old-value'
     #: New value context parameter for notifications.
     NEW_VALUE = 'new-value'
-
-    #: Set of forward queries to identify the direction.
-    FORWARD = set([NEXT])
-    #: Set of backward queries to identify the direction.
-    BACKWARD = set([PREVIOUS])
 
     def __init__(self, owner=None):
         """
@@ -736,7 +726,7 @@ class Element(Handler):
         :returns:           forward or not.
         :rtype:             bool.
         """
-        return message and message[0] in self.FORWARD
+        return message and message[0] in Process.FORWARD
 
     def can_go_forward(self, *message, **context):
         """
@@ -767,7 +757,7 @@ class Element(Handler):
         :returns:           backward or not.
         :rtype:             bool.
         """
-        return message and message[0] in self.BACKWARD
+        return message and message[0] in Process.BACKWARD
 
     def can_go_backward(self, *message, **context):
         """
@@ -1167,6 +1157,11 @@ class Process(Handler):
     #: Query command (needs dict), sets :attr:`Process.query` to the specified value.
     QUERY = 'query'
 
+    #: Next element command.
+    NEXT = 'next'
+    #: Previous element command.
+    PREVIOUS = 'previous'
+
     #: Non-empty current element tag; queue item field with the current element.
     CURRENT = 'current'
     #: Non-empty message tag; queue item field with the current message.
@@ -1174,12 +1169,17 @@ class Process(Handler):
     #: Empty message tag, shows that the current message is empty.
     EMPTY_MESSAGE = 'empty_' + MESSAGE
 
+    #: Set of forward queries to identify the direction.
+    FORWARD = set([NEXT])
+    #: Set of backward queries to identify the direction.
+    BACKWARD = set([PREVIOUS])
+
     STOP_CRITERIA = (OK, STOP, False)
     GO_CRITERIA = (None, True)
 
     def __init__(self):
         """
-        Creates the new Process, sets the current query to :attr:`Element.NEXT`, initializes queue, events, and state.
+        Creates the new Process, sets the current query to :attr:`Process.NEXT`, initializes queue, events, and state.
         """
         super(Process, self).__init__()
 
@@ -1188,8 +1188,8 @@ class Process(Handler):
         #: Process context
         self.context = {}
 
-        #: Current query, an initial value is :attr:`Element.NEXT`.
-        self.query = Element.NEXT
+        #: Current query, an initial value is :attr:`Process.NEXT`.
+        self.query = self.NEXT
 
         #: Current message (read-only).
         self.message = None
@@ -1441,8 +1441,8 @@ class SharedProcess(Process):
     """
     Shared process supports context modification commands to share data between elements using context parameters .::
 
-        p = Process()
-        p({SharedProcess.ADD_CONTEXT: {'key: 'skeleton'}})
+        p = SharedProcess()
+        p({SharedProcess.ADD_CONTEXT: {'key': 'skeleton'}})
     """
     #: Add context command (requires dict), adds the specified parameter and value to the context, skips existing ones.
     ADD_CONTEXT = 'add_context'
@@ -1725,14 +1725,14 @@ class ParsingProcess(StatefulProcess):
 
     Supports :attr:`ParsingProcess.ERROR` command to indicate the problem and possible stop of lookahead.
     Supports looping commands :attr:`ParsingProcess.BREAK` and :attr:`ParsingProcess.CONTINUE`; to change the direction
-    back to forward uses :attr:`Element.NEXT`.
+    back to forward uses :attr:`Process.NEXT`.
     """
     #: Proceed command (requires a dict with numeric positive value), goes with the length of the parsed text piece.
     PROCEED = 'proceed'
     #: Error command, stops the forward processing and changes the :attr:`Process.query` to this value.
     ERROR = 'error'
     #: Break command, stops the forward processing and changes the :attr:`Process.query` to this value.
-    BREAK = 'break'  # TODO: move to Loop?
+    BREAK = 'break'
     #: Continue command, stops the forward processing and changes the :attr:`Process.query` to this value.
     CONTINUE = 'continue'
 
@@ -1749,7 +1749,7 @@ class ParsingProcess(StatefulProcess):
 
         :return: True if the process has a forward direction and there is no more text to parse.
         """
-        return self.query == Element.NEXT and not self.text
+        return self.query == self.NEXT and not self.text
 
     def handle(self, message, context):
         """
@@ -1785,12 +1785,12 @@ class ParsingProcess(StatefulProcess):
     def do_turn(self):
         """
         Turn event: sets :attr:`Process.query` to the value of :attr:`ParsingProcess.BREAK`,
-        :attr:`ParsingProcess.CONTINUE`, :attr:`ParsingProcess.ERROR`, or :attr:`Element.NEXT`. Clears the current
+        :attr:`ParsingProcess.CONTINUE`, :attr:`ParsingProcess.ERROR`, or :attr:`Process.NEXT`. Clears the current
         message.
         """
         new_query = self.message.pop(0)
 
-        if new_query in Element.BACKWARD:
+        if new_query in self.BACKWARD:
             del self.message[:]
 
         self.query = new_query
@@ -1802,17 +1802,17 @@ class ParsingProcess(StatefulProcess):
         """
         super(ParsingProcess, self).setup_events()
 
-        self.on((Element.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, Condition.STRING)
+        self.on((self.NEXT, self.ERROR, self.BREAK, self.CONTINUE), self.do_turn, Condition.STRING)
         self.on(self.can_proceed, self.do_proceed, Condition.DICT)
 
     def on_new(self, message, context):
         """
-        New event: sets the direction to :attr:`Element.NEXT`, :attr:`ParsingProcess.PARSED_LENGTH` to 0
+        New event: sets the direction to :attr:`Process.NEXT`, :attr:`ParsingProcess.PARSED_LENGTH` to 0
         and :attr:`ParsingProcess.LAST_PARSED` to the empty string.
         """
         super(ParsingProcess, self).on_new(message, context)
 
-        self.query = Element.NEXT
+        self.query = self.NEXT
         self.context_set(self.PARSED_LENGTH, 0)
         self.context_set(self.LAST_PARSED, '')
 
@@ -1839,7 +1839,7 @@ class ParsingProcess(StatefulProcess):
 
 
 # Adding new backward commands
-Element.BACKWARD = Element.BACKWARD | set([ParsingProcess.ERROR, ParsingProcess.BREAK, ParsingProcess.CONTINUE])
+Process.BACKWARD = Process.BACKWARD | set([ParsingProcess.ERROR, ParsingProcess.BREAK, ParsingProcess.CONTINUE])
 
 
 class ParsingRelation(NextRelation):
@@ -2014,7 +2014,7 @@ class SelectiveNotion(ComplexNotion):
             return tupled(StackingProcess.POP_CONTEXT,  # Roll back to the initial context
                           {StatefulProcess.SET_STATE: {self.CASES: cases}},  # Update cases
                           StackingProcess.PUSH_CONTEXT,  # Save updated context
-                          self.NEXT,  # Go forward again
+                          Process.NEXT,  # Go forward again
                           case,  # Try another case
                           self)  # Come back
         else:
@@ -2250,7 +2250,7 @@ class LoopRelation(NextRelation):
         """
         Error event for the general loops: if the loop condition is satisfied just clears the state using
         :attr:`StatefulProcess.CLEAR_STATE` command, restores the context to the last good state using
-        :attr:`StackingProcess.POP_CONTEXT` command and clears the error using :attr:`Element.NEXT`.
+        :attr:`StackingProcess.POP_CONTEXT` command and clears the error using :attr:`Process.NEXT`.
         If the number of repetitions is less than needed - discards the saved context using
         :attr:`StackingProcess.FORGET_CONTEXT` command, clears the state and keeps the error.
         """
@@ -2262,7 +2262,7 @@ class LoopRelation(NextRelation):
         if self.is_flexible():
             # Roll back to the previous good result
             if lower < i <= upper:
-                reply += [self.NEXT, StackingProcess.POP_CONTEXT]
+                reply += [Process.NEXT, StackingProcess.POP_CONTEXT]
             else:
                 reply += [StackingProcess.FORGET_CONTEXT]
 
@@ -2306,11 +2306,11 @@ class LoopRelation(NextRelation):
 
     def do_break(self):
         """
-        Break event: changes the process direction to forward using :attr:`Element.NEXT` command,
+        Break event: changes the process direction to forward using :attr:`Process.NEXT` command,
         clears the loop state using :attr:`StatefulProcess.CLEAR_STATE` and the context state
         using :attr:`StackingProcess.FORGET_CONTEXT` if the loop :meth:`LoopRelation.is_flexible`.
         """
-        reply = [self.NEXT]
+        reply = [Process.NEXT]
 
         if self.is_flexible():
             reply += [StackingProcess.FORGET_CONTEXT]
@@ -2326,14 +2326,14 @@ class LoopRelation(NextRelation):
 
     def do_continue(self, *message, **context):
         """
-        Continue event: changes the process direction to forward using :attr:`Element.NEXT`,
+        Continue event: changes the process direction to forward using :attr:`Process.NEXT`,
         starts the new iteration using :meth:`LoopRelation.do_loop_general` or :meth:`LoopRelation.do_loop_custom`
         depending on the loop type.
         """
         if self.is_general():
-            return [self.NEXT] + self.do_loop_general(**context)
+            return [Process.NEXT] + self.do_loop_general(**context)
         else:
-            return [self.NEXT] + self.do_loop_custom(*message, **context)
+            return [Process.NEXT] + self.do_loop_custom(*message, **context)
 
 
 class Graph(Element):
