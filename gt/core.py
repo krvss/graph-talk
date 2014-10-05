@@ -694,9 +694,9 @@ class Element(Handler):
     Element is a part of the complex system (e.g. graph). It has an owner and could be passed in forward and backward
     directions by some process.
     """
-    #: Next element query.
+    #: Next element command.
     NEXT = 'next'
-    #: Previous element query.
+    #: Previous element command.
     PREVIOUS = 'previous'
 
     #: Default prefix for property change notifications.
@@ -1150,29 +1150,31 @@ class ActionRelation(Relation):
 
 class Process(Handler):
     """
-    Process goes from an element to element, asking them what to do next with a :attr:`Process.query`.
-    The answer from the :attr:`Process.current` element will be processing using :class:`Handler` methods. If the answer
-    is a list, its items will be put to the queue and processed one by one.
+    Process goes from an :class:`Element` to element, asking what to do next with a :attr:`Process.query`.
+    The answer from the :attr:`Process.current` element will be processing using :class:`Handler` methods.
+    If the answer is a list, its items will be put to the queue and processed one by one. If the answer is another
+    element, it will be the next current element to ask for directions.
 
-    Processes are usually started with the start element and some context to be used in the dialog with the elements::
+    The processes is usually started with the start element and some context to be used in the dialog with
+    the elements::
 
         p = Process()
         print p(start_element, destination="Orion")
 
     """
-    #: New command, clears the process internal references when starting the process.
+    #: New command, clears the process internals when it should be started from the scratch.
     NEW = 'new'
     #: Ok command, stops the process with "ok" result.
     OK = 'ok'
     #: Stop command, stops the process with "stop" result.
     STOP = 'stop'
-
-    #: Non-empty current element tag.
-    CURRENT = 'current'
-    #: Non-empty message tag.
-    MESSAGE = 'message'
-    #: Query command (needs dict), sets the process query to the specified value.
+    #: Query command (needs dict), sets :attr:`Process.query` to the specified value.
     QUERY = 'query'
+
+    #: Non-empty current element tag; queue item field with the current element.
+    CURRENT = 'current'
+    #: Non-empty message tag; queue item field with the current message.
+    MESSAGE = 'message'
     #: Empty message tag, shows that the current message is empty.
     EMPTY_MESSAGE = 'empty_' + MESSAGE
 
@@ -1204,7 +1206,13 @@ class Process(Handler):
 
     def new_queue_item(self, values):
         """
-        Generates the new queue item and adds it to the queue updated with values.
+        Generates the new queue item (a dictionary) and adds it to the queue updated with values dictionary.
+
+        :param values:  dictionary to update the queue item, should at least contain :attr:`Process.CURRENT` and
+         :attr:`Process.MESSAGE`.
+        :type values:   dict.
+        :returns:       new queue item.
+        :rtype:         dict.
         """
         item = NotifyDict(self.update_fields,
                           ((self.CURRENT, values.get(self.CURRENT)),
@@ -1216,7 +1224,11 @@ class Process(Handler):
 
     def to_queue(self, values):
         """
-        Puts the new item in the queue, updating the empty one, if presents
+        Puts the new item to the queue or updates the empty one, if presents on the queue's top.
+        Calls :meth:`Process.new_queue_item` to create the new item.
+
+        :param values:  dictionary to update the queue item
+        :type values:   dict.
         """
         if not self.message:
             self._queue[-1].update(values)  # No need to keep the empty one in the queue
@@ -1228,7 +1240,12 @@ class Process(Handler):
 
     def set_message(self, message, insert=False):
         """
-        Sets the current message or inserts in the front of current message if insert = True
+        Sets the current message or inserts in the front of current message if insert is True.
+
+        :param message:     message items.
+        :type message:      list.
+        :param insert:      insert or replace the old message (False by default).
+        :type insert:       bool.
         """
         message = NotifyList(self.update_message, [message] if not is_list(message) else message)
 
@@ -1239,13 +1256,14 @@ class Process(Handler):
 
     def update_message(self):
         """
-        Updates the message property.
+        Updates the :attr:`Process.message` property. This is a callback to be called by queue if its content changes.
         """
         self.message = self._queue[-1].get(self.MESSAGE)
 
     def update_fields(self):
         """
-        Updates message and current properties.
+        Updates :attr:`Process.message` and :attr:`Process.current` properties. This is a callback to be called by
+        queue if its content changes.
         """
         top = self._queue[-1]
         self.message = top.get(self.MESSAGE)
@@ -1253,7 +1271,8 @@ class Process(Handler):
 
     def skip(self):
         """
-        Skip: removes the first item of the current message, useful when it is unknown and cannot be processed.
+        Removes the first item of the current :attr:`Process.message`, useful when it is unknown and cannot be
+        processed.
         """
         while not self.message and self._queue:  # Looking for the item to skip
             self.do_queue_pop()
@@ -1265,14 +1284,16 @@ class Process(Handler):
     # Events #
     def can_push_queue(self):
         """
-        Queue push condition: if the head of the message is an Abstract - we make the new queue item and get ready
-         to query it.
+        Queue push condition: if the first item of the :attr:`Process.message` is an Abstract or function,
+        the process has to ask it about directions and handle the reply. To do this, a new queue item is created.
         """
         return Access.get_access(self.message[0], True).mode in Access.CACHEABLE
 
     def do_queue_push(self):
         """
-        Queue push event: adds to the queue current element and current :attr:`Process.query` to query it.
+        Queue push event: adds the new queue item with :attr:`Process.CURRENT` equals to the first
+        :attr:`Process.message` item and :attr:`Process.MESSAGE` equals to :attr:`Process.QUERY` so
+        the new current element will be asked with the current :attr:`Process.query`.
         """
         self.to_queue({self.CURRENT: self.message.pop(0),
                        self.MESSAGE: [self.QUERY]})  # Adding query command to start from asking
@@ -1285,15 +1306,15 @@ class Process(Handler):
 
     def do_queue_pop(self):
         """
-        Queue pop event: pops the first element of the queue.
+        Queue pop event: removes the first element from the queue.
         """
         self._queue.pop()
 
     def do_query(self):
         """
-        Query event: asks the current element the :attr:`Process.query`.
+        Query event: sends the message the with the :attr:`Process.query` value to :attr:`Process.current` element .
 
-        :return: the answer of the element or True.
+        :return:    the answer of the element or True.
         """
         self.message.pop(0)
 
@@ -1314,16 +1335,16 @@ class Process(Handler):
 
     def do_finish(self):
         """
-        Finish event.
+        Finish event: returns the first message item with the finish value.
 
-        :returns: :attr:`Process.STOP` or :attr:`Process.OK`.
+        :returns:   :attr:`Process.STOP` or :attr:`Process.OK` or a boolean value.
         """
         return self.message.pop(0)
 
     def update_tags(self):
         """
-        Checks the current values of the message, queue, current element and returns the new tags.
-        Override to add new tags.
+        Checks the current values of the :attr:`Process.message`, queue, :attr:`Process.current` and returns the
+        set of tags for the current state. Override to add new tags, see :class:`Handler` for the details.
         """
         tags = set()
 
@@ -1353,14 +1374,14 @@ class Process(Handler):
 
     def setup_events(self):
         """
-        Sets up the events and states. Tags are:
-            - :attr:`Condition.STRING`: current message starts from the string.
-            - :attr:`Condition.BOOLEAN`: current message starts from the boolean.
-            - :attr:`Condition.DICT`: current message starts from the dictionary.
-            - :attr:`Access.OTHER`: current message starts from some other type.
-            - :attr:`Process.CURRENT`: the current element is not empty.
-            - :attr:`Process.EMPTY_MESSAGE`: the current message is empty.
-            - :attr:`Process.MESSAGE`: the current message is not empty (has items).
+        Sets up the process events and state tags. Tags are:
+            - :attr:`Condition.STRING`: first message item is a string.
+            - :attr:`Condition.BOOLEAN`: first message item is a boolean.
+            - :attr:`Condition.DICT`: first message item is a dictionary.
+            - :attr:`Access.OTHER`: first message item has some other type.
+            - :attr:`Process.CURRENT`: current element is not empty.
+            - :attr:`Process.EMPTY_MESSAGE`: current message is empty.
+            - :attr:`Process.MESSAGE`: current message is not empty (has items).
         """
         self.on((self.STOP, self.OK), self.do_finish, Condition.STRING)
         self.on((True, False), self.do_finish, Condition.BOOLEAN)
@@ -1374,7 +1395,8 @@ class Process(Handler):
 
     def on_new(self, message, context):
         """
-        New event: called when starting the handle loop and :attr:`Process.NEW` command is specified.
+        New 'special' event: called when starting the handle loop and :attr:`Process.NEW` command is specified.
+        This event has no conditions and called by :meth:`Process.handle` directly.
         """
         message.pop(0)
 
@@ -1385,15 +1407,16 @@ class Process(Handler):
 
     def on_continue(self, message, context):
         """
-        Continue event: called when resuming the stopped process.
+        Continue 'special' event: called when resuming the stopped process.
+        This event has no conditions and called by :meth:`Process.handle` directly.
         """
         self.to_queue({self.MESSAGE: message})
         self.context.update(context)
 
     def handle(self, message, context):
         """
-        In contrast with :meth:`Handler.handle`, Process does not stop when the message is handled, but continues
-        to call handle for the result of the previous handle.
+        In contrast with :meth:`Handler.handle`, process' handle does not stop when the message is handled,
+        but continues handling with the result of the previous call.
         """
         message = list(message)
         if has_first(message, self.NEW):  # Very special case
@@ -1420,14 +1443,14 @@ class Process(Handler):
 
 class SharedProcess(Process):
     """
-    Shared process supports context modification commands to share data between elements.::
+    Shared process supports context modification commands to share data between elements using context parameters .::
 
         p = Process()
-        p({'add_context': {SharedProcess.ADD_CONTEXT: 'skeleton'}})
+        p({SharedProcess.ADD_CONTEXT: {'key: 'skeleton'}})
     """
     #: Add context command (requires dict), adds the specified parameter and value to the context, skips existing ones.
     ADD_CONTEXT = 'add_context'
-    #: Update context command (requires dict), updates the specified key by value in the context.
+    #: Update context command (requires dict), updates the specified key(s) in the context.
     UPDATE_CONTEXT = 'update_context'
     #: Delete context command (requires key or key list), deletes the specified keys(s) from the context.
     DELETE_CONTEXT = 'delete_context'
@@ -1444,7 +1467,7 @@ class SharedProcess(Process):
     # Events #
     def can_add_context(self, *message):
         """
-        Add context condition: do we have add context command and data in dictionary.
+        Add context condition: checks is there :attr:`SharedProcess.ADD_CONTEXT` command with data in the dictionary.
         """
         return isinstance(message[0].get(self.ADD_CONTEXT), dict)
 
@@ -1460,13 +1483,14 @@ class SharedProcess(Process):
 
     def can_update_context(self, *message):
         """
-        Update context condition: do we have the update context command and data in dictionary.
+        Update context condition: checks is there :attr:`SharedProcess.UPDATE_CONTEXT` command with data in the
+        dictionary.
         """
         return isinstance(message[0].get(self.UPDATE_CONTEXT), dict)
 
     def do_update_context(self):
         """
-        Update context event: adds or replaces context parameters
+        Update context event: adds or replaces context parameters.
         """
         update = self.message[0].pop(self.UPDATE_CONTEXT)
 
@@ -1475,7 +1499,7 @@ class SharedProcess(Process):
 
     def can_delete_context(self, *message):
         """
-        Delete context condition: do we have the delete context command and data in dictionary.
+        Delete context condition: checks is there :attr:`SharedProcess.DELETE_CONTEXT` command.
         """
         return self.DELETE_CONTEXT in message[0]
 
@@ -1495,7 +1519,7 @@ class SharedProcess(Process):
 
     def setup_events(self):
         """
-        Sets up the events and states. All commands require :attr:`Condition.DICT`.
+        Sets up the events and state tags. All commands require :attr:`Condition.DICT`.
         """
         super(SharedProcess, self).setup_events()
 
@@ -1506,19 +1530,19 @@ class SharedProcess(Process):
 
 class StackingProcess(SharedProcess):
     """
-    Process that can save and restore the context. Useful for cases when process needs to try various paths in the graph
-    and then rollback to the state it had at the crossroads.
+    Process that can save and restore the context. Useful for cases when the process needs to try various paths
+    in a graph and then rollback to the state it had at the crossroads.
 
-    To perform the rollback the process logs all the change actions done via :attr:`SharedProcess.ADD_CONTEXT` and
-    and other commands and than plays them back in undo command style. If no undo is needed, the saved state can be
-    discarded.
+    To perform the rollback the process records all change actions done via :class:`SharedProcess` commands
+    and plays them back in "undo" command style. If no rollback is needed, the saved context can be discarded.
     """
-    #: Push the current context state to the undo stack.
+    #: Push the current context to the undo stack.
     PUSH_CONTEXT = 'push_context'
-    #: Restore the state from the top of the undo stack.
+    #: Restore the context from the top of the undo stack.
     POP_CONTEXT = 'pop_context'
-    #: Discard the state at the top of the stack, keeping the changed context.
+    #: Discard the saved context at the top of the undo stack, keeping the changed context as is.
     FORGET_CONTEXT = 'forget_context'
+
     #: Non-empty undo stack tag.
     TRACKING = 'tracking'
 
@@ -1553,14 +1577,14 @@ class StackingProcess(SharedProcess):
 
     def do_pop_context(self):
         """
-        Pop context event: undo changes from the top of the stack and remove the saved state.
+        Pop context event: un-does changes from the top of the undo stack and removes the saved context.
         """
         self.message.pop(0)
         self._context_stack.pop().undo()
 
     def do_forget_context(self):
         """
-        Forget context event: discard the top state.
+        Forget context event: discard the top context from the undo stack.
         """
         self.message.pop(0)
         self._context_stack.pop()
@@ -1575,8 +1599,8 @@ class StackingProcess(SharedProcess):
 
     def setup_events(self):
         """
-        Sets up the events and states. All commands require :attr:`Condition.STRING`, pop and forget commands
-        require non-empty undo stack (:attr:`StackingProcess.TRACKING`).
+        Sets up the events and state tags. All commands require :attr:`Condition.STRING`, pop and forget commands
+        also require non-empty undo stack (:attr:`StackingProcess.TRACKING`).
         """
         super(StackingProcess, self).setup_events()
 
@@ -1584,27 +1608,33 @@ class StackingProcess(SharedProcess):
         self.on(self.POP_CONTEXT, self.do_pop_context, self.TRACKING, Condition.STRING)
         self.on(self.FORGET_CONTEXT, self.do_forget_context, self.TRACKING, Condition.STRING)
 
-    # Clearing stack if new
     def on_new(self, message, context):
+        """
+        Clears the undo stack if a new process started.
+        """
         super(StackingProcess, self).on_new(message, context)
         del self._context_stack[:]
 
 
 class StatefulProcess(StackingProcess):
     """
-    Allows saving of private element data to keep the context-dependent state. Only works for the
-    :attr:`Process.current`.::
+    Allows saving of private element data to the context. Only works for the
+    :attr:`Process.current`::
 
         ActionNotion('Changed my mind', {StatefulProcess.SET_STATE: {'mind': 'New York'}})
 
+    .. note:: Element state is a part of rollback process, but only at the top level,
+     for example if the state is a dict its internals will not be restored.
     """
-    #: The name of the context parameter.
+    #: The name of the context parameter to access the state.
     STATE = 'state'
-    #: Set the state command (requires dict value), applies for the current process element.
+
+    #: Set the state command (requires dict), applicable for the current process element.
     SET_STATE = 'set_state'
-    #: Clear the state command, removes saved state from the context.
+    #: Clear the state command, remove saved state from the context.
     CLEAR_STATE = 'clear_state'
-    #: Has previously saved states tag.
+
+    #: 'Has previously saved states' tag.
     HAS_STATES = 'has_states'
 
     def __init__(self):
@@ -1632,8 +1662,8 @@ class StatefulProcess(StackingProcess):
 
     def do_query(self):
         """
-        Query event: for this class adds the current element's state as the :attr:`StatefulProcess.STATE`
-        context parameter. At the end of this method removes the state from the context to keep it private.
+        Query event: adds the current element's state as the :attr:`StatefulProcess.STATE`
+        context parameter. At the end of this method the state is removed from the context to keep it private.
         """
         self._add_current_state()
 
@@ -1653,14 +1683,14 @@ class StatefulProcess(StackingProcess):
 
     def do_set_state(self):
         """
-        Set state event: saves the value of the command to internal dictionary of states.
+        Set state event: saves the value of the command to the internal dictionary of states.
         """
         value = self.message[0].pop(self.SET_STATE)
         self._set_state(self.current, value)
 
     def do_clear_state(self):
         """
-        Clear state condition: checks for :attr:`StatefulProcess.CLEAR_STATE`
+        Clear state condition: checks for :attr:`StatefulProcess.CLEAR_STATE`.
         """
         self.message.pop(0)
         self._clear_state(self.current)
@@ -1675,8 +1705,8 @@ class StatefulProcess(StackingProcess):
 
     def setup_events(self):
         """
-        Sets up the events and states. Set command requires :attr:`Condition.DICT` and :attr:`Process.CURRENT`,
-        clear command requires :attr:`Process.CURRENT`, :attr:`Condition.DICT` and previously saved states
+        Sets up the events and state tags. Set command requires :attr:`Condition.DICT` and :attr:`Process.CURRENT`,
+        clear command requires :attr:`Process.CURRENT`, :attr:`Condition.STRING` and previously saved states
         (:attr:`StatefulProcess.HAS_STATES` tag).
         """
         super(StatefulProcess, self).setup_events()
@@ -1686,7 +1716,7 @@ class StatefulProcess(StackingProcess):
 
     def on_new(self, message, context):
         """
-        New event: clears the states.
+        New event: clears the states if a new process started.
         """
         super(StatefulProcess, self).on_new(message, context)
         self.states.clear()
@@ -1699,15 +1729,15 @@ class ParsingProcess(StatefulProcess):
 
     Supports :attr:`ParsingProcess.ERROR` command to indicate the problem and possible stop of lookahead.
     Supports looping commands :attr:`ParsingProcess.BREAK` and :attr:`ParsingProcess.CONTINUE`; to change the direction
-    back to forward uses :attr:`Element.NEXT` value as a command.
+    back to forward uses :attr:`Element.NEXT`.
     """
+    #: Proceed command (requires a dict with numeric positive value), goes with the length of the parsed text piece.
+    PROCEED = 'proceed'
     #: Error command, stops the forward processing and changes the :attr:`Process.query` to this value.
     ERROR = 'error'
-    #: Proceed command (requires a dict with numeric positive value), shows the length of the parsed text piece.
-    PROCEED = 'proceed'
     #: Break command, stops the forward processing and changes the :attr:`Process.query` to this value.
-    BREAK = 'break'
-    #: Break command, stops the forward processing and changes the :attr:`Process.query` to this value.
+    BREAK = 'break'  # TODO: move to Loop?
+    #: Continue command, stops the forward processing and changes the :attr:`Process.query` to this value.
     CONTINUE = 'continue'
 
     #: Context parameter with the total length of the parsed text.
@@ -1759,7 +1789,7 @@ class ParsingProcess(StatefulProcess):
     def do_turn(self):
         """
         Turn event: sets :attr:`Process.query` to the value of :attr:`ParsingProcess.BREAK`,
-        :attr:`ParsingProcess.CONTINUE`, :attr:`ParsingProcess.ERROR` or :attr:`Element.NEXT`. Clears the current
+        :attr:`ParsingProcess.CONTINUE`, :attr:`ParsingProcess.ERROR`, or :attr:`Element.NEXT`. Clears the current
         message.
         """
         new_query = self.message.pop(0)
@@ -1771,7 +1801,7 @@ class ParsingProcess(StatefulProcess):
 
     def setup_events(self):
         """
-        Sets up the events and states. Direction-changing commands require :attr:`Condition.STRING` tag,
+        Sets up the events and state tags. Direction-changing commands require :attr:`Condition.STRING` tag,
         :attr:`ParsingProcess.PROCEED` command requires :attr:`Condition.DICT` tag.
         """
         super(ParsingProcess, self).setup_events()
@@ -1781,7 +1811,7 @@ class ParsingProcess(StatefulProcess):
 
     def on_new(self, message, context):
         """
-        New event: sets the direction to :attr:`Element.NEXT`, :attr:`ParsingProcess.PARSED_LENGTH`  to 0
+        New event: sets the direction to :attr:`Element.NEXT`, :attr:`ParsingProcess.PARSED_LENGTH` to 0
         and :attr:`ParsingProcess.LAST_PARSED` to the empty string.
         """
         super(ParsingProcess, self).on_new(message, context)
