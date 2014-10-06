@@ -32,10 +32,10 @@ class Abstract(object):
 class Access(Abstract):
     """
     Access provides :class:`Abstract`-style wrapper to access non-Abstract objects. Each instance has
-    :attr:`Access.mode` to describe the access mode (execute or just return object as is) and
-    :attr:`Access.spec` to keep the additional information like function arguments specification etc.
+    :attr:`Access.mode` to describe the access mode (execute or just return the object as is) and
+    :attr:`Access.spec` to keep the additional information like function arguments specification, etc.
 
-    .. note:: When comparing Access instance with other objects, from Access side the wrapped value will be used.
+    .. note:: When comparing Access instance with other objects, from Access side, the wrapped value will be used.
         It means Access(1) will be equal with 1.
     """
     #: Callable object mode.
@@ -258,10 +258,10 @@ class Condition(Access):
 
     def check(self, message, context):
         """
-        Checks the possibility to handle the message in the specified context.
+        Checks the possibility of handling the message in the specified context.
         Returns the tuple of (rank, check_result) where rank shows the relevance of the condition.
         If less than 0 it means condition is not satisfied and completely irrelevant. Zero rank is mostly used for
-        logical conditions (True/False) which cannot be measured numerically.
+        logical conditions (True/False) that cannot be measured numerically.
         Check result keeps the result of functional (user-defined, regular expression) check.
 
         .. note:: the default implementation returns :attr:`Condition.NO_CHECK` and should be overwritten in
@@ -431,7 +431,7 @@ class Event(Access):
     @property
     def pre(self):
         """
-        Sets/gets the pre-event object. Use pre_event attribute to assign an Event instance directly.
+        Sets/gets the pre-event object. Use pre_event attribute to assign an :class:`Event` instance directly.
         """
         return self.pre_event.value if self.pre_event else None
 
@@ -442,7 +442,7 @@ class Event(Access):
     @property
     def post(self):
         """
-        Sets/gets the post-event object. Use post_event attribute to assign an Event instance directly.
+        Sets/gets the post-event object. Use post_event attribute to assign an :class:`Event` instance directly.
         """
         return self.post_event.value if self.post_event else None
 
@@ -453,19 +453,19 @@ class Event(Access):
 
 class Handler(Abstract):
     """
-    Handler is used for routing of messages to the handling functions called events (:class:`Event`) basing on the
+    Handler is used for routing of messages to handling functions called events (:class:`Event`) basing on the
     specified condition (:class:`Condition`). Each condition has a corresponding event. When handling a message,
-    Handler class searches for the condition that has a highest rank and calls :attr:`Handler.unknown_event`
+    Handler class searches for the condition that has the highest rank and calls :attr:`Handler.unknown_event`
     if nothing found.
 
     The condition could be limited to be active only if its set of tags (:attr:`Condition.tags`) is a subset
-    of Handler set of tags. List of active conditions and events is in :attr:`Handler.active_events` property.
+    of the Handler set of tags. List of active conditions and events is in :attr:`Handler.active_events` property.
     """
-    #: Answer context parameter, if equals to :attr:`Handler.RANK` the condition rank will be included in the answer.
+    #: Answer context parameter, if equal to :attr:`Handler.RANK` the condition rank will be included in the answer.
     ANSWER = 'answer'
-    #: Sender context parameter. When the event is called contains the reference to the top-level handler.
+    #: Sender context parameter. When the event is called, contains the reference to the top-level handler.
     SENDER = 'sender'
-    #: Condition context parameter. When the event is called contains the check result.
+    #: Condition context parameter. When the event is called, contains the check result.
     CONDITION = 'condition'
     #: Event context parameter. When the pre/post/event is called, contains the reference to the event function.
     EVENT = 'event'
@@ -687,7 +687,7 @@ class Handler(Abstract):
 
 class Element(Handler):
     """
-    Element is a part of the complex system (e.g. graph). It has an owner and could be passed in forward and backward
+    Element is a part of a complex system (e.g. graph). It has an owner and could be passed in forward and backward
     directions by some process.
     """
     #: Default prefix for property change notifications.
@@ -719,7 +719,7 @@ class Element(Handler):
 
     def is_forward(self, message):
         """
-        Checks is the message about passing the element in a forward direction.
+        Checks the message about passing the element in a forward direction.
 
         :param message:     message to be checked
         :type message:      list.
@@ -1029,7 +1029,7 @@ class NextRelation(Relation):
         :param owner:       owner.
         :type owner:        Graph.
         :param options:     Condition options, like in :meth:`Condition.__init__`. When setting the new condition,
-          options will be re-applied.
+          options will be reapplied.
         """
         super(NextRelation, self).__init__(subj, obj, owner)
         self.options = options
@@ -1075,8 +1075,8 @@ class NextRelation(Relation):
     @property
     def condition(self):
         """
-        Sets/gets the value of the current condition. Note that it does NOT returns a
-        :class:`Condition` instance, use :attr:`NextRelation.condition_access` for direct access instead.
+        Sets/gets the value of the current condition. Note that it does NOT return a
+        :class:`Condition` instance. Use :attr:`NextRelation.condition_access` for direct access instead.
         """
         return self.condition_access.value
 
@@ -1141,20 +1141,20 @@ class Process(Handler):
     If the answer is a list, its items will be put to the queue and processed one by one. If the answer is another
     element, it will be the next current element to ask for directions.
 
-    The processes is usually started with the start element and some context to be used in the dialog with
+    The processes are usually started with the start element and some context to be used in the dialog with
     the elements::
 
         p = Process()
         print p(start_element, destination="Orion")
 
     """
-    #: New command, clears the process internals when it should be started from the scratch.
+    #: New command. Clears the process internals when the process should be started from the scratch.
     NEW = 'new'
-    #: Ok command, stops the process with "ok" result.
+    #: Ok command. Stops the process with an "ok" result.
     OK = 'ok'
-    #: Stop command, stops the process with "stop" result.
+    #: Stop command. Stops the process with a "stop" result.
     STOP = 'stop'
-    #: Query command (needs dict), sets :attr:`Process.query` to the specified value.
+    #: Query command (needs dict). Sets :attr:`Process.query` to the specified value.
     QUERY = 'query'
 
     #: Next element command.
@@ -1185,10 +1185,10 @@ class Process(Handler):
 
         self._queue = NotifyList(self.update_fields)
 
-        #: Process context
+        #: Process context.
         self.context = {}
 
-        #: Current query, an initial value is :attr:`Process.NEXT`.
+        #: Current query. An initial value is :attr:`Process.NEXT`.
         self.query = self.NEXT
 
         #: Current message (read-only).
@@ -1267,7 +1267,7 @@ class Process(Handler):
 
     def skip(self):
         """
-        Removes the first item of the current :attr:`Process.message`, useful when it is unknown and cannot be
+        Removes the first item of the current :attr:`Process.message`. Useful when it is unknown and cannot be
         processed.
         """
         while not self.message and self._queue:  # Looking for the item to skip
@@ -1296,7 +1296,7 @@ class Process(Handler):
 
     def can_pop_queue(self):
         """
-        Queue pop condition: when the current queue item is empty we can remove it.
+        Queue pop condition: when the current queue item is empty, we can remove it.
         """
         return len(self._queue) > 1
 
@@ -1392,7 +1392,7 @@ class Process(Handler):
     def on_new(self, message, context):
         """
         New 'special' event: called when starting the handle loop and :attr:`Process.NEW` command is specified.
-        This event has no conditions and called by :meth:`Process.handle` directly.
+        This event has no conditions and is called by :meth:`Process.handle` directly.
         """
         message.pop(0)
 
@@ -1404,14 +1404,14 @@ class Process(Handler):
     def on_resume(self, message, context):
         """
         Resume 'special' event: called when resuming the stopped process.
-        This event has no conditions and called by :meth:`Process.handle` directly.
+        This event has no conditions and is called by :meth:`Process.handle` directly.
         """
         self.to_queue({self.MESSAGE: message})
         self.context.update(context)
 
     def handle(self, message, context):
         """
-        In contrast with :meth:`Handler.handle`, process' handle does not stop when the message is handled,
+        In contrast with :meth:`Handler.handle`, process handle does not stop when the message is handled,
         but continues handling with the result of the previous call.
         """
         message = list(message)
@@ -1444,11 +1444,11 @@ class SharedProcess(Process):
         p = SharedProcess()
         p({SharedProcess.ADD_CONTEXT: {'key': 'skeleton'}})
     """
-    #: Add context command (requires dict), adds the specified parameter and value to the context, skips existing ones.
+    #: Add context command (requires dict). Adds the specified parameter and value to the context, skips existing ones.
     ADD_CONTEXT = 'add_context'
-    #: Update context command (requires dict), updates the specified key(s) in the context.
+    #: Update context command (requires dict). Updates the specified key(s) in the context.
     UPDATE_CONTEXT = 'update_context'
-    #: Delete context command (requires key or key list), deletes the specified keys(s) from the context.
+    #: Delete context command (requires key or key list). Deletes the specified keys(s) from the context.
     DELETE_CONTEXT = 'delete_context'
 
     def context_add(self, key, value):
@@ -1463,13 +1463,13 @@ class SharedProcess(Process):
     # Events #
     def can_add_context(self, *message):
         """
-        Add context condition: checks is there :attr:`SharedProcess.ADD_CONTEXT` command with data in the dictionary.
+        Add context condition: checks if there is a :attr:`SharedProcess.ADD_CONTEXT` command with data in the dictionary.
         """
         return isinstance(message[0].get(self.ADD_CONTEXT), dict)
 
     def do_add_context(self):
         """
-        Add context event: adds parameters to the context, skipping existing ones.
+        Add context event; adds parameters to the context, skipping existing ones.
         """
         add = self.message[0].pop(self.ADD_CONTEXT)
 
@@ -1479,7 +1479,7 @@ class SharedProcess(Process):
 
     def can_update_context(self, *message):
         """
-        Update context condition: checks is there :attr:`SharedProcess.UPDATE_CONTEXT` command with data in the
+        Update context condition: checks if there is a :attr:`SharedProcess.UPDATE_CONTEXT` command with data in the
         dictionary.
         """
         return isinstance(message[0].get(self.UPDATE_CONTEXT), dict)
@@ -1495,13 +1495,13 @@ class SharedProcess(Process):
 
     def can_delete_context(self, *message):
         """
-        Delete context condition: checks is there :attr:`SharedProcess.DELETE_CONTEXT` command.
+        Delete context condition: checks if there is a :attr:`SharedProcess.DELETE_CONTEXT` command.
         """
         return self.DELETE_CONTEXT in message[0]
 
     def do_delete_context(self):
         """
-        Delete context event: deletes the single key or all the keys from the list.
+        Delete context event; deletes the single key or all the keys from the list.
         """
         delete = self.message[0].pop(self.DELETE_CONTEXT)
 
@@ -1529,7 +1529,7 @@ class StackingProcess(SharedProcess):
     Process that can save and restore the context. Useful for cases when the process needs to try various paths
     in a graph and then rollback to the state it had at the crossroads.
 
-    To perform the rollback the process records all change actions done via :class:`SharedProcess` commands
+    To perform the rollback, the process records all change actions done via :class:`SharedProcess` commands
     and plays them back in "undo" command style. If no rollback is needed, the saved context can be discarded.
     """
     #: Push the current context to the undo stack.
@@ -1721,19 +1721,19 @@ class StatefulProcess(StackingProcess):
 class ParsingProcess(StatefulProcess):
     """
     Takes the text as an input; sends it to the graph elements as a context parameter. If an element responds with
-    :attr:`ParsingProcess.PROCEED`, cuts off the piece of the specified length from the beginning of the text.
+    :attr:`ParsingProcess.PROCEED`, cuts off a piece of specified length from the beginning of the text.
 
-    Supports :attr:`ParsingProcess.ERROR` command to indicate the problem and possible stop of lookahead.
+    Supports :attr:`ParsingProcess.ERROR` command to indicate a problem and possible stop of lookahead.
     Supports looping commands :attr:`ParsingProcess.BREAK` and :attr:`ParsingProcess.CONTINUE`; to change the direction
     back to forward uses :attr:`Process.NEXT`.
     """
-    #: Proceed command (requires a dict with numeric positive value), goes with the length of the parsed text piece.
+    #: Proceed command (requires a dict with numeric positive value); goes with the length of the parsed text piece.
     PROCEED = 'proceed'
-    #: Error command, stops the forward processing and changes the :attr:`Process.query` to this value.
+    #: Error command; stops the forward processing and changes the :attr:`Process.query` to this value.
     ERROR = 'error'
-    #: Break command, stops the forward processing and changes the :attr:`Process.query` to this value.
+    #: Break command; stops the forward processing and changes the :attr:`Process.query` to this value.
     BREAK = 'break'
-    #: Continue command, stops the forward processing and changes the :attr:`Process.query` to this value.
+    #: Continue command; stops the forward processing and changes the :attr:`Process.query` to this value.
     CONTINUE = 'continue'
 
     #: Context parameter with the total length of the parsed text.
@@ -1755,7 +1755,7 @@ class ParsingProcess(StatefulProcess):
         """
         Calls the :meth:`Process.handle`.
 
-        :returns: If the text was not fully parsed (see :meth:`ParsingProcess.is_parsed`) returns False,
+        :returns: If the text was not fully parsed (see :meth:`ParsingProcess.is_parsed`), returns False;
          otherwise returns the result of the superclass handle call.
         """
         result = super(ParsingProcess, self).handle(message, context)
@@ -1896,9 +1896,9 @@ class ParsingRelation(NextRelation):
 
 class SelectiveNotion(ComplexNotion):
     """
-    Selective notion is a :class:`ComplexNotion` that consits of only one sub-notion. It resembles *"switch"*
+    Selective notion is a :class:`ComplexNotion` that consists of only one sub-notion. It resembles *"switch"*
     statement from programming languages like Java or C++. SelectiveNotion tries all its relations and uses the
-    one with the highest rank and processed without errors. After each try the context state will be restored to make
+    one with the highest rank and processed without errors. After each try, the context state will be restored to make
     sure all relations use the same context data. Like in the original switch statement it is possible to specify the
     :attr:`SelectiveNotion.default` relation to be used if nothing worked.
     """
@@ -1958,19 +1958,19 @@ class SelectiveNotion(ComplexNotion):
     # Events #
     def can_go_forward(self, *message, **context):
         """
-        Forward condition: makes sure this is a first visit of this element (no state is stored in the context),
-        re-try event will be used otherwise.
+        Forward condition: makes sure this is a first visit of this element (no state is stored in the context).
+        Re-try event will be used otherwise.
         """
         if not context.get(StatefulProcess.STATE):  # If we've been here before we need to try something different
             return super(SelectiveNotion, self).can_go_forward(*message, **context)
 
     def do_forward(self, *message, **context):
         """
-        Forward event: if this notion has only one relation just returns it without any checks; otherwise calls
-        :meth:`SelectiveNotion.get_best_cases` to get the best relation(s) and returns first one from the list.
+        Forward event: if this notion has only one relation, it just returns it without any checks; otherwise calls
+        :meth:`SelectiveNotion.get_best_cases` to get the best relation(s) and returns the first one from the list.
 
         Other relations with the same rank will be saved to the state :attr:`SelectiveNotion.CASES`
-        parameter for re-tries. Note that elements saves the context state to the process stack using
+        parameter for retries. Note that element saves the context state to the process stack using
         :attr:`StackingProcess.PUSH_CONTEXT` command if there is more than one case to try.
         """
         reply = super(SelectiveNotion, self).do_forward(*message, **context)
@@ -1995,14 +1995,14 @@ class SelectiveNotion(ComplexNotion):
 
     def can_retry(self, *message, **context):
         """
-        Re-try condition: if the previous case did not work (:attr:`ParsingProcess.ERROR` in the message),
+        Retry condition: if the previous case did not work (:attr:`ParsingProcess.ERROR` in the message),
         let's try something else.
         """
         return context.get(StatefulProcess.STATE) and has_first(message, ParsingProcess.ERROR)
 
     def do_retry(self, **context):
         """
-        Re-try event: if there are other cases to try - let's do this, if not - clear the state and keep the error
+        Retry event: if there are other cases to try - let's do this, if not - clear the state and keep the error
         propagating to the top.
         """
         cases = context[StatefulProcess.STATE][self.CASES]
@@ -2036,7 +2036,7 @@ class SelectiveNotion(ComplexNotion):
     @property
     def default(self):
         """
-        Sets/gets the default relation. Only the relation with the subject equal to this element can be used as
+        Sets/gets the default relation. Only the relation with the subject equal to this element can be used as the
         default.
         """
         return self._default
@@ -2055,7 +2055,7 @@ class LoopRelation(NextRelation):
     Similar to "for" loops in programming languages. The number of times is specified as a condition, possible
     conditions are: numeric (n; m..n; m..; ..n), wildcards ("*", "?", "+"), True (infinite loop), and a user function.
     """
-    #: Number of iteration context parameter.
+    #: Current iteration context parameter.
     ITERATION = 'i'
     WILDCARDS = frozenset(['*', '?', '+'])
     INFINITY = float('inf')
@@ -2078,13 +2078,13 @@ class LoopRelation(NextRelation):
 
     def check_condition(self, message, context):
         """
-        Forward condition, in this class this condition works only for infinite loops.
+        Forward condition. In this class this condition works only for infinite loops.
         """
         return self.condition_access == TRUE_CONDITION  # Here we check only the simplest case
 
     def set_condition(self, value):
         """
-        Sets the new condition, in addition to :meth:`NextRelation.set_condition` updates the events using
+        Sets the new condition. In addition to :meth:`NextRelation.set_condition` updates the events using
         :meth:`Handler.update_events` to keep only events which work for the specified loop condition type.
 
         :param value:   new condition value.
@@ -2204,13 +2204,13 @@ class LoopRelation(NextRelation):
     # General loop
     def can_start_general(self, *message, **context):
         """
-        Forward condition for starting of general loops: checks for the first visit, loop event will be used otherwise.
+        Forward condition for starting of general loops: checks for the first visit; loop event will be used otherwise.
         """
         return self.is_forward(message) and not self.is_looping(context)
 
     def do_start_general(self):
         """
-        Forward event for starting of general loops, returns the first iteration using
+        Forward event for starting of general loops; returns the first iteration using
         :meth:`LoopRelation.get_next_iteration_reply`.
         """
         return self.get_next_iteration_reply()
@@ -2249,10 +2249,10 @@ class LoopRelation(NextRelation):
     def do_error_general(self, **context):
         """
         Error event for the general loops: if the loop condition is satisfied just clears the state using
-        :attr:`StatefulProcess.CLEAR_STATE` command, restores the context to the last good state using
+        :attr:`StatefulProcess.CLEAR_STATE` command restores the context to the last good state using
         :attr:`StackingProcess.POP_CONTEXT` command and clears the error using :attr:`Process.NEXT`.
         If the number of repetitions is less than needed - discards the saved context using
-        :attr:`StackingProcess.FORGET_CONTEXT` command, clears the state and keeps the error.
+        :attr:`StackingProcess.FORGET_CONTEXT` command clears the state and keeps the error.
         """
         i = context.get(StatefulProcess.STATE).get(self.ITERATION)
         lower, upper = self.get_bounds()
@@ -2278,7 +2278,7 @@ class LoopRelation(NextRelation):
     def do_loop_custom(self, *message, **context):
         """
         Loop event for custom loops. Calls the user function from :attr:`NextRelation.condition`,
-        sending the value of current iteration in the context parameter :attr:`LoopRelation.ITERATION`.
+        sending the value of the current iteration in the context parameter :attr:`LoopRelation.ITERATION`.
         The call result will be the new number of the iteration.
         If it is equal to 0, False, or None - stops the loop by clearing the state using
         :attr:`StatefulProcess.CLEAR_STATE` command.
@@ -2348,7 +2348,7 @@ class Graph(Element):
         its root notion.
 
         :param root:    if of String type, Graph will create the new :class:`ComplexNotion` element with the
-          corresponding name and owner to be used as a root. The root notion will be saved into :attr:`Graph.root`
+          corresponding name and owner to be used as a root. The root notion will be saved into the :attr:`Graph.root`
           property of the graph.
         :param owner:   owner of this graph.
         :type owner:    Graph.
@@ -2427,8 +2427,8 @@ class Graph(Element):
 
         :param criteria:    user function, regex, or string to compare with the notion name. If not specified,
          all notions will be returned.
-        :returns: notions found.
-        :rtype: tuple.
+        :returns:           notions found.
+        :rtype:             tuple.
         """
         return self.search_elements(self._notions, self.get_notion_search_rank, criteria) if criteria else \
             tuple(self._notions)
@@ -2599,8 +2599,8 @@ class GraphBuilder(object):
     def attach(self, new):
         """
         Attaches the new element to the :attr:`GraphBuilder.current` depending on its type. If the new element is a
-        :class:`Notion` and the current element is a :class:`Relation`, the new element becomes :attr:`Relation.object`
-        of the relation. If the new element is a relation, and the current
+        :class:`Notion` and the current element is a :class:`Relation`, the new element becomes a
+        :attr:`Relation.object` of the relation. If the new element is a relation, and the current
         element is a :class:`ComplexNotion`, the current element becomes a :attr:`Relation.subject` of the new relation.
         Set the current element to None to avoid this behavior.
 
@@ -2675,7 +2675,7 @@ class GraphBuilder(object):
         """
         Attaches new :class:`ActionRelation` with the specified action and object.
 
-        :param action:      the action value (user function, etc).
+        :param action:      the action value (user function, etc.).
         :param obj:         the object of the new relation.
         :type obj:          Notion.
         :returns:           self.
