@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 2
 
    concepts
+   in_action
    guide
    core
    debug
