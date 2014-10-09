@@ -392,7 +392,10 @@ class Event(Access):
         Wraps in :class:`Access` the value to be called.
         """
         super(Event, self).__init__(value)
-        self.pre_event, self.post_event = None, None
+        #: Pre-event, Event class instance.
+        self.pre_event = None
+        #: Post-event, Event class instance.
+        self.post_event = None
 
     def run(self, message, context):
         """
