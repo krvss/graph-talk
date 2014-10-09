@@ -323,3 +323,70 @@ Each time the element makes a decision about how it should reply to the process,
 Lookahead looks a bit similar to the exception handling. The only difference is that the process does not really go back – it just changes its message. It starts asking "error" to each element in its "to-pass" list, starting from the current one until some element will handle it. If there were several nested selective notions, they would pop the saved contexts from the stack one by one. If no case worked, the "error" message would go to the higher level, and the process finishes.
 
 If an element keeps and changes its state out of the context, it means its state cannot and will not be reverted. There is a way to store the state conveniently within the context – it will be described later.
+
+Context and State
+-----------------
+The context could be used for information exchange between the elements. For example, an element may put there some data, which will be used by another element. To handle this, the following messages are used: "add_context" (defined as :attr:`.SharedProcess.ADD_CONTEXT`), "update_context" (defined as :attr:`.SharedProcess.UPDATE_CONTEXT`) and "delete_context" (defined as :attr:`.SharedProcess.DELETE_CONTEXT`). For example, an ActionRelation may say to the process, "add_context": {"warning": "under_construction"}, and another ActionRelation could use it in the handler via context mapping::
+
+    def is_safe_road(warning):
+        return None if warning else self.object
+
+If there is a need to roll back during lookahead, all the changes in the context done through these commands will be reverted – just as the undo operation works.
+
+If the element needs to keep in the context some private information that should not be shared but be a part of the rollback, there is a pair of commands to do this: "set_state" (defined as :attr:`.StatefulProcess.SET_STATE`) and "clear_state" (defined as :attr:`.StatefulProcess.CLEAR_STATE`). First, one will set the specified value as a state for the current element. When this element is visited, its state will be sent to it as part of the context in the :attr:`.StatefulProcess.STATE` value. No other element will see this state. If the state is not needed anymore, just clear it.
+
+For example, the complete selective notion reply for lookahead looks like this, given that the "case" is the first relation to try, and "cases" is the list of all other relations with the same rank: ["push_context", {"set_state": {"cases": cases}}, case, self].
+
+The state will be sent as part of the context, so context mapping could be used to handle it as well. Note that if the state is a complex value like a dictionary, its content will not be reverted. Only the top-level value will be rolled back. An example of how the state works for loops is below.
+
+Looping
+-------
+Let's say that some complex notion should appear exactly N times. This is what :class:`.LoopRelation` does. It repeats its object according to the condition specified. Here are the supported conditions:
+
+#. Integer N
+#. Ranges M, N (from M to N); M, ... (at least M and more); ..., N (0 to N).
+#. Wildcards: "*" (from 0 to an infinite number of times), "?" (0 or 1 time), "+" (more than one time)
+#. User function
+#. TRUE_CONDITION (infinite loop)
+
+.. figure::  images/concepts_loop.png
+
+Loop uses both state and lookahead. In the simplest case, it says to the process, "set my state to the number of iteration, then take the object, and come back to me after all." When the process comes back to the loop again (note – it still is a forward direction), it checks the iteration number; if it is within the bounds, it repeats the cycle with an iteration of + 1.
+
+If there is a :meth:`.LoopRelation.is_flexible` (without an exact number of repetitions) condition used, like "*", it works in a bit of a different manner. We do not know how many times the Object should appear, so the loop says, "push the context, then go to the object, and come back to me." If there was no error – fine, at least one iteration worked. However, there may be more Objects, so we need to iterate again, now with a different context – the one we have now. The old context is discarded, and a new one is put to the stack. Reusing the transaction analogy, try several payments: if the first one works, update the balance, and try another one.
+
+If an error occurs and conditions were satisfied, the loop restores the last-known good context and ends, changing the direction of the process to forward again. Otherwise, it clears the state and keeps the error propagating further.
+
+Loops could handle :attr:`.ParsingProcess.CONTINUE` and :attr:`.ParsingProcess.BREAK` messages as most programming languages do. If the element says "break," the process changes its question from "next" to "break" and keeps going until it finds someone who can handle it. First, the loop consumes it and does the appropriate handling, stopping the iterations and clearing the state. It also changes the direction to forward.
+
+Building the Graphs
+-------------------
+:class:`.GraphBuilder` is the class to construct graphs. It allows chained operations, so the building process looks like this::
+
+    builder = GraphBuilder('New Graph')
+
+    builder.next_rel().complex('initiate').next_rel().notion('remove breaks').back().back().next_rel().act('ignite', 1)
+
+    print Process()(builder.graph)
+
+    > 1
+
+This is the graph: 
+
+.. figure::  images/guide_builder.png
+
+The builder has used the :attr:`.GraphBuilder.current` element to attach the result of the operation performed. The new builder will create an empty graph with the root notion under the specified name and use it as a current element. Adding the next relation will use the current notion element as a subject. Adding a new notion after the relation will attach it as an object to the current relation, and so on. Back operation will traverse the current element back depending on its type.
+
+To access the graph itself, use the :attr:`.GraphBuilder.graph` property. The graph allows searching for the notions by name and relations by object and subject.
+
+For example, to find all the notions with names that start from "i" in the graph above use ``builder.graph.notions(re.compile(‘i+’))``. You can pass user function to the search as well.
+
+For example::
+
+    print builder.graph.notions(re.compile('i*'))
+
+    > [<ComplexNotion("initiate", {"New Graph"})>, <ActionNotion("ignite", {"New Graph"})>]
+
+To find all relations with the same subject, use ``builder.graph.relations({Relation.SUBJECT: subject_value})``.
+
+GraphBuilder allows setting the current element directly via the :meth:`.GraphBuilder.set_current` method to continue building from the certain place. Check its API description for other operations.
