@@ -57,7 +57,7 @@ Copyrights and License
 details.
 
 .. _LICENSE: https://github.com/krvss/graph-talk/blob/master/LICENSE
-.. _docs: https://github.com/krvss/graph-talk/tree/master/docs
+.. _docs: https://ikrvss.ru/graph-talk/docs
 .. _examples: https://github.com/krvss/graph-talk/tree/master/examples
 .. _github: https://github.com
 .. _pypi: http://pypi.python.org/pypi/graph-talk
