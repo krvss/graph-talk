@@ -305,7 +305,7 @@ For example, complex notion "A" contains "A1, A2, A3" notions; "A1" is a complex
 
 .. figure::  images/guide_selective.png
 
-For example, selective notion "B" contains "B1, B2" notions via NextRelations without conditions. That means both "B-B1" and "B-B2" will have the same rank equal to zero. The final decision of which case is good is yet to be revealed somewhere later. So, the process needs to try both relations. If the first one fails, we will need to revert all changes to the initial state when we’ve made the decision to try "B-B1" and "B-B2". This is a general approach called lookahead. With lookahead, you try one case, and if it does not work, you try another one.
+For example, selective notion "B" contains "B1, B2" notions via NextRelations without conditions. That means both "B-B1" and "B-B2" will have the same rank equal to zero. The final decision of which case is good is yet to be revealed somewhere later. So, the process needs to try both relations. If the first one fails, we will need to revert all changes to the initial state when we've made the decision to try "B-B1" and "B-B2". This is a general approach called lookahead. With lookahead, you try one case, and if it does not work, you try another one.
 
 Lookahead and Error Handling
 ----------------------------
@@ -379,7 +379,7 @@ The builder has used the :attr:`.GraphBuilder.current` element to attach the res
 
 To access the graph itself, use the :attr:`.GraphBuilder.graph` property. The graph allows searching for the notions by name and relations by object and subject.
 
-For example, to find all the notions with names that start from "i" in the graph above use ``builder.graph.notions(re.compile(‘i+’))``. You can pass user function to the search as well.
+For example, to find all the notions with names that start from "i" in the graph above use ``builder.graph.notions(re.compile('i+'))``. You can pass user function to the search as well.
 
 For example::
 
@@ -390,3 +390,176 @@ For example::
 To find all relations with the same subject, use ``builder.graph.relations({Relation.SUBJECT: subject_value})``.
 
 GraphBuilder allows setting the current element directly via the :meth:`.GraphBuilder.set_current` method to continue building from the certain place. Check its API description for other operations.
+
+Processes
+=========
+
+There are different kinds of processes; each has its own dialect.
+
+The base class for all processes is called :class:`.Process`. It is a sub-class of :class:`.Handler`. Its :meth:`.Process.handle` method is designed to not only process one message but also continue the handling while the queue of replies from other elements is not empty. Process has the :attr:`.Process.current` element to ask for directions and analyze the reply. For example, when the process says "next" to the relation, it replies with the Object value. The process sets the current to the Object returned and asks it what's next and so on.
+
+When the element replies with the list of elements, as complex notion does, they are processed one by one. The process has a queue of elements to go through and keeps working until the queue is not empty or the process faces a message it cannot recognize. When the handling is over, its result will be returned from the handle method, as Handler class does.
+
+The element can reply not with just other elements to pass next, but with some commands. If the list of commands returned, they would be processed one by one as well. Basic process knows the following commands:
+
+#. :attr:`.Process.OK` – finish handling, return "ok" as the result of the handling.
+#. :attr:`.Process.STOP` – stop handling, return "stop." It is possible to continue from the current element.
+#. True/None – if the element returns any of this, the process just continues the handling.
+#. False – if the element returns False, the process stops handling and returns False as well. It looks as though the element cannot process the question, so something is wrong here.
+#. Element – use the element as a current one. When the process meets an element in the message, it puts the new item to the queue to know which reply it currently analyzes.
+#. :attr:`.Process.NEW` – start the new handling, clearing the process state.
+
+Here is an example of the simple process::
+
+    process = Process()
+    n = Notion('N')
+
+    print process(n)
+
+    > True
+
+The result is "True" because the basic notion will return None on the "next" question. As you see, the call to the process starts from the initial element to start handling and some context values. The process is a container for the context, so several processes can walk the same graph simultaneously.
+
+If execute process() after it had stopped, the process will continue from the current element. Any context provided will just update the current one. To start from scratch, put the :attr:`.Process.NEW` command first in the list, like ``process(Process.NEW, graph)``.
+
+Sharing, Stacking and Stating
+-----------------------------
+
+Basic process is a very simple thing that allows working in a pipeline manner walking the graph element-by-element, stopping at unknown messages, and continuing when needed.
+
+:class:`.SharedProcess` is a child of Process that allows adding, updating, and deleting context parameters. The main interface of the Abstract - ``__call__(*message, **context)`` does not provide a way to change the context. This is good from the security standpoint, but sometimes, it is necessary to change the context in an explicit and controllable manner. The commands :attr:`.SharedProcess.ADD_CONTEXT` and :attr:`.SharedProcess.UPDATE_CONTEXT` accept the dictionary to merge with the current context, for example, ``{"add_context": {"type": "integer", "value": 8}}``. The command :attr:`.SharedProcess.DELETE_CONTEXT` accepts the name or names of parameters (as a list) to remove them from the context, for example, {"delete_context": "mana"}.
+
+:class:`.StackingProcess` is a child of SharedProcess and provides the way to "stack" the context states. This process has to provide a undo-style functionality to perform rollbacks of the context to saved the previous condition. This is done using putting of context change operations into the undo groups with information required for rollback.
+
+For example, when the :attr:`.StackingProcess.PUSH_CONTEXT` command comes, StackingProcess starts the new group of operations. Each operation contains undo commands, for example, "add parameter x" stored with "remove parameter x," "update parameter y" stored with "previous value of the parameter y," and "remove parameter z" stored with "add parameter z". When undo is needed and the :attr:`.StackingProcess.POP_CONTEXT` command comes, the group will be reverted as a single operation so the context will be restored.
+
+Rollback does not include the internals of the context parameters because the overhead will be too big.
+
+If the stored context state is not needed anymore, for example, when an error has not happened, :attr:`.StackingProcess.FORGET_CONTEXT` removes the last stored undo group on the top of the stack. In this case, the context will remain changed.
+
+:class:`.StatefulProcess` is a child of StackingProcess and supports two commands to provide the elements with the way to keep their state private. The first command is :attr:`.StatefulProcess.SET_STATE`, and it accepts the dictionary to be set as a state, like ``{"set_state": {"iteration": 1}}``. The second command is :attr:`.StatefulProcess.CLEAR_STATE`. It has no parameters and just removes the state from the context.
+
+:class:`.SelectiveNotion` and :class:`.LoopRelation` keep their state using this approach; first, to keep the list of cases for lookaheads and second, to count the iterations.
+
+The state of the element is stored in the StackingProcess separately for each of the element. When the current element changes, the process removes its state from the context and adds the state of another element instead, so it is completely private.
+
+The state-changing commands are included in the push and pop context operations.
+
+Note that the :attr:`.Process.NEW` command clears the stored contexts and the states.
+
+Parsing the text
+----------------
+Parsing the text means analysing the character string according to the rules represented by the graph. So, some special kind of the process should be taken as an input and not only as a start element of the graph, but also as a text. The text will become a parameter of the context, so the elements will be able to consider the text content when making decisions about what the process has to do next.
+
+The new type of the element that analyzes the text is called :class:`.ParsingRelation`. It is a subclass of the :class:`.NextRelation` and uses the condition not just to decide where the process should go but also to remove the processed part of the text.
+
+The simplest example is skipping the white space. We check for the white space at the text's beginning. The condition of ParsingRelation to handle this is a regular expression. The rank it returns in case of a positive result is used to cut off the fragment of the text of the equal length. The command to remove the start of the text is ``{"proceed": length}`` (defined as :attr:`.ParsingProcess.PROCEED`).
+
+.. figure::  images/guide_parse.png
+
+After a successful parse, the text shrinks, and the process moves to the next element. What happens in other cases? ParsingRelation returns the "error" (defined as :attr:`.ParsingProcess.ERROR`) message to the process, which starts to go in the backward direction, trying to recover from the error.
+
+There are two options for ParsingRelation for more flexible parsing: The first one is :attr:`.ParsingRelation.optional`, which means the "error" should not be produced, but the object will not be returned as well. It just returns None, and the process goes somewhere else.
+
+Another one is :attr:`.ParsingRelation.check_only`. In this case, ParsingRelation just checks the condition but does not consume the text::
+
+    builder.parse_rel(re.compile("/s+"), None, optional=True, check_only=True)
+
+The object of the ParsingRelation could be a sub-graph for the processing of the certain feature or the action to create the element of the new graph that represents the structure of the parsed information (like in Brainfuck example).
+
+Parsing Process
+---------------
+
+The process that knows how to work with the text is called :class:`.ParsingProcess`. ParsingProcess is a subclass of :class:`.StatefulProcess`. Other processes are focused on the graph walking, but this one is focused on the text, and :attr:`.ParsingProcess.TEXT` is one of its context parameters. Therefore, the "text" will be included in all "next" queries to the elements.
+
+ParsingProcess supports the "proceed" command to remove the start portion of the text. The fact that the text is a context parameter means it is a part of the rollback. So, its value will be restored to try another path in the graph in case of an error.
+
+The "proceed" command changes not only the text parameter of the context but also two others: the :attr:`.ParsingProcess.PARSED_LENGTH` parameter indicates the total length of the text parsed, and the :attr:`.ParsingProcess.LAST_PARSED` parameter keeps the last portion of the processed text. An example of whitespace is 'last_parsed', which will keep the whitespace character.
+
+Another command is "error," which makes the process change its question and ask "error" instead of "next". Two other commands have similar behaviors: "continue" and "break." The process itself does not know anything about loops or error-handling stuff; it just stops processing the current message and changes the question it asks to the elements from the queue. If the direction should be set to forward, the "next" command is used.
+
+Note that if the text parameter is not empty at the end of the parsing, the result of the process will be "false".
+
+A simple demo::
+
+    root = ComplexNotion('root')
+    process = ParsingProcess()
+    parsing = ParsingRelation(root, action, 'a')
+
+    print "%s, %s" % (process(root, text='a'), process.context.get(process.LAST_PARSED))
+
+    > True, a
+
+Errors
+------
+
+The "error" command is not a user-friendly way to express the errors. Its goal is to change the way the process communicates with the graph elements. Such error does not always indicate a bad file or parsing problem. It recommends building a special path, which is selected in case of the error. :class:`.ActionNotion` or :class:`.ActionRelation` included in this path shall print or store the error information to present it later in a user-friendly format (the approach used in COOL example).
+
+Another approach is to stop the parsing process and make the error message considering the context and current element. This works well in case there is no need to continue parsing if a problem appears (the approach used in Brainfuck example).
+
+Summary
+-------
+
+To parse the text with Graph-talk, the graph should represent the algorithm of recognition of logical concepts. In other words, this is a de-serialization of concepts from their text representation.
+
+The process walks the graph querying the elements for directions basing on the context, where one of context parameters is the source text. Other parameters may include the state of the element or the process.
+
+If several directions are eligible, it is possible to try them one by one to find a valid one. The context will be restored to the state when the decision to try the invalid case was made.
+
+The result of the text parsing could be the list of tokens (lexing) or another graph that will contain the parsed concepts to be used on the next stage - syntax and semantics validation, interpretation, or code generation.
+
+ 
+Debugging
+---------
+
+It is tricky to debug the graph because it is challenging to find the right instance of a certain element type. For example, if you put the breakpoint into a method of relation, it will trigger for all relations. Of course, it is always possible to set the breakpoint inside the user function, but this will limit the debugging possibilities.
+
+Graph-talk provides the utility class called :class:`.ProcessDebugger` in debug.py module. The most useful information when debugging the graph is to see the transcript of the communication between the process and graph elements. It is easily done with the following code::
+
+    p = Process()
+    d = ProcessDebugger(p, True)
+
+    cn = ComplexNotion('CN')
+    n1 = Notion('N1')
+    n2 = Notion('N2')
+
+    NextRelation(cn, n1)
+    NextRelation(cn, n2)
+
+    p(cn)
+
+The log is:
+
+| "CN": 'next'? - '(<"CN" - "N1">, <"CN" - "N2">)'
+| <"CN" - "N1">: 'next'? - '"N1"'
+| "N1": 'next'? - 'True'
+| <"CN" - "N2">: 'next'? - '"N2"'
+| "N2": 'next'? - 'True'
+
+To show the log, ProcessDebugger connects to post-event of query event of the process. It provides the result of the chat with the current element.
+
+Another option is to reply to the process something at the certain element, for example, say "stop" when the process comes to the element. This is done using the reply_at method of the debugger that replies to the process with the specified value::
+
+    root = ComplexNotion('root')
+    n = ComplexNotion('n')
+
+    NextRelation(root, n)
+
+    d.reply_at(n, process.STOP)
+
+    print p(p.NEW, root)
+
+    > stop
+
+For replying, the ProcessDebugger uses the post-event of pushing the reply of the element to the queue. This way, the debugger provides access to what's replied and overwrites the reply with the specified answer value.
+
+Performance Tips
+----------------
+
+There are two things that significantly influence the performance of Graph-talk. First is lookahead, which should not be used unnecessarily. It is better to break from infinite loops than to use flexible conditions.
+
+Another factor that may slow the execution is the number of commands that the process supports. Note that the process is a participant of all dialogues; therefore, be careful with the number of handlers. It is not a good idea to use the ParsingProcess if there are no loops, selects or parsing relations.
+
+If there is a need to extend the process class, make sure you assign the proper tag for the new handler, so that the condition will be checked only when needed. For example, ParsingProcess does not even consider the handler of "proceed" if the current message is not a dictionary. It saves a lot of time on unnecessary checks.
+
+Python is a great language, but it is not very fast. Its syntax allows a very clean implementation of Graph-talk concepts, but porting it to faster platforms could bring a significant performance boost. You may contact the team if you are interested in such version.
