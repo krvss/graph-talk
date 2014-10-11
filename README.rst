@@ -46,6 +46,10 @@ Testing::
 
     $ python setup.py test
 
+Documentation with sphinx_::
+
+    $ sphinx-build -b html docs docs/html
+
 Support
 =======
 If you're having problems using the project, make the issue_ at GitHub.
@@ -57,8 +61,9 @@ Copyrights and License
 details.
 
 .. _LICENSE: https://github.com/krvss/graph-talk/blob/master/LICENSE
-.. _docs: https://ikrvss.ru/graph-talk/docs
+.. _docs: https://github.com/krvss/graph-talk/tree/master/docs
 .. _examples: https://github.com/krvss/graph-talk/tree/master/examples
 .. _github: https://github.com
 .. _pypi: http://pypi.python.org/pypi/graph-talk
 .. _issue: https://github.com/krvss/graph-talk/issues
+:: _sphinx: http://sphinx-doc.org/
