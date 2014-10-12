@@ -66,4 +66,4 @@ details.
 .. _github: https://github.com
 .. _pypi: http://pypi.python.org/pypi/graph-talk
 .. _issue: https://github.com/krvss/graph-talk/issues
-:: _sphinx: http://sphinx-doc.org/
+.. _sphinx: http://sphinx-doc.org/

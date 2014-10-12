@@ -28,6 +28,7 @@ setup(
     version=version,
     packages=['gt'],
     url='https://github.com/krvss/graph-talk/',
+    download_url='https://github.com/krvss/graph-talk/tarball/0.3',
     license='Apache Software License',
     author='Stas Kravets',
     author_email='stas.kravets@gmail.com',
