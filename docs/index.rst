@@ -17,7 +17,11 @@ Contents:
    core
    debug
 
+Links:
 
+| Code repository: https://github.com/krvss/graph-talk
+| Read me: https://github.com/krvss/graph-talk/blob/master/README.rst
+| Contact author: stas.kravets@gmail.com
 
 Indices and tables
 ==================
