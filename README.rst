@@ -19,7 +19,7 @@ Features
 * Plain Python 2.7.5 or higher
 * Very small footprint
 
-Check the docs_ folder for the documentation and examples_ folder for examples of
+Check the docs_ for the documentation and examples_ folder for examples of
 lexing, interpreting, and converting using Graph-talk.
 
 Installation
@@ -61,7 +61,7 @@ Copyrights and License
 details.
 
 .. _LICENSE: https://github.com/krvss/graph-talk/blob/master/LICENSE
-.. _docs: https://github.com/krvss/graph-talk/tree/master/docs
+.. _docs: https://pythonhosted.org/graph-talk/
 .. _examples: https://github.com/krvss/graph-talk/tree/master/examples
 .. _github: https://github.com
 .. _pypi: http://pypi.python.org/pypi/graph-talk
