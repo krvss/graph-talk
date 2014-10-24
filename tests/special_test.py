@@ -96,7 +96,7 @@ class SpecialTestRunner(SpecialTest):
         else:
             self.test.run()
 
-        print 'Test time: %s' % t.delta()
+        print('Test time: %s' % t.delta())
 
         if self.mode == 'c':
             import pstats
