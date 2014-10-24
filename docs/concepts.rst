@@ -70,7 +70,7 @@ If the condition is satisfied (if several conditions have equal rank – the fir
 
 The Application
 ---------------
-Problem solving using GraphTalk consists of 2 phases:
+Problem solving using Graph-talk consists of 2 phases:
 
 1. Build the graph model of the algorithm by using the appropriate types of notions and relations.
 2. Add to the graph elements corresponding conditions and events.

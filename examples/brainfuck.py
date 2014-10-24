@@ -306,13 +306,13 @@ def main():
         result = dude(interpreter.NEW, {interpreter.FILENAME: sys.argv[1]})
 
         if result:
-            print result
+            print(result)
 
     else:
         interpreter.self_test()
         converter.self_test()
-        print "Usage: " + sys.argv[0] + " filename [-c]"
+        print('Usage: ' + sys.argv[0] + ' filename [-c]')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

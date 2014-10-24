@@ -7,7 +7,7 @@
 
 """
 
-from core import Handler, Event
+from gt.core import Handler, Event
 
 from collections import defaultdict
 
@@ -122,5 +122,5 @@ class ProcessDebugger(Handler):
             return
 
         if self.LOG in point:
-            query = process.text + ", " + process.query if hasattr(process, 'text') else process.query
-            print "%s: '%s'? - '%s'" % (process.current, query, context.get(Event.RESULT))
+            query = process.text + ', ' + process.query if hasattr(process, 'text') else process.query
+            print("%s: '%s'? - '%s'" % (process.current, query, context.get(Event.RESULT)))

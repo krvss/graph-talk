@@ -1853,7 +1853,7 @@ class UtTests(unittest.TestCase):
         h = Handler()
 
         def show_me(*m, **c):
-            print c
+            print(c)
 
             return
 
@@ -1868,11 +1868,11 @@ class UtTests(unittest.TestCase):
 
         e.pre = 1
 
-        print (h('a'))
+        print(h('a'))
 
-        print (h.handle(['aa'], {}))
+        print(h.handle(['aa'], {}))
 
-        print (h.handle([], {}))
+        print(h.handle([], {}))
 
         # Tags example
         class TagsExample(Handler):
@@ -1887,17 +1887,17 @@ class UtTests(unittest.TestCase):
 
         u.on('move', Event(True), 'has_fuel', 'has_direction')
 
-        print u('move')
+        print(u('move'))
 
         u.fixed_tags = {'has_fuel', 'maps_loading'}
         u.update()
 
-        print u('move')
+        print(u('move'))
 
         u.fixed_tags = {'has_fuel', 'has_direction'}
         u.update()
 
-        print u('move')
+        print(u('move'))
 
         # GraphBuilder
 
@@ -1905,10 +1905,10 @@ class UtTests(unittest.TestCase):
 
         builder.next_rel().complex('initiate').next_rel().notion('remove breaks').back().back().next_rel().act('ignite', 1)
 
-        print builder.complex('complex').next_rel().notion('simple')
-        print Process()(builder.graph)
+        print(builder.complex('complex').next_rel().notion('simple'))
+        print(Process()(builder.graph))
 
-        print builder.graph.notions(re.compile('i*'))
+        print(builder.graph.notions(re.compile('i*')))
 
         # Process debugger
         p = Process()
@@ -1930,11 +1930,11 @@ class UtTests(unittest.TestCase):
 
         d.reply_at(n, process.STOP)
 
-        print p(p.NEW, root)
+        print(p(p.NEW, root))
 
         p = StatefulProcess()
         a = ActionNotion('Changed my mind', {StatefulProcess.SET_STATE: {'mind': 'New York'}})
-        print p(a, {SharedProcess.ADD_CONTEXT: {'key': 'skeleton'}})
+        print(p(a, {SharedProcess.ADD_CONTEXT: {'key': 'skeleton'}}))
 
 
 def test():

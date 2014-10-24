@@ -300,10 +300,10 @@ def main():
     import sys
 
     if len(sys.argv) >= 2:
-        print lex_file(sys.argv[1])
+        print(lex_file(sys.argv[1]))
     else:
-        print "Usage: " + sys.argv[0] + " filename"
+        print('Usage: ' + sys.argv[0] + ' filename')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

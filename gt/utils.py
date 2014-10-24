@@ -7,6 +7,12 @@
 
 """
 
+import sys
+
+if sys.version > '3':
+    long = int
+    basestring = str
+
 
 class DictChangeOperation(object):
     """
@@ -141,8 +147,12 @@ class NotifyList(list):
 
     __delitem__ = _wrap(list.__delitem__)
     __setitem__ = _wrap(list.__setitem__)
-    __delslice__ = _wrap(list.__delslice__)
-    __setslice__ = _wrap(list.__setslice__)
+
+    if hasattr(list, '__delslice__'):
+        __delslice__ = _wrap(list.__delslice__)
+    if hasattr(list, '__setslice__'):
+        __setslice__ = _wrap(list.__setslice__)
+
     __add__ = _wrap(list.__add__)
     __iadd__ = _wrap(list.__iadd__)
     __imul__ = _wrap(list.__imul__)

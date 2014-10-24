@@ -10,7 +10,7 @@
 from inspect import getargspec
 from operator import attrgetter
 
-from utils import *
+from gt.utils import *
 
 
 class Abstract(object):
@@ -546,7 +546,7 @@ class Handler(Abstract):
 
         :param condition:   condition to be removed.
         """
-        self._events = filter(lambda e: not (e[0] == condition), self._events)
+        self._events = list(filter(lambda e: not (e[0] == condition), self._events))
 
         self.update_events()
 
@@ -556,7 +556,7 @@ class Handler(Abstract):
 
         :param event:   event to be removed.
         """
-        self._events = filter(lambda e: not (e[1] == event), self._events)
+        self._events = list(filter(lambda e: not (e[1] == event), self._events))
 
         self.update_events()
 
@@ -1148,7 +1148,7 @@ class Process(Handler):
     the elements::
 
         p = Process()
-        print p(start_element, destination="Orion")
+        print(p(start_element, destination="Orion"))
 
     """
     #: New command. Clears the process internals when the process should be started from the scratch.

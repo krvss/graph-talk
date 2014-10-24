@@ -108,12 +108,12 @@ class SpecialTestRunner(SpecialTest):
             ps = pstats.Stats(self.profiler, stream=sio).sort_stats('time')
             ps.print_stats()
 
-            print sio.getvalue()
+            print(sio.getvalue())
 
         elif self.mode == 'h':
             import hotshot.stats
 
-            print 'Processing results...'
+            print('Processing results...')
 
             self.profiler.close()
             name = self.info['name']
@@ -122,7 +122,7 @@ class SpecialTestRunner(SpecialTest):
             stats.sort_stats('time', 'calls')
             stats.print_stats(50)
 
-            print 'Run "hotshot2calltree -o %s.out %s" to generate the cachegrind file' % (name, name)
+            print('Run "hotshot2calltree -o %s.out %s" to generate the cachegrind file' % (name, name))
 
         elif self.mode == 'l':
             self.profiler.disable()
@@ -160,7 +160,7 @@ class CoolGradingTest(SpecialTest):
             if selection and not selection in f:
                 continue
 
-            print 'Lexing ' + f,
+            print('Lexing ' + f,)
 
             t = Timer()
 
@@ -172,9 +172,9 @@ class CoolGradingTest(SpecialTest):
             out2 = out2[i + 1:]
 
             if not out1 == out2:
-                print '!!! Different !!!'
+                print('!!! Different !!!')
             else:
-                print ' ok, ' + str(t.delta())
+                print(' ok, ' + str(t.delta()))
 
 
 # Special test itself, for nerds only B-\
