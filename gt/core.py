@@ -782,6 +782,20 @@ class Element(Handler):
         """
         self.off_condition(self.can_go_backward)
 
+    def on_visit(self, event):
+        """
+        Adds the event to be called when this element is visited .
+
+        :param event: user function to be called.
+        """
+        self.on(VisitorProcess.VISIT, event)
+
+    def off_visit(self):
+        """
+        Removes the visit condition and event.
+        """
+        self.off_condition(VisitorProcess.VISIT)
+
     @staticmethod
     def add_prefix(msg, prefix):
         """
@@ -974,6 +988,8 @@ class ComplexNotion(Notion):
         self.on(self.add_prefix(Relation.SUBJECT, self.SET_PREFIX), self.do_relation)
         self.on_forward(self.do_forward)
 
+        self.on_visit(self.do_visit)
+
     def do_relation(self, *message, **context):
         """
         Subject change event, updates references if a sub-notion was connected/disconnected.
@@ -999,6 +1015,15 @@ class ComplexNotion(Notion):
         """
         if self._relations:
             return self._relations[0] if len(self._relations) == 1 else tuple(self.relations)
+
+    def do_visit(self):
+        """
+        Visit event.
+
+        :returns: the list of relations to visit.
+        :rtype: tuple.
+        """
+        return tuple(self.relations)
 
     def remove_all(self):
         """
@@ -1044,6 +1069,7 @@ class NextRelation(Relation):
             self.condition_access = TRUE_CONDITION
 
         self.on(self.can_pass, self.do_next)
+        self.on_visit(self.do_visit)
 
     def can_pass(self, *message, **context):
         """
@@ -1061,6 +1087,15 @@ class NextRelation(Relation):
     def do_next(self, *message, **context):
         """
         Next event.
+
+        :returns: :attr:`Relation.object`.
+        :rtype: Notion.
+        """
+        return self.object
+
+    def do_visit(self, **context):
+        """
+        Visit event.
 
         :returns: :attr:`Relation.object`.
         :rtype: Notion.
@@ -1845,6 +1880,58 @@ class ParsingProcess(StatefulProcess):
 Process.BACKWARD = Process.BACKWARD | set([ParsingProcess.ERROR, ParsingProcess.BREAK, ParsingProcess.CONTINUE])
 
 
+class VisitorProcess(Process):
+    """
+    Visitor process implements 'visitor' pattern to visit each graph element once. It is useful for exporting graphs
+    into files.
+    """
+    #: Visit command; asks the element about its connections with the other graph elements.
+    VISIT = 'visit'
+
+    def __init__(self):
+        super(VisitorProcess, self).__init__()
+        self.query = self.VISIT
+        #: The visited path.
+        self.visited = []
+
+        #: Visit event.
+        self.visit_event = None
+
+    def can_push_queue(self):
+        """
+        For this class only :class:`Abstract` instances could be put to the queue.
+        """
+        return Access.get_access(self.message[0], True).mode == Access.CALL
+
+    def do_query(self):
+        """
+        This class queries only not yet visited elements, others will be skipped using :meth:`Process.skip` method.
+        Visit possibility is evaluated using :meth:`VisitorProcess.visit` method.
+        """
+        if self.visit():
+            return super(VisitorProcess, self).do_query()
+        else:
+            self.skip()
+            return True
+
+    def visit(self):
+        """
+        This method checks is the :attr:`Process.current` already visited and if no calls
+        :attr:`VisitorProcess.visit_event` before allowing to visit it.
+        """
+        if not self.current in self.visited:
+            self.visited.append(self.current)
+
+            return self.visit_event.run(self.message, self.context)[0] if self.visit_event else True
+
+    def on_new(self, message, context):
+        """
+        Clean up the visited list.
+        """
+        super(VisitorProcess, self).on_new(message, context)
+        del self.visited[:]
+
+
 class ParsingRelation(NextRelation):
     """
     Parsing relation: should be passable in a forward direction (otherwise returns :attr:`ParsingProcess.ERROR`).
@@ -2364,6 +2451,7 @@ class Graph(Element):
 
         self.on(self.add_prefix(self.OWNER, self.SET_PREFIX), self.do_element)
         self.on_forward(self.do_forward)
+        self.on_visit(self.do_visit)
 
         if root:
             if is_string(root):
@@ -2533,6 +2621,15 @@ class Graph(Element):
     def do_forward(self):
         """
         Forward event. Returns :attr:`Graph.root` value.
+
+        :returns:   root notion.
+        :rtype:     Notion.
+        """
+        return self.root
+
+    def do_visit(self):
+        """
+        Visit event. Returns :attr:`Graph.root` value.
 
         :returns:   root notion.
         :rtype:     Notion.

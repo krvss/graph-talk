@@ -121,3 +121,8 @@ Process Classes
     :show-inheritance:
     :members:
     :special-members: ERROR, PROCEED, BREAK, CONTINUE
+
+.. autoclass:: VisitorProcess
+    :show-inheritance:
+    :members:
+    :special-members: VISIT

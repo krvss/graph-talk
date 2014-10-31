@@ -469,6 +469,16 @@ class UtTests(unittest.TestCase):
         self.assertTrue(e.is_backward([Process.PREVIOUS]))
         self.assertFalse(e.is_backward([]))
 
+        # Visit
+        event3 = lambda *m: m[0] if m[0] in VisitorProcess.VISIT else None
+        e.on_visit(event3)
+
+        self.assertEqual(e(VisitorProcess.VISIT), VisitorProcess.VISIT)
+
+        e.off_visit()
+
+        self.assertTrue(e(VisitorProcess.VISIT) is False)
+
     def test_5_objects(self):
         # Notions test
         n1 = Notion('n1')
@@ -1813,6 +1823,45 @@ class UtTests(unittest.TestCase):
 
         with self.assertRaises(TypeError):
             b.attach(b)
+
+    def test_i_visitor(self):
+        process = VisitorProcess()
+        graph = Graph()
+
+        cn = ComplexNotion('CN', graph)
+        graph.root = cn
+
+        cn2 = ComplexNotion('CN2', graph)
+        r0 = NextRelation(cn, cn2, graph)
+
+        n1 = Notion('N1', graph)
+        r1 = NextRelation(cn2, n1, graph)
+
+        n2 = ActionNotion('N2', [True, process.STOP], graph)
+        r2 = NextRelation(cn, n2, graph)
+
+        r3 = NextRelation(cn, n1, graph)
+
+        r = process(r1, test='visit_relation')
+        self.assertTrue(r)
+        self.assertEqual(process.current, n1)
+        self.assertEqual(process.visited, [r1, n1])
+
+        r = process(process.NEW, cn2, test='visit_complex')
+        self.assertTrue(r)
+        self.assertEqual(process.current, n1)
+        self.assertEqual(process.visited, [cn2, r1, n1])
+
+        r = process(process.NEW, cn, test='visit_subgraph')
+        self.assertTrue(r)
+        self.assertEqual(process.current, n1)
+        self.assertEqual(process.visited, [cn, r0, cn2, r1, n1, r2, n2, r3])
+
+        r = process(process.NEW, graph, test='visit_graph')
+        self.assertTrue(r)
+        self.assertEqual(process.current, n1)
+        self.assertEqual(process.visited, [graph, cn, r0, cn2, r1, n1, r2, n2, r3])
+
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
