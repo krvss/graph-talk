@@ -1920,9 +1920,12 @@ class VisitorProcess(Process):
         :attr:`VisitorProcess.visit_event` before allowing to visit it.
         """
         if not self.current in self.visited:
-            self.visited.append(self.current)
+            result = self.visit_event.run(self.message, self.context)[0] if self.visit_event else True
 
-            return self.visit_event.run(self.message, self.context)[0] if self.visit_event else True
+            if result:
+                self.visited.append(self.current)
+
+                return result
 
     def on_new(self, message, context):
         """

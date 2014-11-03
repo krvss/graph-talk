@@ -1862,6 +1862,13 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, n1)
         self.assertEqual(process.visited, [graph, cn, r0, cn2, r1, n1, r2, n2, r3])
 
+        process.visit_event = Event(False)
+
+        r = process(process.NEW, graph, test='visit_disabled')
+        self.assertTrue(r)
+        self.assertEqual(process.current, graph)
+        self.assertEqual(process.visited, [])
+
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
