@@ -13,6 +13,7 @@ import re
 
 from gt.core import *
 from gt.debug import *
+from gt.export import *
 
 
 # Test functions
@@ -1869,6 +1870,24 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.current, graph)
         self.assertEqual(process.visited, [])
 
+    def test_j_export(self):
+        b = GraphBuilder('DOT')
+
+        b.next_rel()
+        b.select('SELECT')
+        b.next_rel('a').act('act', 1)
+
+        b.back().back()
+        b.act_rel(self.test_1_abstract).default()
+
+        b.back()
+        b.loop_rel((1, 2)).notion('looper')
+
+        b.back().back()
+        b.parse_rel(self.test_1_abstract, optional=True)
+
+        p = DotExport()
+        p(p.NEW, b.graph, file='test.dot')
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

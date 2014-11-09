@@ -1,5 +1,5 @@
 """
-.. module:: gt.util
+.. module:: gt.utils
    :platform: Unix, Windows
    :synopsis: Graph-talk utility classes
 

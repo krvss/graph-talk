@@ -1889,13 +1889,14 @@ class VisitorProcess(Process):
     VISIT = 'visit'
 
     def __init__(self):
-        super(VisitorProcess, self).__init__()
-        self.query = self.VISIT
+        #: Visit event.
+        self.visit_event = None
+
         #: The visited path.
         self.visited = []
 
-        #: Visit event.
-        self.visit_event = None
+        super(VisitorProcess, self).__init__()
+        self.query = self.VISIT
 
     def can_push_queue(self):
         """

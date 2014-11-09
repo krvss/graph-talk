@@ -3,6 +3,7 @@
 
 from gt.core import *
 
+
 class FileProcessor(Process):
     """
     File processor contains the graph and the parsing process to parse the file contents
