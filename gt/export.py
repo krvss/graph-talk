@@ -10,6 +10,27 @@
 import re
 
 from gt.core import *
+from gt.utils import *
+
+
+def get_printable(obj, double_escape=False):
+    """
+    Get printable representation of object
+    :param obj:             object to print.
+    :param double_escape:   use double escape for \n etc or not.
+    :return:                printable string
+    :rtype:                 str.
+    """
+    if is_regex(object):
+        return '%s' % obj.pattern
+    else:
+        s = replace_special_chars(str(obj))
+        s = ''.join(escape(c) for c in s)
+
+        if double_escape:
+            s = s.replace('\\', '\\\\').replace('\\\\"', r'\"')
+
+        return s
 
 
 class ExportProcess(VisitorProcess):
@@ -96,6 +117,16 @@ class ExportProcess(VisitorProcess):
 
         return self.ID_PATTERN % (type_id, counter)
 
+    def get_object_id(self, obj):
+        """
+        Gets the non-graph element identifier.
+
+        :param obj: input object.
+        :return:    object id.
+        :rtype:     str.
+        """
+        return get_object_name(obj)
+
     def get_element_id(self, element):
         """
         Gets the unique element serialization id. Safe to call multiple times, will return the same id for the same
@@ -110,7 +141,9 @@ class ExportProcess(VisitorProcess):
         if element_id:
             return element_id
 
-        element_id = self.get_serial_id(self.get_type_id(element))
+        element_id = self.get_serial_id(self.get_type_id(element)) if isinstance(element, Element) else \
+            self.get_object_id(element)
+
         self._info[element] = element_id
 
         return element_id
@@ -218,6 +251,54 @@ class ExportProcess(VisitorProcess):
 
 class DotExport(ExportProcess):
     EMPTY = 'empty'
+    OBJECTS_ID = 'objects'
+
+    MAX_RELATION_LABEL = 80
+    MAX_NOTION_LABEL = 20
+
+    def get_condition_string(self, relation):
+        if isinstance(relation, NextRelation) and relation.condition_access != TRUE_CONDITION:
+
+            if relation.condition_access.mode in Access.CACHEABLE:
+                return get_object_name(relation.condition_access._value)
+            elif relation.condition_access.spec == Condition.REGEX:
+                return str(relation.condition_access._value.pattern)
+            else:
+                return str(relation.condition_access._value)
+
+        return ''
+
+    def get_export_string(self, node_string, **attributes):
+        label_string = attributes.get('label', '')
+        max_len = attributes.get('max_len')
+
+        if max_len and len(label_string) > max_len:
+            fit_label = ''
+            c = 0
+
+            for l in label_string.split(' '):
+                if (c + len(l)) > max_len:
+                    fit_label += '\n'
+                    c = 0
+
+                c += len(l) + 1
+                fit_label += l + ' '
+
+            attributes['label'] = fit_label
+
+        attr_str = '[%s]' % ', '.join(['%s = %s' % (k, v) for k, v in attributes.iteritems()]) if attributes else ''
+
+        return node_string + attr_str
+
+    def get_object_id(self, obj):
+        obj_id = super(DotExport, self).get_object_id(obj)
+
+        objects = self._info.get(self.OBJECTS_ID, [])
+        objects.append(obj_id)
+
+        self._info[self.OBJECTS_ID] = objects
+
+        return obj_id
 
     def get_element_id(self, element):
         if not element:
@@ -226,42 +307,42 @@ class DotExport(ExportProcess):
         return super(DotExport, self).get_element_id(element)
 
     def export_graph(self, graph):
-        self.get_element_id(graph)
-        return 'digraph %s {' % graph.name
+        return 'digraph %s {' % self.get_element_id(graph)
 
     def export_notion(self, notion):
-        notion_id = self.get_element_id(notion)
-
-        shape = 'doublecircle' if isinstance(notion, SelectiveNotion) else 'circle'
-        color = 'red' if isinstance(notion, ActionNotion) else 'black'
-
-        return '%s[label="%s" shape="%s" color=%s];' % (notion_id, notion.name, shape, color)
+        return self.get_export_string(self.get_element_id(notion),
+                                      label='"%s"' % get_printable(notion.name, True),
+                                      shape='doublecircle' if isinstance(notion, SelectiveNotion) else 'circle',
+                                      color='red' if isinstance(notion, ActionNotion) else 'black',
+                                      max_len=self.MAX_NOTION_LABEL)
 
     def export_relation(self, relation):
-        label = ''
-
-        if isinstance(relation, NextRelation):
-            if relation.condition_access != TRUE_CONDITION:
-                label = str(relation.condition)
-                if isinstance(relation, ParsingRelation):
-                    if relation.optional:
-                        label = '[' + label + ']'
-
-        color = 'red' if isinstance(relation, ActionRelation) else 'black'
-        style = 'bold' if (isinstance(relation.subject, SelectiveNotion) and relation.subject.default == relation) else ''
-
-        return '%s -> %s[label="%s" color=%s style="%s"];' % (self.get_element_id(relation.subject),
-                                                   self.get_element_id(relation.object),
-                                                   label, color, style)
+        return self.get_export_string('%s -> %s' % (self.get_element_id(relation.subject),
+                                                    self.get_element_id(relation.object)),
+                                      label='"%s"' % get_printable(self.get_condition_string(relation), True),
+                                      color='red' if isinstance(relation, ActionRelation) else 'black',
+                                      style='"bold"' if (isinstance(relation.subject, SelectiveNotion) and
+                                                       relation.subject.default == relation) else '""',
+                                      max_len=self.MAX_RELATION_LABEL,
+                                      fontcolor='blue')
 
     def export_empty(self, counter):
-        return self.ID_PATTERN % (self.EMPTY, counter) + '[shape="point"];'
+        return self.get_export_string(self.ID_PATTERN % (self.EMPTY, counter),
+                                      shape='"point"')
+
+    def export_object(self, name):
+        return self.get_export_string(name,
+                                      color='red',
+                                      shape='"rect"')
 
     def stop_file(self, finished=True):
         if finished:
             if self.EMPTY in self._info:
                 for i in xrange(0, self._info.get(self.EMPTY)):
                     self.write_file(self.export_empty(i))
+
+            for obj_id in self._info.get(self.OBJECTS_ID, []):
+                    self.write_file(self.export_object(obj_id))
 
             if self.GRAPH_ID in self._info:
                 for i in xrange(0, self._info.get(self.GRAPH_ID)):

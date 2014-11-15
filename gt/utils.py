@@ -8,6 +8,7 @@
 """
 
 import sys
+import string
 
 if sys.version > '3':
     long = int
@@ -214,6 +215,26 @@ def tupled(*args):
 
 def get_object_name(obj):
     return obj.__name__ if hasattr(obj, '__name__') else str(obj)
+
+
+def replace_special_chars(s):
+    return s.replace('\n', r'\n').replace('\t', r'\t').replace('\b', r'\b').\
+        replace('\f', r'\f').replace('"', r'\"').replace('\r', r'\r').replace('\v', r'\v')
+
+
+def escape(c):
+    if c in string.printable:
+        return c
+
+    c = ord(c)
+    if c <= 0xff:
+        return r'\x{0:02x}'.format(c)
+
+    elif c <= '\uffff':
+        return r'\u{0:04x}'.format(c)
+
+    else:
+        return r'\U{0:08x}'.format(c)
 
 
 def get_content(filename):

@@ -180,9 +180,8 @@ class CoolLexer(FileProcessor):
         Out token to result
         """
         if token in (ERROR_TOKEN, STRING_CONST):
-            data = data.replace('\\', '\\\\')
-            data = data.replace('\n', r'\n').replace('\t', r'\t').replace('\b', r'\b').\
-                replace('\f', r'\f').replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+            data = data.replace('\\', '\\\\').replace('\r', '\\015')
+            data = replace_special_chars(data).replace('\033', '\\033').\
                 replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
                 replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
 
