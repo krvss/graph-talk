@@ -112,6 +112,7 @@ def add_to_string(last_parsed, string_body, string_error):
 
     return {ParsingProcess.UPDATE_CONTEXT: {STRING_BODY: string_body + last_parsed}}
 
+
 class CoolLexer(FileProcessor):
     """
     Main lexer class
@@ -147,7 +148,7 @@ class CoolLexer(FileProcessor):
 
         # Type ID
         self.builder[statement].parse_rel(R_TYPE_ID).\
-            act('Object ID', lambda line_no, last_parsed: self.out_token(line_no, 'TYPEID', last_parsed))
+            act('Type ID', lambda line_no, last_parsed: self.out_token(line_no, 'TYPEID', last_parsed))
 
         # New line: increment the counter
         self.builder[statement].parse_rel(R_EOL, inc_line_no)
@@ -179,9 +180,9 @@ class CoolLexer(FileProcessor):
         Out token to result
         """
         if token in (ERROR_TOKEN, STRING_CONST):
-            data = data.replace("\\", "\\\\")
-            data = data.replace("\n", r"\n").replace("\t", r"\t").replace("\b", r"\b").\
-                replace("\f", r"\f").replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
+            data = data.replace('\\', '\\\\')
+            data = data.replace('\n', r'\n').replace('\t', r'\t').replace('\b', r'\b').\
+                replace('\f', r'\f').replace('"', '\\"').replace('\r', '\\015').replace('\033', '\\033').\
                 replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
                 replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
 

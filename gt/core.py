@@ -238,7 +238,7 @@ class Condition(Access):
 
         elif is_list(self._value):
             self._spec, self.check = self.LIST, self.check_list
-            self._conditions = tuple([Condition(c, *list(self.tags), **self._options ) for c in self._value])
+            self._conditions = tuple([Condition(c, *list(self.tags), **self._options) for c in self._value])
 
         elif is_string(self._value):
             self._spec, self.check = self.STRING, self.check_string_search if self._search else self.check_string_match
@@ -1100,7 +1100,7 @@ class NextRelation(Relation):
         :returns: :attr:`Relation.object`.
         :rtype: Notion.
         """
-        return self.object
+        return self.object if (isinstance(self.object, Element)) else None
 
     def set_condition(self, value):
         """
