@@ -1,5 +1,5 @@
 """
-.. module:: gt.procs
+.. module:: examples.brainfuck
    :platform: Unix, Windows
    :synopsis: Brainfuck interpreter/converter example for Graph-talk
 

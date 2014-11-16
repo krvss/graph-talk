@@ -56,9 +56,9 @@ class ExportProcess(VisitorProcess):
         self._file = None
         self._info = {}
 
-    def start_file(self, new=True):
+    def start_export(self, new=True):
         """
-        Starts the writing to the file.
+        Starts the export, opens the file if specified.
 
         :param new: if True, the file content will be cleared.
         :type new:  bool.
@@ -66,18 +66,22 @@ class ExportProcess(VisitorProcess):
         if self._filename:
             self._file = open(self._filename, mode='w' if new else 'w+')
 
-    def write_file(self, data):
+    def write_data(self, data):
         """
-        Write data to the open file.
+        Write data to the open file or to the stdout.
 
         :param data: data to be written, the carriage return will be added automatically.
         :type data:  str.
         """
-        self._file.write(str(data) + '\n')
+        data = str(data) + '\n'
+        if self._file:
+            self._file.write(data)
+        else:
+            print(data)
 
-    def stop_file(self, finished=True):
+    def stop_export(self, finished=True):
         """
-        Stops the writing to the file and closes it.
+        Stops the writing to the file and closes it, if it was opened.
 
         :param finished:    True if the process is finished.
         :type finished:     bool.
@@ -150,7 +154,7 @@ class ExportProcess(VisitorProcess):
 
     def export_graph(self, graph):
         """
-        Called when graph is visited for serialization.
+        Called when a graph is visited for serialization.
 
         :param graph:   serializing graph.
         :rtype:         str.
@@ -160,7 +164,7 @@ class ExportProcess(VisitorProcess):
 
     def export_notion(self, notion):
         """
-        Called when notion is visited for serialization.
+        Called when a notion is visited for serialization.
 
         :param notion:  serializing notion.
         :rtype:         str.
@@ -170,7 +174,7 @@ class ExportProcess(VisitorProcess):
 
     def export_relation(self, relation):
         """
-        Called when relation is visited for serialization.
+        Called when a relation is visited for serialization.
 
         :param relation:    serializing graph.
         :rtype:             str.
@@ -182,7 +186,7 @@ class ExportProcess(VisitorProcess):
         """
         Export event, calls :meth:`ExportProcess.export_graph`, :meth:`ExportProcess.export_notion`, or
         :meth:`ExportProcess.export_relation` depending on :attr:`gt.core.Process.current` element type.
-        If export data is not empty it will be written to the file using :meth:`ExportProcess.write_file`.
+        If export data is not empty it will be written to the file using :meth:`ExportProcess.write_data`.
 
         :return:    True
         :rtype:     bool.
@@ -197,36 +201,36 @@ class ExportProcess(VisitorProcess):
             export_data = self.export_graph(self.current)
 
         if export_data:
-            self.write_file(export_data)
+            self.write_data(export_data)
 
         return True
 
     def on_new(self, message, context):
         """
         Gets the file name from :attr:`ExportProcess.FILENAME` context parameter, opens it using
-        :meth:`ExportProcess.start_file` with new=True and clears internal counters.
+        :meth:`ExportProcess.start_export` with new=True and clears internal counters.
         """
         super(ExportProcess, self).on_new(message, context)
 
-        self._filename = self.context.pop(self.FILENAME)
+        self._filename = self.context.pop(self.FILENAME) if self.FILENAME in self.context else None
         self._info.clear()
-        self.start_file()
+        self.start_export()
 
     def on_resume(self, message, context):
         """
-        Opens current :attr:`ExportProcess.filename` to continue the writing using :meth:`ExportProcess.start_file`
+        Opens current :attr:`ExportProcess.filename` to continue the writing using :meth:`ExportProcess.start_export`
         with new=False.
         """
         super(ExportProcess, self).on_resume(message, context)
 
-        self.start_file(False)
+        self.start_export(False)
 
     def handle(self, message, context):
         """
-        In addtion to :meth:`gt.core.Process.handle` closes the file, calling :meth:`ExportProcess.stop_file`.
+        In addition to :meth:`gt.core.Process.handle` closes the file, calling :meth:`ExportProcess.stop_export`.
         """
         result = super(ExportProcess, self).handle(message, context)
-        self.stop_file(result[0] in (self.OK, True, None))
+        self.stop_export(result[0] in (self.OK, True, None))
 
         return result
 
@@ -250,6 +254,9 @@ class ExportProcess(VisitorProcess):
 
 
 class DotExport(ExportProcess):
+    """
+    Exports the graph to the DOT language (http://en.wikipedia.org/wiki/DOT_(graph_description_language)) format.
+    """
     EMPTY = 'empty'
     OBJECTS_ID = 'objects'
 
@@ -257,6 +264,14 @@ class DotExport(ExportProcess):
     MAX_NOTION_LABEL = 20
 
     def get_condition_string(self, relation):
+        """
+        Turns the :class:`gt.core.Relation`'s condition to the printable string.
+
+        :param relation:    input relation.
+        :type relation:     Relation.
+        :return:            condition string or an empty string.
+        :rtype:             str.
+        """
         if isinstance(relation, NextRelation) and relation.condition_access != TRUE_CONDITION:
 
             if relation.condition_access.mode in Access.CACHEABLE:
@@ -268,7 +283,16 @@ class DotExport(ExportProcess):
 
         return ''
 
-    def get_export_string(self, node_string, **attributes):
+    def get_dot_string(self, node_string, **attributes):
+        """
+        Creates the DOT string for the node, like a -> b [label="*"]
+
+        :param node_string: node type string.
+        :type node_string:  str.
+        :param attributes:  additional attributes, like label or shape.
+        :return:            DOT string ready to export.
+        :rtype:             str.
+        """
         label_string = attributes.get('label', '')
         max_len = attributes.get('max_len')
 
@@ -291,6 +315,13 @@ class DotExport(ExportProcess):
         return node_string + attr_str
 
     def get_object_id(self, obj):
+        """
+        Uses a separate list for non-graph objects to dump them after the export.
+
+        :param obj: non-element object.
+        :return:    object id.
+        :rtype:     str.
+        """
         obj_id = super(DotExport, self).get_object_id(obj)
 
         objects = self._info.get(self.OBJECTS_ID, [])
@@ -301,6 +332,13 @@ class DotExport(ExportProcess):
         return obj_id
 
     def get_element_id(self, element):
+        """
+        Supports empty elements (for relations without :attr:`gt.core.Relation.object`).
+
+        :param element: serializing object.
+        :return:        object id.
+        :rtype:         str.
+        """
         if not element:
             return self.get_serial_id(self.EMPTY)
 
@@ -310,42 +348,60 @@ class DotExport(ExportProcess):
         return 'digraph %s {' % self.get_element_id(graph)
 
     def export_notion(self, notion):
-        return self.get_export_string(self.get_element_id(notion),
-                                      label='"%s"' % get_printable(notion.name, True),
-                                      shape='doublecircle' if isinstance(notion, SelectiveNotion) else 'circle',
-                                      color='red' if isinstance(notion, ActionNotion) else 'black',
-                                      max_len=self.MAX_NOTION_LABEL)
+        return self.get_dot_string(self.get_element_id(notion),
+                                   label='"%s"' % get_printable(notion.name, True),
+                                   shape='doublecircle' if isinstance(notion, SelectiveNotion) else 'circle',
+                                   color='red' if isinstance(notion, ActionNotion) else 'black',
+                                   max_len=self.MAX_NOTION_LABEL)
 
     def export_relation(self, relation):
-        return self.get_export_string('%s -> %s' % (self.get_element_id(relation.subject),
-                                                    self.get_element_id(relation.object)),
-                                      label='"%s"' % get_printable(self.get_condition_string(relation), True),
-                                      color='red' if isinstance(relation, ActionRelation) else 'black',
-                                      style='"bold"' if (isinstance(relation.subject, SelectiveNotion) and
-                                                       relation.subject.default == relation) else '""',
-                                      max_len=self.MAX_RELATION_LABEL,
-                                      fontcolor='blue')
+        return self.get_dot_string('%s -> %s' % (self.get_element_id(relation.subject),
+                                                 self.get_element_id(relation.object)),
+                                   label='"%s"' % get_printable(self.get_condition_string(relation), True),
+                                   color='red' if isinstance(relation, ActionRelation) else 'black',
+                                   style='"bold"' if (isinstance(relation.subject, SelectiveNotion) and
+                                                      relation.subject.default == relation) else '""',
+                                   max_len=self.MAX_RELATION_LABEL,
+                                   fontcolor='blue')
 
     def export_empty(self, counter):
-        return self.get_export_string(self.ID_PATTERN % (self.EMPTY, counter),
-                                      shape='"point"')
+        """
+        Exports an empty element as a point shape.
+
+        :param counter: element counter
+        :type counter:  int.
+        :return:        export string to write to the file or None.
+        :rtype:         str.
+        """
+        return self.get_dot_string(self.ID_PATTERN % (self.EMPTY, counter), shape='"point"')
 
     def export_object(self, name):
-        return self.get_export_string(name,
-                                      color='red',
-                                      shape='"rect"')
+        """
+        Exports a non-element object as a rect shape.
 
-    def stop_file(self, finished=True):
+        :param name:    object name.
+        :return:        export string to write to the file or None.
+        :rtype:         str.
+        """
+        return self.get_dot_string(name, color='red', shape='"rect"')
+
+    def stop_export(self, finished=True):
+        """
+        When finished dumps empty and non-graph objects and puts the closing bracket.
+
+        :param finished:    True if the process is finished.
+        :type finished:     bool.
+        """
         if finished:
             if self.EMPTY in self._info:
                 for i in xrange(0, self._info.get(self.EMPTY)):
-                    self.write_file(self.export_empty(i))
+                    self.write_data(self.export_empty(i))
 
             for obj_id in self._info.get(self.OBJECTS_ID, []):
-                    self.write_file(self.export_object(obj_id))
+                    self.write_data(self.export_object(obj_id))
 
             if self.GRAPH_ID in self._info:
                 for i in xrange(0, self._info.get(self.GRAPH_ID)):
-                    self.write_file('}')
+                    self.write_data('}')
 
-        super(DotExport, self).stop_file(finished)
+        super(DotExport, self).stop_export(finished)

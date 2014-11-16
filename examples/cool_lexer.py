@@ -1,5 +1,5 @@
 """
-.. module:: gt.procs
+.. module:: examples.cool_lexer
    :platform: Unix, Windows
    :synopsis: COOL (http://en.wikipedia.org/wiki/Cool_(programming_language)) lexer example for Graph-talk
 
