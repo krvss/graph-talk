@@ -553,6 +553,15 @@ Another option is to reply to the process something at the certain element, for 
 
 For replying, the ProcessDebugger uses the post-event of pushing the reply of the element to the queue. This way, the debugger provides access to what's replied and overwrites the reply with the specified answer value.
 
+Export and Visualization
+------------------------
+
+There is an experimental :class:`.DotExport` class that allows to see the picture of the graph. It generates the DOT_ file that you can view in any DOT file viewer.
+To export the graph :class:`.VisitorProcess` is used. This process walks through the graph and asks 'visit' query to the element. Upon this query, an element returns other connected elements. Visitor process makes sure each element will be visited only once.
+Here is an example of the COOL example graph picture:
+
+.. figure::  images/dot_cool.png
+
 Performance Tips
 ----------------
 
@@ -563,3 +572,5 @@ Another factor that may slow the execution is the number of commands that the pr
 If there is a need to extend the process class, make sure you assign the proper tag for the new handler, so that the condition will be checked only when needed. For example, ParsingProcess does not even consider the handler of "proceed" if the current message is not a dictionary. It saves a lot of time on unnecessary checks.
 
 Python is a great language, but it is not very fast. Its syntax allows a very clean implementation of Graph-talk concepts, but porting it to faster platforms could bring a significant performance boost. You may contact the team if you are interested in such version.
+
+.. _DOT: http://en.wikipedia.org/wiki/DOT_(graph_description_language)
