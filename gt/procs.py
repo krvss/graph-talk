@@ -1,5 +1,11 @@
-# Graph-talk processor classes
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: gt.procs
+   :platform: Unix, Windows
+   :synopsis: Graph-talk file processor classes
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 from gt.core import *
 
@@ -9,6 +15,7 @@ class FileProcessor(Process):
     File processor contains the graph and the parsing process to parse the file contents
     """
     FILENAME = 'filename'
+
     def __init__(self, name):
         super(FileProcessor, self).__init__()
         self.parser = ParsingProcess()

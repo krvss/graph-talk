@@ -1,5 +1,11 @@
-# COOL lexer example for Graph-talk
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: gt.procs
+   :platform: Unix, Windows
+   :synopsis: COOL (http://en.wikipedia.org/wiki/Cool_(programming_language)) lexer example for Graph-talk
+
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
 
 import re
 

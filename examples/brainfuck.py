@@ -1,7 +1,12 @@
-# Brainfuck interpreter/converter example for Graph-talk
-# (c) Stas Kravets (krvss) 2011-2014
+"""
+.. module:: gt.procs
+   :platform: Unix, Windows
+   :synopsis: Brainfuck interpreter/converter example for Graph-talk
 
-import sys
+.. moduleauthor:: Stas Kravets (krvss) <stas.kravets@gmail.com>
+
+"""
+
 import re
 
 from gt.core import *
