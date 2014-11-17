@@ -14,6 +14,16 @@ if sys.version > '3':
     long = int
     basestring = str
 
+    def get_content(filename):
+        with open(filename, 'r', newline='') as f:
+            return f.read()
+
+else:
+
+    def get_content(filename):
+        with open(filename) as f:
+            return f.read()
+
 
 class DictChangeOperation(object):
     """
@@ -236,7 +246,3 @@ def escape(c):
     else:
         return r'\U{0:08x}'.format(c)
 
-
-def get_content(filename):
-    with open(filename) as f:
-        return f.read()

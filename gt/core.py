@@ -171,7 +171,11 @@ class Access(Abstract):
             access = Access(obj)
 
             if cache and access._mode in Access.CACHEABLE:
-                setattr(obj, Access.CACHE_ATTR, access)
+                try:
+                    setattr(obj, Access.CACHE_ATTR, access)
+
+                except AttributeError:
+                    pass  # Could fail for instance methods, but we do not care
 
         return access
 
@@ -1353,7 +1357,7 @@ class Process(Handler):
         self.message.pop(0)
 
         # If abstract returns False/None, we just continue to the next one
-        return getattr(self.current, Access.CACHE_ATTR)(self.query, **self.context) or True
+        return Access.get_access(self.current)(self.query, **self.context) or True
 
     def can_clear_message(self, *message):
         """

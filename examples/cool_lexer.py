@@ -134,7 +134,7 @@ class CoolLexer(FileProcessor):
         statement = self.builder.loop_rel(True).select('Statement').current
 
         # Operators
-        self.builder[statement].parse_rel(TOKEN_DICT.keys(), ignore_case=True).\
+        self.builder[statement].parse_rel(list(TOKEN_DICT.keys()), ignore_case=True).\
             act('Operator', lambda line_no, last_parsed: self.out_token(line_no, TOKEN_DICT[last_parsed.upper()]))
 
         self.builder[statement].parse_rel(SINGLE_CHAR_OP).\
@@ -186,7 +186,7 @@ class CoolLexer(FileProcessor):
         Out token to result
         """
         if token in (ERROR_TOKEN, STRING_CONST):
-            data = data.replace('\\', '\\\\').replace('\r', '\\015')
+            data = data.replace('\\', '\\\\').replace('\r', '\\015').replace('\v', '\\013')
             data = replace_special_chars(data).replace('\033', '\\033').\
                 replace('\01', '\\001').replace('\02', '\\002').replace('\03', '\\003').replace('\04', '\\004').\
                 replace('\00', '\\000').replace('\22', '\\022').replace('\13', '\\013')
