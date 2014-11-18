@@ -44,7 +44,7 @@ class ExportProcess(VisitorProcess):
     FILENAME = 'file'
 
     GRAPH_ID = 'graph'
-    TYPE_REGEX = re.compile(ur'([A-Z])*')
+    TYPE_REGEX = re.compile(r'([A-Z])*')
 
     #: Element id pattern.
     ID_PATTERN = '%s_%s'

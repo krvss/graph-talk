@@ -426,7 +426,6 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(u('go'), False)
 
-
     def test_4_element(self):
         e = Element()
         tc = TestCalls()
@@ -628,7 +627,7 @@ class UtTests(unittest.TestCase):
         n2 = ActionNotion('N2', [True, process.STOP])
 
         NextRelation(cn, n1)
-        NextRelation(cn, n2)
+        rel = NextRelation(cn, n2)
 
         # The route: CN returns [n1, n2], n1 returns none, n2 returns 'stop'
         r = process(process.NEW, cn, test='process_list')
@@ -654,9 +653,24 @@ class UtTests(unittest.TestCase):
         # Non-abstract returns
         n2.action = lambda: lambda: n1
 
-        r = process(n2)
+        r = process(process.NEW, n2)
         self.assertTrue(r)
         self.assertEqual(process.current, n1)
+
+        tc = TestCalls()
+
+        n2.action = tc.return_true
+
+        r = process(process.NEW, n2)
+        self.assertTrue(r)
+        self.assertEqual(process.current, n2)
+
+        # Non-abstract relation object
+        rel.object = tc.return_true
+
+        r = process(process.NEW, rel)
+        self.assertTrue(r)
+        self.assertEqual(process.current, tc.return_true)
 
     def test_7_debug(self):
         root = ComplexNotion('here')
@@ -1871,23 +1885,27 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.visited, [])
 
     def test_j_export(self):
-        b = GraphBuilder('DOT')
-
+        b = GraphBuilder('Export Graph')
         b.next_rel()
-        b.select('SELECT')
-        b.next_rel('a').act('act', 1)
+        b.complex('complex')
 
-        b.back().back()
-        b.act_rel(self.test_1_abstract).default()
+        p = ExportProcess()
 
-        b.back()
-        b.loop_rel((1, 2)).notion('looper')
+        self.assertEqual(p.get_type_id(b.graph), p.GRAPH_ID)
+        self.assertEqual(p.get_type_id(b.graph.root), 'cn')
 
-        b.back().back()
-        b.parse_rel(self.test_1_abstract, optional=True)
+        self.assertEqual(p.get_serial_id('test'), 'test_0')
+        self.assertEqual(p.get_serial_id('test'), 'test_1')
 
-        p = DotExport()
-        p(p.NEW, b.graph, file='test.dot')
+        self.assertEqual(p.get_serial_id('tset'), 'tset_0')
+
+        self.assertEqual(p.get_element_id(b.graph.root), 'cn_0')
+        self.assertEqual(p.get_element_id(b.graph.root), 'cn_0')
+
+        self.assertEqual(p.get_element_id(b.current), 'cn_1')
+        self.assertEqual(p.get_element_id(b.current), 'cn_1')
+
+        self.assertEqual(p.get_element_id(1), '1')
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

@@ -510,7 +510,7 @@ The result of the text parsing could be the list of tokens (lexing) or another g
 
  
 Debugging
----------
+=========
 
 It is tricky to debug the graph because it is challenging to find the right instance of a certain element type. For example, if you put the breakpoint into a method of relation, it will trigger for all relations. Of course, it is always possible to set the breakpoint inside the user function, but this will limit the debugging possibilities.
 
@@ -554,10 +554,15 @@ Another option is to reply to the process something at the certain element, for 
 For replying, the ProcessDebugger uses the post-event of pushing the reply of the element to the queue. This way, the debugger provides access to what's replied and overwrites the reply with the specified answer value.
 
 Export and Visualization
-------------------------
+========================
+
+Visitor Process
+---------------
+This process walks through the graph and asks 'visit' query to the element. Upon this query, an element returns other connected elements. Visitor process makes sure each element will be visited only once.
+
 
 There is an experimental :class:`.DotExport` class that allows to see the picture of the graph. It generates the DOT_ file that you can view in any DOT file viewer.
-To export the graph :class:`.VisitorProcess` is used. This process walks through the graph and asks 'visit' query to the element. Upon this query, an element returns other connected elements. Visitor process makes sure each element will be visited only once.
+To export the graph :class:`.VisitorProcess` is used.
 Here is an example of the COOL example graph picture:
 
 .. figure::  images/dot_cool.png

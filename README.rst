@@ -18,6 +18,7 @@ Features
 * Highly customizable
 * Plain Python 2.7.5 or higher
 * Very small footprint
+* DOT_ export (experimental)
 
 Check the docs_ for the documentation and examples_ folder for examples of
 lexing, interpreting, and converting using Graph-talk.
@@ -67,3 +68,4 @@ details.
 .. _pypi: http://pypi.python.org/pypi/graph-talk
 .. _issue: https://github.com/krvss/graph-talk/issues
 .. _sphinx: http://sphinx-doc.org/
+.. _DOT: http://en.wikipedia.org/wiki/DOT_(graph_description_language)
