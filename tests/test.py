@@ -9,9 +9,8 @@
 
 import unittest
 from inspect import ArgSpec
-import re
+import os
 
-from gt.core import *
 from gt.debug import *
 from gt.export import *
 
@@ -1885,11 +1884,39 @@ class UtTests(unittest.TestCase):
         self.assertEqual(process.visited, [])
 
     def test_j_export(self):
+        # Base class test
         b = GraphBuilder('Export Graph')
         b.next_rel()
         b.complex('complex')
 
+        fname = 'et.tmp'
+
         p = ExportProcess()
+
+        r = p(p.NEW, b.graph, file=fname)
+        self.assertTrue(r)
+        self.assertTrue(os.path.isfile(fname))
+        self.assertEqual(fname, p.filename)
+
+        os.remove(fname)
+
+        r = p(p.NEW, b.graph)
+        self.assertTrue(r)
+        self.assertFalse(os.path.isfile(fname))
+        self.assertIsNone(p.filename)
+
+        # Export test
+        class ExportTest(ExportProcess):
+            def export_graph(self, graph):
+                return '(g:%s)' % graph.name
+
+            def export_notion(self, notion):
+                return '(n:%s)' % notion.name
+
+            def export_relation(self, relation):
+                return '-'
+
+        p = ExportTest()
 
         self.assertEqual(p.get_type_id(b.graph), p.GRAPH_ID)
         self.assertEqual(p.get_type_id(b.graph.root), 'cn')
@@ -1906,6 +1933,17 @@ class UtTests(unittest.TestCase):
         self.assertEqual(p.get_element_id(b.current), 'cn_1')
 
         self.assertEqual(p.get_element_id(1), '1')
+
+        r = p(b.graph)
+        self.assertTrue(r)
+        self.assertEqual(p.out, '(g:%s)(n:%s)-(n:%s)' % (b.graph.name, b.graph.root.name, b.current.name))
+
+        r = p(p.NEW, b.graph, file=fname)
+        self.assertTrue(r)
+        self.assertTrue(os.path.isfile(fname))
+        self.assertEqual(fname, p.filename)
+
+        os.remove(fname)
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

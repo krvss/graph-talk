@@ -55,6 +55,7 @@ class ExportProcess(VisitorProcess):
         self._filename = ''
         self._file = None
         self._info = {}
+        self._out = ''
 
     def start_export(self, new=True):
         """
@@ -70,14 +71,14 @@ class ExportProcess(VisitorProcess):
         """
         Write data to the open file or to the stdout.
 
-        :param data: data to be written, the carriage return will be added automatically.
+        :param data: data to be written.
         :type data:  str.
         """
-        data = str(data) + '\n'
+        data = str(data)
         if self._file:
             self._file.write(data)
         else:
-            print(data)
+            self._out += data
 
     def stop_export(self, finished=True):
         """
@@ -89,6 +90,8 @@ class ExportProcess(VisitorProcess):
         if self._file:
             self._file.close()
             self._file = None
+        else:
+            print(self._out)
 
     def get_type_id(self, element):
         """
@@ -214,6 +217,7 @@ class ExportProcess(VisitorProcess):
 
         self._filename = self.context.pop(self.FILENAME) if self.FILENAME in self.context else None
         self._info.clear()
+        self._out = ''
         self.start_export()
 
     def on_resume(self, message, context):
@@ -252,6 +256,13 @@ class ExportProcess(VisitorProcess):
         """
         return self._filename
 
+    @property
+    def out(self):
+        """
+        Output buffer
+        """
+        return self._out
+
 
 class DotExport(ExportProcess):
     """
@@ -262,6 +273,9 @@ class DotExport(ExportProcess):
 
     MAX_RELATION_LABEL = 80
     MAX_NOTION_LABEL = 20
+
+    def write_data(self, data):
+        super(DotExport, self).write_data(data + '\n')
 
     def get_condition_string(self, relation):
         """
