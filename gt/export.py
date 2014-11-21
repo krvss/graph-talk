@@ -325,7 +325,7 @@ class DotExport(ExportProcess):
 
             attributes['label'] = fit_label.strip()
 
-        attr_str = '[%s]' % ', '.join(['%s = %s' % (k, v) for k, v in attributes.iteritems()]) if attributes else ''
+        attr_str = '[%s]' % ', '.join(['%s = %s' % (k, attributes.get(k)) for k in sorted(attributes)]) if attributes else ''
 
         return '%s%s' % (node_string, attr_str)
 
@@ -410,14 +410,14 @@ class DotExport(ExportProcess):
         """
         if finished:
             if self.EMPTY in self._info:
-                for i in xrange(0, self._info.get(self.EMPTY)):
+                for i in range(0, self._info.get(self.EMPTY)):
                     self.write_data(self.export_empty(i))
 
             for obj_id in self._info.get(self.OBJECTS_ID, []):
                     self.write_data(self.export_object(obj_id))
 
             if self.GRAPH_ID in self._info:
-                for i in xrange(0, self._info.get(self.GRAPH_ID)):
+                for i in range(0, self._info.get(self.GRAPH_ID)):
                     self.write_data('}')
 
         super(DotExport, self).stop_export(finished)

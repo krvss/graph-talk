@@ -1989,20 +1989,20 @@ class UtTests(unittest.TestCase):
 
         # Export
         self.assertEqual(p.export_graph(b.graph), 'digraph graph_0 {')
-        self.assertEqual(p.export_notion(sel), 'sn_0[color = black, shape = doublecircle, label = "%s"]' % sel.name)
-        self.assertEqual(p.export_notion(b.graph.root), 'cn_0[color = black, shape = circle, label = "%s"]' %
+        self.assertEqual(p.export_notion(sel), 'sn_0[color = black, label = "%s", shape = doublecircle]' % sel.name)
+        self.assertEqual(p.export_notion(b.graph.root), 'cn_0[color = black, label = "%s", shape = circle]' %
                          b.graph.root.name)
 
         self.assertEqual(p.export_notion(an),
-                         'an_0[color = red, shape = circle, label = "Action with the \nname of more than 20 \nchars"]')
+                         'an_0[color = red, label = "Action with the \nname of more than 20 \nchars", shape = circle]')
 
         self.assertEqual(p.export_relation(nr),
-                         'cn_0 -> sn_0[color = black, style = "", fontcolor = blue, label = "a+"]')
+                         'cn_0 -> sn_0[color = black, fontcolor = blue, label = "a+", style = ""]')
 
         self.assertEqual(p.export_relation(nr2),
-                         'sn_0 -> an_0[color = black, style = "bold", fontcolor = blue, label = "\\"select\\""]')
+                         'sn_0 -> an_0[color = black, fontcolor = blue, label = "\\"select\\"", style = "bold"]')
 
-        self.assertEqual(p.export_relation(ar), 'sn_0 -> empty_2[color = red, style = "", fontcolor = blue, label = ""]')
+        self.assertEqual(p.export_relation(ar), 'sn_0 -> empty_2[color = red, fontcolor = blue, label = "", style = ""]')
 
         self.assertEqual(p.export_empty(2), 'empty_2[shape = "point"]')
         self.assertEqual(p.export_object('sax'), 'sax[color = red, shape = "rect"]')
