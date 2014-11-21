@@ -1947,14 +1947,15 @@ class UtTests(unittest.TestCase):
 
     def test_k_dot(self):
         b = GraphBuilder('Dot Export')
-        nr = b.next_rel(re.compile('a+')).current
+        nr = b.next_rel(re.compile('\n+')).current
 
         tc = TestCalls()
 
         # Condition conversion
         p = DotExport()
 
-        self.assertEqual(p.get_condition_string(nr), str(nr.condition_access._value.pattern))
+        self.assertEqual(p.get_condition_string(nr), r'\\n+')
+        nr.condition = re.compile('a+')
 
         sel = b.select('select').current
         lr = b.loop_rel('*', tc.return_true).current
@@ -2134,6 +2135,12 @@ class UtTests(unittest.TestCase):
         p = StatefulProcess()
         a = ActionNotion('Changed my mind', {StatefulProcess.SET_STATE: {'mind': 'New York'}})
         print(p(a, {SharedProcess.ADD_CONTEXT: {'key': 'skeleton'}}))
+
+        # Dot
+        # from examples.cool_lexer import CoolLexer
+        # l = CoolLexer()
+        # d = DotExport()
+        # r = d(d.NEW, l.builder.graph, file='cool.gv')
 
 
 def test():

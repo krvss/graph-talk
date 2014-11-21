@@ -22,15 +22,16 @@ def get_printable(obj, double_escape=False):
     :rtype:                 str.
     """
     if is_regex(obj):
-        return '%s' % obj.pattern
-    else:
-        s = replace_special_chars(str(obj))
-        s = ''.join(escape(c) for c in s)
+        obj = '%s' % obj.pattern
 
-        if double_escape:
-            s = s.replace('\\', '\\\\').replace('\\\\"', r'\"')
+    s = replace_special_chars(str(obj))
 
-        return s
+    s = ''.join(escape(c) for c in s)
+
+    if double_escape:
+        s = s.replace('\\', '\\\\').replace('\\\\"', r'\"')
+
+    return s
 
 
 class ExportProcess(VisitorProcess):
