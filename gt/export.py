@@ -21,7 +21,7 @@ def get_printable(obj, double_escape=False):
     :return:                printable string
     :rtype:                 str.
     """
-    if is_regex(object):
+    if is_regex(obj):
         return '%s' % obj.pattern
     else:
         s = replace_special_chars(str(obj))
@@ -289,11 +289,11 @@ class DotExport(ExportProcess):
         if isinstance(relation, NextRelation) and relation.condition_access != TRUE_CONDITION:
 
             if relation.condition_access.mode in Access.CACHEABLE:
-                return get_object_name(relation.condition_access._value)
-            elif relation.condition_access.spec == Condition.REGEX:
-                return str(relation.condition_access._value.pattern)
+                condition = get_object_name(relation.condition_access._value)
             else:
-                return str(relation.condition_access._value)
+                condition = relation.condition_access._value
+
+            return get_printable(condition, True)
 
         return ''
 
@@ -308,7 +308,7 @@ class DotExport(ExportProcess):
         :rtype:             str.
         """
         label_string = attributes.get('label', '')
-        max_len = attributes.get('max_len')
+        max_len = attributes.pop('max_len', None)
 
         if max_len and len(label_string) > max_len:
             fit_label = ''
@@ -322,11 +322,11 @@ class DotExport(ExportProcess):
                 c += len(l) + 1
                 fit_label += l + ' '
 
-            attributes['label'] = fit_label
+            attributes['label'] = fit_label.strip()
 
         attr_str = '[%s]' % ', '.join(['%s = %s' % (k, v) for k, v in attributes.iteritems()]) if attributes else ''
 
-        return node_string + attr_str
+        return '%s%s' % (node_string, attr_str)
 
     def get_object_id(self, obj):
         """
@@ -341,7 +341,8 @@ class DotExport(ExportProcess):
         objects = self._info.get(self.OBJECTS_ID, [])
         objects.append(obj_id)
 
-        self._info[self.OBJECTS_ID] = objects
+        if len(objects) == 1:
+            self._info[self.OBJECTS_ID] = objects
 
         return obj_id
 
@@ -371,7 +372,7 @@ class DotExport(ExportProcess):
     def export_relation(self, relation):
         return self.get_dot_string('%s -> %s' % (self.get_element_id(relation.subject),
                                                  self.get_element_id(relation.object)),
-                                   label='"%s"' % get_printable(self.get_condition_string(relation), True),
+                                   label='"%s"' % self.get_condition_string(relation),
                                    color='red' if isinstance(relation, ActionRelation) else 'black',
                                    style='"bold"' if (isinstance(relation.subject, SelectiveNotion) and
                                                       relation.subject.default == relation) else '""',

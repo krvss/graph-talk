@@ -1945,6 +1945,74 @@ class UtTests(unittest.TestCase):
 
         os.remove(fname)
 
+    def test_k_dot(self):
+        b = GraphBuilder('Dot Export')
+        nr = b.next_rel(re.compile('a+')).current
+
+        tc = TestCalls()
+
+        # Condition conversion
+        p = DotExport()
+
+        self.assertEqual(p.get_condition_string(nr), str(nr.condition_access._value.pattern))
+
+        sel = b.select('select').current
+        lr = b.loop_rel('*', tc.return_true).current
+
+        self.assertEqual(p.get_condition_string(lr), lr.condition_access._value)
+
+        b.back()
+        nr2 = b.next_rel(sel).default().current
+
+        an = b.act('Action with the name of more than 20 chars', True).current
+        ar = b[sel].act_rel(True).current
+
+        self.assertEqual(p.get_condition_string(nr2), '\\"%s\\"' % sel.name)
+        self.assertEqual(p.get_condition_string(Relation(None, None)), '')
+
+        # DOT strings
+        self.assertEqual(p.get_dot_string(1), '1')
+        self.assertEqual(p.get_dot_string(2, long='drink'), '2[long = drink]')
+        self.assertEqual(p.get_dot_string(3, label='long drink', max_len=5), '3[label = long \ndrink]')
+
+        # Object ids
+        self.assertEqual(p.get_object_id(1), '1')
+        self.assertIn('1', p._info[p.OBJECTS_ID])
+
+        self.assertEqual(p.get_object_id(2), '2')
+        self.assertIn('2', p._info[p.OBJECTS_ID])
+
+        # Empty ids
+        self.assertEqual(p.get_element_id(None), 'empty_0')
+        self.assertEqual(p.get_element_id(None), 'empty_1')
+
+        # Export
+        self.assertEqual(p.export_graph(b.graph), 'digraph graph_0 {')
+        self.assertEqual(p.export_notion(sel), 'sn_0[color = black, shape = doublecircle, label = "%s"]' % sel.name)
+        self.assertEqual(p.export_notion(b.graph.root), 'cn_0[color = black, shape = circle, label = "%s"]' %
+                         b.graph.root.name)
+
+        self.assertEqual(p.export_notion(an),
+                         'an_0[color = red, shape = circle, label = "Action with the \nname of more than 20 \nchars"]')
+
+        self.assertEqual(p.export_relation(nr),
+                         'cn_0 -> sn_0[color = black, style = "", fontcolor = blue, label = "a+"]')
+
+        self.assertEqual(p.export_relation(nr2),
+                         'sn_0 -> an_0[color = black, style = "bold", fontcolor = blue, label = "\\"select\\""]')
+
+        self.assertEqual(p.export_relation(ar), 'sn_0 -> empty_2[color = red, style = "", fontcolor = blue, label = ""]')
+
+        self.assertEqual(p.export_empty(2), 'empty_2[shape = "point"]')
+        self.assertEqual(p.export_object('sax'), 'sax[color = red, shape = "rect"]')
+
+        r = p(p.NEW, b.graph)
+        self.assertTrue(r)
+        self.assertTrue(p.out.endswith('}\n'))
+        self.assertIn(get_object_name(tc.return_true), p._info.get(p.OBJECTS_ID))
+        self.assertEqual(len(p._info), 11)
+        self.assertEqual(p._info.get(p.EMPTY), 1)
+
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]
         root = ComplexNotion('root')
