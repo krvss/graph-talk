@@ -591,12 +591,30 @@ Note that serial id does not assigned to the non-graph elements, like functions 
 
 DOT export
 ----------
+DOT_ is a plain text graph description language. It is a simple way of describing graphs that both humans and computer programs can use.
 
-There is an experimental :class:`.DotExport` class that allows to see the picture of the graph. It generates the DOT_ file that you can view in any DOT file viewer.
-To export the graph :class:`.VisitorProcess` is used.
+There is an experimental :class:`.DotExport` class that allows to see the picture of the graph. It generates the file that you can view in any DOT file viewer,
+for example with Graphviz_.
+
 Here is an example of the COOL example graph picture:
 
 .. figure::  images/dot_cool.png
+
+:class:`.DotExport` is a child of :class:`.ExportProcess` class that overwrites export_* methods. It also adds :meth:`.DotExport.export_empty`
+method to export the relations with empty :attr:`.Relation.object`.
+
+The picture above was generated with the following code::
+
+        l = CoolLexer()
+        d = DotExport()
+        d(d.NEW, l.builder.graph, file='cool.gv')
+
+The legend for the graph is:
+
+* :class:`.SelectiveNotion` notions are double circles, other notions are ordinary circles.
+* :attr:`.SelectiveNotion.default` relations are marked as **bold**.
+* Blue is the color of conditions.
+* Red is the color of all actionable items (:class:`.ActionNotion`, :class:`.ActionRelation`, functions).
 
 Performance Tips
 ================
@@ -610,3 +628,4 @@ If there is a need to extend the process class, make sure you assign the proper 
 Python is a great language, but it is not very fast. Its syntax allows a very clean implementation of Graph-talk concepts, but porting it to faster platforms could bring a significant performance boost. You may contact the team if you are interested in such version.
 
 .. _DOT: http://en.wikipedia.org/wiki/DOT_(graph_description_language)
+.. _Graphviz: http://en.wikipedia.org/wiki/Graphviz
