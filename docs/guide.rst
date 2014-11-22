@@ -558,8 +558,39 @@ Export and Visualization
 
 Visitor Process
 ---------------
-This process walks through the graph and asks 'visit' query to the element. Upon this query, an element returns other connected elements. Visitor process makes sure each element will be visited only once.
+:class:`.VisitorProcess` process walks through the graph and asks "visit" query to each element. Upon this query, an element returns other connected elements. Visitor process makes sure each element will be visited only once.
+When visiting a new element it calls :attr:`.VisitorProcess.visit_event` event to check should the element be visited or not.
+Adding the custom event for this call allows exporting the graph structure or other similar processing.
 
+
+Export Process
+--------------
+:class:`.ExportProcess` extends the :class:`.VisitorProcess` to implement the export framework.
+The output file is specified in :attr:`.ExportProcess.FILENAME` context parameter.
+
+The export uses "visitor" pattern to explore the graph structure. On each new element it calls :meth:`.ExportProcess.on_export` (connected to :attr:`.VisitorProcess.visit_event`)
+to export the :attr:`.Process.current`. Depending on its type the export process calls :meth:`.ExportProcess.export_notion`, :meth:`.ExportProcess.export_relation`
+or :meth:`.ExportProcess.export_graph`. Each of those methods returns the export string to be written into the output file
+or export buffer in :attr:`.ExportProcess.out`. The export file is specified in :attr:`.ExportProcess.FILENAME` context parameter.
+
+To distinguish the elements while exporting, ExportProcess gives each of them unique ids. This is done by :meth:`.ExportProcess.get_element_id`
+method. Unique id consists of the abbreviation of the element type and the counter of such elements already processed.
+
+:meth:`.ExportProcess.get_type_id` generates the type part of the id. For all elements except :class:`.Graph` the type id
+will consist of the first capital letters of their class name, for example for :class:`.ComplexNotion` the result is 'cn', for
+:class:`.Notion` the result is 'n'. For the graph the type id is 'graph'.
+
+Having the type id, :meth:`.ExportProcess.get_serial_id` adds to it the zero-based counter and generates the element id.
+For example, the first :class:`.ActionRelation` will have 'an_0' as an element id. Overwrite this method to change the ids
+generation policy.
+
+The serial id is then cached internally by the get_element_id method with the key equal to the element, so the same element will always get the same id.
+
+Note that serial id does not assigned to the non-graph elements, like functions or other objects. They get the name using
+:meth:`.ExportProcess.get_object_id` that returns the name of the function or string representation of the primitive.
+
+DOT export
+----------
 
 There is an experimental :class:`.DotExport` class that allows to see the picture of the graph. It generates the DOT_ file that you can view in any DOT file viewer.
 To export the graph :class:`.VisitorProcess` is used.
@@ -568,7 +599,7 @@ Here is an example of the COOL example graph picture:
 .. figure::  images/dot_cool.png
 
 Performance Tips
-----------------
+================
 
 There are two things that significantly influence the performance of Graph-talk. First is lookahead, which should not be used unnecessarily. It is better to break from infinite loops than to use flexible conditions.
 

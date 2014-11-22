@@ -1920,6 +1920,7 @@ class UtTests(unittest.TestCase):
 
         self.assertEqual(p.get_type_id(b.graph), p.GRAPH_ID)
         self.assertEqual(p.get_type_id(b.graph.root), 'cn')
+        self.assertEqual(p.get_type_id(Notion('n')), 'n')
 
         self.assertEqual(p.get_serial_id('test'), 'test_0')
         self.assertEqual(p.get_serial_id('test'), 'test_1')
@@ -1978,10 +1979,10 @@ class UtTests(unittest.TestCase):
 
         # Object ids
         self.assertEqual(p.get_object_id(1), '1')
-        self.assertIn('1', p._info[p.OBJECTS_ID])
+        self.assertIn('1', p._exported[p.OBJECTS_ID])
 
         self.assertEqual(p.get_object_id(2), '2')
-        self.assertIn('2', p._info[p.OBJECTS_ID])
+        self.assertIn('2', p._exported[p.OBJECTS_ID])
 
         # Empty ids
         self.assertEqual(p.get_element_id(None), 'empty_0')
@@ -2010,9 +2011,9 @@ class UtTests(unittest.TestCase):
         r = p(p.NEW, b.graph)
         self.assertTrue(r)
         self.assertTrue(p.out.endswith('}\n'))
-        self.assertIn(get_object_name(tc.return_true), p._info.get(p.OBJECTS_ID))
-        self.assertEqual(len(p._info), 11)
-        self.assertEqual(p._info.get(p.EMPTY), 1)
+        self.assertIn(get_object_name(tc.return_true), p._exported.get(p.OBJECTS_ID))
+        self.assertEqual(len(p._exported), 11)
+        self.assertEqual(p._exported.get(p.EMPTY), 1)
 
     def test_z_special(self):
         # Complex loop test: root -(*)-> sequence [-(a)-> a's -> a, -(b)-> b's -> b]

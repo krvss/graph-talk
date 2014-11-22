@@ -55,7 +55,7 @@ class ExportProcess(VisitorProcess):
 
         self._filename = ''
         self._file = None
-        self._info = {}
+        self._exported = {}
         self._out = ''
 
     def start_export(self, new=True):
@@ -120,8 +120,8 @@ class ExportProcess(VisitorProcess):
         :rtype:         str.
         :return:        serialization id for the type.
         """
-        counter = self._info.get(type_id, 0)
-        self._info[type_id] = counter + 1
+        counter = self._exported.get(type_id, 0)
+        self._exported[type_id] = counter + 1
 
         return self.ID_PATTERN % (type_id, counter)
 
@@ -144,7 +144,7 @@ class ExportProcess(VisitorProcess):
         :rtype:         str.
         :return:        element id string.
         """
-        element_id = self._info.get(element)
+        element_id = self._exported.get(element)
 
         if element_id:
             return element_id
@@ -152,7 +152,7 @@ class ExportProcess(VisitorProcess):
         element_id = self.get_serial_id(self.get_type_id(element)) if isinstance(element, Element) else \
             self.get_object_id(element)
 
-        self._info[element] = element_id
+        self._exported[element] = element_id
 
         return element_id
 
@@ -217,7 +217,7 @@ class ExportProcess(VisitorProcess):
         super(ExportProcess, self).on_new(message, context)
 
         self._filename = self.context.pop(self.FILENAME) if self.FILENAME in self.context else None
-        self._info.clear()
+        self._exported.clear()
         self._out = ''
         self.start_export()
 
@@ -339,11 +339,11 @@ class DotExport(ExportProcess):
         """
         obj_id = super(DotExport, self).get_object_id(obj)
 
-        objects = self._info.get(self.OBJECTS_ID, [])
+        objects = self._exported.get(self.OBJECTS_ID, [])
         objects.append(obj_id)
 
         if len(objects) == 1:
-            self._info[self.OBJECTS_ID] = objects
+            self._exported[self.OBJECTS_ID] = objects
 
         return obj_id
 
@@ -409,15 +409,15 @@ class DotExport(ExportProcess):
         :type finished:     bool.
         """
         if finished:
-            if self.EMPTY in self._info:
-                for i in range(0, self._info.get(self.EMPTY)):
+            if self.EMPTY in self._exported:
+                for i in range(0, self._exported.get(self.EMPTY)):
                     self.write_data(self.export_empty(i))
 
-            for obj_id in self._info.get(self.OBJECTS_ID, []):
+            for obj_id in self._exported.get(self.OBJECTS_ID, []):
                     self.write_data(self.export_object(obj_id))
 
-            if self.GRAPH_ID in self._info:
-                for i in range(0, self._info.get(self.GRAPH_ID)):
+            if self.GRAPH_ID in self._exported:
+                for i in range(0, self._exported.get(self.GRAPH_ID)):
                     self.write_data('}')
 
         super(DotExport, self).stop_export(finished)
