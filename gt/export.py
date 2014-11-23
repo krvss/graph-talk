@@ -15,9 +15,9 @@ from gt.utils import *
 
 def get_printable(obj, double_escape=False):
     """
-    Get printable representation of object
+    Gets a printable representation of object
     :param obj:             object to print.
-    :param double_escape:   use double escape for \n etc or not.
+    :param double_escape:   use the double escape for \n etc or not.
     :return:                printable string
     :rtype:                 str.
     """
@@ -37,9 +37,9 @@ def get_printable(obj, double_escape=False):
 class ExportProcess(VisitorProcess):
     """
     Export process is a base class for the serialization processes. It is a child of :class:`gt.core.VisitorProcess`
-    with support of writing serialization data to the file while visiting :class:`gt.core.Graph` elements.
-    For the better readability, each graph element gets an unique name depending on its class.
-    Uses :attr:`gt.core.VisitorProcess.visit_event` event as a trigger for the serialization functions.
+    with support of writing serialization data to a file while visiting :class:`gt.core.Graph` elements.
+    For a better readability, each graph element gets a unique name depending on its class.
+    Uses :attr:`gt.core.VisitorProcess.visit_event` event as a trigger for the export functions.
     """
     #: Target file name parameter, a part of the start context.
     FILENAME = 'file'
@@ -70,7 +70,7 @@ class ExportProcess(VisitorProcess):
 
     def write_data(self, data):
         """
-        Write data to the open file or to the stdout.
+        Writes data to an open file or to the stdout.
 
         :param data: data to be written.
         :type data:  str.
@@ -83,7 +83,7 @@ class ExportProcess(VisitorProcess):
 
     def stop_export(self, finished=True):
         """
-        Stops the writing to the file and closes it, if it was opened.
+        Stops the writing to a file and closes it, if it was opened.
 
         :param finished:    True if the process is finished.
         :type finished:     bool.
@@ -101,7 +101,7 @@ class ExportProcess(VisitorProcess):
 
         :param element: object to get the type id.
         :rtype:         str.
-        :return:        class name converted to id.
+        :return:        class name converted to the id.
         """
         if isinstance(element, Graph):
             type_id = self.GRAPH_ID
@@ -190,7 +190,7 @@ class ExportProcess(VisitorProcess):
         """
         Export event, calls :meth:`ExportProcess.export_graph`, :meth:`ExportProcess.export_notion`, or
         :meth:`ExportProcess.export_relation` depending on :attr:`gt.core.Process.current` element type.
-        If export data is not empty it will be written to the file using :meth:`ExportProcess.write_data`.
+        If export data is not empty, it will be written to the file using :meth:`ExportProcess.write_data`.
 
         :return:    True
         :rtype:     bool.
@@ -260,7 +260,10 @@ class ExportProcess(VisitorProcess):
     @property
     def out(self):
         """
-        Output buffer
+        Output buffer (read-only).
+
+        :return: export buffer, if no output file specified.
+        :rtype:  str.
         """
         return self._out
 
@@ -280,7 +283,7 @@ class DotExport(ExportProcess):
 
     def get_condition_string(self, relation):
         """
-        Turns the :class:`gt.core.Relation`'s condition to the printable string.
+        Turns the :class:`gt.core.Relation`'s condition to a printable string.
 
         :param relation:    input relation.
         :type relation:     Relation.
@@ -290,9 +293,9 @@ class DotExport(ExportProcess):
         if isinstance(relation, NextRelation) and relation.condition_access != TRUE_CONDITION:
 
             if relation.condition_access.mode in Access.CACHEABLE:
-                condition = get_object_name(relation.condition_access._value)
+                condition = get_object_name(relation.condition)
             else:
-                condition = relation.condition_access._value
+                condition = relation.condition
 
             return get_printable(condition, True)
 
@@ -300,12 +303,12 @@ class DotExport(ExportProcess):
 
     def get_dot_string(self, node_string, **attributes):
         """
-        Creates the DOT string for the node, like a -> b [label="*"]
+        Creates the DOT string for the node, like a -> b [label = "*"]
 
-        :param node_string: node type string.
+        :param node_string: node id string.
         :type node_string:  str.
         :param attributes:  additional attributes, like label or shape.
-        :return:            DOT string ready to export.
+        :return:            DOT string ready for export.
         :rtype:             str.
         """
         label_string = attributes.get('label', '')
@@ -331,7 +334,7 @@ class DotExport(ExportProcess):
 
     def get_object_id(self, obj):
         """
-        Uses a separate list for non-graph objects to dump them after the export.
+        Gets the non-element object id. Uses a separate list to export the objects after the elements export.
 
         :param obj: non-element object.
         :return:    object id.
@@ -349,7 +352,8 @@ class DotExport(ExportProcess):
 
     def get_element_id(self, element):
         """
-        Supports empty elements (for relations without :attr:`gt.core.Relation.object`).
+        Gets the unique element serialization id. Supports empty elements (for relations without
+        :attr:`gt.core.Relation.object`).
 
         :param element: serializing object.
         :return:        object id.
@@ -395,7 +399,7 @@ class DotExport(ExportProcess):
         """
         Exports a non-element object as a rect shape.
 
-        :param name:    object name.
+        :param name:    object's name.
         :return:        export string to write to the file or None.
         :rtype:         str.
         """

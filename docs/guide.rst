@@ -566,7 +566,6 @@ Adding the custom event for this call allows exporting the graph structure or ot
 Export Process
 --------------
 :class:`.ExportProcess` extends the :class:`.VisitorProcess` to implement the export framework.
-The output file is specified in :attr:`.ExportProcess.FILENAME` context parameter.
 
 The export uses "visitor" pattern to explore the graph structure. On each new element it calls :meth:`.ExportProcess.on_export` (connected to :attr:`.VisitorProcess.visit_event`)
 to export the :attr:`.Process.current`. Depending on its type the export process calls :meth:`.ExportProcess.export_notion`, :meth:`.ExportProcess.export_relation`
@@ -576,17 +575,17 @@ or export buffer in :attr:`.ExportProcess.out`. The export file is specified in 
 To distinguish the elements while exporting, ExportProcess gives each of them unique ids. This is done by :meth:`.ExportProcess.get_element_id`
 method. Unique id consists of the abbreviation of the element type and the counter of such elements already processed.
 
-:meth:`.ExportProcess.get_type_id` generates the type part of the id. For all elements except :class:`.Graph` the type id
-will consist of the first capital letters of their class name, for example for :class:`.ComplexNotion` the result is 'cn', for
-:class:`.Notion` the result is 'n'. For the graph the type id is 'graph'.
+:meth:`.ExportProcess.get_type_id` generates the type part of the id. For all elements except :class:`.Graph`, the type id
+will consist of the first capital letters of their class name. For example for :class:`.ComplexNotion`, the result is 'cn', for
+:class:`.Notion` the result is 'n'. For a graph, the type id is 'graph'.
 
 Having the type id, :meth:`.ExportProcess.get_serial_id` adds to it the zero-based counter and generates the element id.
 For example, the first :class:`.ActionRelation` will have 'an_0' as an element id. Overwrite this method to change the ids
 generation policy.
 
-The serial id is then cached internally by the get_element_id method with the key equal to the element, so the same element will always get the same id.
+The serial id is then cached internally by the get_element_id method with a key equal to the element, so the same element will always get the same id.
 
-Note that serial id does not assigned to the non-graph elements, like functions or other objects. They get the name using
+Note that the non-graph element, like function or other object do not get serial id. They get the name using
 :meth:`.ExportProcess.get_object_id` that returns the name of the function or string representation of the primitive.
 
 DOT export
